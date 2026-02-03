@@ -25,6 +25,8 @@ description: "Reference for Kalshi prediction markets API. Use this skill when w
 | **API Changelog** | https://docs.kalshi.com/changelog |
 | **OpenAPI Spec** | https://docs.kalshi.com/openapi.yaml |
 
+> **Note**: Return type schemas are available in the HTML versions of the documentation pages, not the markdown variants.
+
 ## Base URLs
 
 | Environment | REST API | WebSocket |
