@@ -2,8 +2,7 @@
 /// - Gets balance
 /// - Places an order
 
-use kalshi::{KalshiEnvironment, KalshiRestClient};
-use kalshi::rest::{GetMarketsParams, MarketStatus};
+use kalshi::{GetMarketsParams, KalshiEnvironment, KalshiRestClient, MarketStatus};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
