@@ -106,7 +106,7 @@ struct WsSubscribeParams {
 impl KalshiWsClient {
     /// Connect without auth (public channels only). :contentReference[oaicite:74]{index=74}
     pub async fn connect(env: KalshiEnvironment) -> Result<Self, KalshiError> {
-        let (ws_stream, _resp) = connect_async(env.ws_url)
+        let (ws_stream, _resp) = connect_async(&env.ws_url)
             .await
             .map_err(|e| KalshiError::Ws(e.to_string()))?;
 
