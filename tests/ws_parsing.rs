@@ -1,6 +1,6 @@
 //! Unit tests for WebSocket message parsing.
 
-use kalshi::{WsDataMessage, WsEnvelope, WsMessage, WsOrderbookDelta, WsTicker};
+use kalshi::{MarketStatus, WsDataMessage, WsEnvelope, WsMessage, WsMsgType, WsOrderbookDelta, WsTicker};
 
 #[test]
 fn ws_envelope_deserializes_with_sid_and_seq() {
@@ -14,7 +14,7 @@ fn ws_envelope_deserializes_with_sid_and_seq() {
 
     let env: WsEnvelope = serde_json::from_str(json).unwrap();
     assert_eq!(env.id, Some(1));
-    assert_eq!(env.msg_type, "orderbook_snapshot");
+    assert_eq!(env.msg_type, WsMsgType::OrderbookSnapshot);
     assert_eq!(env.sid, Some(42));
     assert_eq!(env.seq, Some(100));
     assert!(env.msg.is_some());
@@ -306,4 +306,123 @@ fn ws_orderbook_delta_raw() {
     let raw = env.msg_raw().unwrap();
     let msg: WsOrderbookDelta = serde_json::from_str(raw).unwrap();
     assert_eq!(msg.delta, 10);
+}
+
+#[test]
+fn ws_market_lifecycle_v2_message_parses() {
+    let json = r#"{
+        "type": "market_lifecycle_v2",
+        "msg": {
+            "market_ticker": "MKT-1",
+            "status": "open",
+            "can_trade": true
+        }
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::Data(WsDataMessage::MarketLifecycleV2 { msg, .. }) => {
+            assert_eq!(msg.market_ticker, "MKT-1");
+            assert_eq!(msg.status, Some(MarketStatus::Open));
+            assert_eq!(msg.can_trade, Some(true));
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn ws_market_positions_message_parses() {
+    let json = r#"{
+        "type": "market_positions",
+        "msg": {
+            "market_positions": [{"ticker":"MKT-1","position":1}],
+            "event_positions": [{"event_ticker":"EVT-1","position":2}]
+        }
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::Data(WsDataMessage::MarketPositions { msg, .. }) => {
+            assert_eq!(msg.market_positions.len(), 1);
+            assert_eq!(msg.market_positions[0].ticker, "MKT-1");
+            assert_eq!(msg.event_positions[0].event_ticker, "EVT-1");
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn ws_communications_message_parses() {
+    let json = r#"{
+        "type": "communications",
+        "msg": {"foo": "bar", "count": 1}
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::Data(WsDataMessage::Communications { msg, .. }) => {
+            assert_eq!(msg.as_value()["foo"], "bar");
+            assert_eq!(msg.as_value()["count"], 1);
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn ws_multivariate_message_parses() {
+    let json = r#"{
+        "type": "multivariate",
+        "msg": {"legs": [{"ticker":"MKT-1","side":"yes"}]}
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::Data(WsDataMessage::Multivariate { msg, .. }) => {
+            assert!(msg.as_value().get("legs").is_some());
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn ws_order_group_updates_message_parses() {
+    let json = r#"{
+        "type": "order_group_updates",
+        "msg": {"order_group_id":"og-1","status":"open"}
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::Data(WsDataMessage::OrderGroupUpdates { msg, .. }) => {
+            assert_eq!(msg.as_value()["order_group_id"], "og-1");
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn ws_list_subscriptions_parses_from_subscriptions_field() {
+    let json = r#"{
+        "id": 2,
+        "type": "list_subscriptions",
+        "subscriptions": [
+            {"sid": 10, "channels": ["ticker"], "market_tickers": ["TEST"]}
+        ]
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::ListSubscriptions { id, subscriptions } => {
+            assert_eq!(id, Some(2));
+            assert_eq!(subscriptions.len(), 1);
+            assert_eq!(subscriptions[0].sid, 10);
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
 }

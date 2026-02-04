@@ -719,6 +719,55 @@ mod tests {
     }
 
     #[test]
+    fn validate_subscription_orderbook_delta_allows_market_ids() {
+        let params = WsSubscriptionParams {
+            channels: vec![WsChannel::OrderbookDelta],
+            market_ids: Some(vec!["mid-1".to_string()]),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_subscription_rejects_market_positions_with_market_ids() {
+        let params = WsSubscriptionParams {
+            channels: vec![WsChannel::MarketPositions],
+            market_ids: Some(vec!["mid-1".to_string()]),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_err());
+    }
+
+    #[test]
+    fn validate_subscription_shard_fields_require_communications() {
+        let params = WsSubscriptionParams {
+            channels: vec![WsChannel::Ticker],
+            shard_factor: Some(2),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_err());
+
+        let params = WsSubscriptionParams {
+            channels: vec![WsChannel::Communications],
+            shard_factor: Some(2),
+            shard_key: Some("key".to_string()),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_subscription_send_initial_snapshot_with_orderbook_delta_ok() {
+        let params = WsSubscriptionParams {
+            channels: vec![WsChannel::OrderbookDelta],
+            market_tickers: Some(vec!["TEST".to_string()]),
+            send_initial_snapshot: Some(true),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+    }
+
+    #[test]
     fn ws_msg_type_deserialize_known() {
         let msg_type: WsMsgType = serde_json::from_str("\"trade\"").unwrap();
         assert!(matches!(msg_type, WsMsgType::Trade));
