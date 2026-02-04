@@ -330,6 +330,20 @@ fn get_positions_response_deserializes() {
 }
 
 #[test]
+fn positions_page_from_response() {
+    let json = r#"{
+        "market_positions": [{"ticker": "MKT-1", "position": 100}],
+        "event_positions": [{"event_ticker": "EVT-1", "position": 5}],
+        "cursor": "abc123"
+    }"#;
+
+    let resp: kalshi::GetPositionsResponse = serde_json::from_str(json).unwrap();
+    let page: kalshi::PositionsPage = resp.into();
+    assert_eq!(page.market_positions.len(), 1);
+    assert_eq!(page.event_positions.len(), 1);
+}
+
+#[test]
 fn get_orders_response_deserializes() {
     let json = r#"{
         "orders": [{"order_id": "ord-1", "ticker": "MKT-1", "status": "resting"}]

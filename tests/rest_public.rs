@@ -68,6 +68,28 @@ async fn test_get_events() {
 }
 
 #[tokio::test]
+async fn test_get_events_all() {
+    let client = KalshiRestClient::new(common::demo_env());
+    let events = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_events_all(GetEventsParams {
+                // Use a far-future close filter to keep the result set small.
+                min_close_ts: Some(4_102_444_800),
+                limit: Some(100),
+                ..Default::default()
+            })
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    if let Some(first) = events.first() {
+        assert!(!first.event_ticker.is_empty());
+    }
+}
+
+#[tokio::test]
 async fn test_get_event_by_ticker() {
     let client = KalshiRestClient::new(common::demo_env());
 
