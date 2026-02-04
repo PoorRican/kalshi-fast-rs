@@ -821,6 +821,21 @@ pub struct GetPositionsResponse {
     pub cursor: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PositionsPage {
+    pub market_positions: Vec<MarketPosition>,
+    pub event_positions: Vec<EventPosition>,
+}
+
+impl From<GetPositionsResponse> for PositionsPage {
+    fn from(resp: GetPositionsResponse) -> Self {
+        Self {
+            market_positions: resp.market_positions,
+            event_positions: resp.event_positions,
+        }
+    }
+}
+
 /// GET /portfolio/orders query params
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetOrdersParams {
