@@ -1,8 +1,9 @@
 use crate::error::KalshiError;
 use crate::types::{
-    serialize_csv_opt, AnyJson, BuySell, EventStatus, FeeType, FixedPointCount, FixedPointDollars,
-    MarketStatus, MveFilter, OrderStatus, OrderType, PositionCountFilter, SelfTradePreventionType,
-    TimeInForce, TradeTakerSide, YesNo,
+    deserialize_null_as_empty_vec, deserialize_string_or_number, serialize_csv_opt, AnyJson,
+    BuySell, EventStatus, FeeType, FixedPointCount, FixedPointDollars, MarketStatus, MveFilter,
+    OrderStatus, OrderType, PositionCountFilter, SelfTradePreventionType, TimeInForce,
+    TradeTakerSide, YesNo,
 };
 use serde::{Deserialize, Serialize};
 
@@ -10,8 +11,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SettlementSource {
-    pub name: String,
-    pub url: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -29,9 +32,9 @@ pub struct Series {
     pub description: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub tags: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub settlement_sources: Vec<SettlementSource>,
     #[serde(default)]
     pub contract_url: Option<String>,
@@ -40,8 +43,8 @@ pub struct Series {
     #[serde(default)]
     pub fee_type: Option<FeeType>,
     #[serde(default)]
-    pub fee_multiplier: Option<i64>,
-    #[serde(default)]
+    pub fee_multiplier: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub additional_prohibitions: Vec<String>,
     #[serde(default)]
     pub product_metadata: Option<AnyJson>,
@@ -71,6 +74,7 @@ pub struct GetSeriesListParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetSeriesListResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub series: Vec<Series>,
 }
 
@@ -478,6 +482,7 @@ impl GetMarketsParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetMarketsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub markets: Vec<Market>,
     #[serde(default)]
     pub cursor: Option<String>,
@@ -493,26 +498,26 @@ pub struct GetMarketResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Orderbook {
     /// Price levels: (price_cents, quantity)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub yes: Vec<(i64, i64)>,
     /// Price levels: (price_cents, quantity)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub no: Vec<(i64, i64)>,
     /// Price levels: (price_dollars, quantity)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub yes_dollars: Vec<(FixedPointDollars, i64)>,
     /// Price levels: (price_dollars, quantity)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub no_dollars: Vec<(FixedPointDollars, i64)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct OrderbookFp {
     /// Price levels: (price_dollars, quantity_fp)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub yes_dollars: Vec<(FixedPointDollars, String)>,
     /// Price levels: (price_dollars, quantity_fp)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub no_dollars: Vec<(FixedPointDollars, String)>,
 }
 
@@ -536,7 +541,7 @@ pub struct Trade {
     pub trade_id: String,
     pub ticker: String,
     #[serde(default)]
-    pub price: Option<i64>,
+    pub price: Option<f64>,
     #[serde(default)]
     pub count: Option<i64>,
     #[serde(default)]
@@ -575,6 +580,7 @@ pub struct GetTradesParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetTradesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub trades: Vec<Trade>,
     #[serde(default)]
     pub cursor: Option<String>,
@@ -620,6 +626,7 @@ pub struct Announcement {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetExchangeAnnouncementsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub announcements: Vec<Announcement>,
 }
 
@@ -657,9 +664,9 @@ pub struct MaintenanceWindow {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExchangeSchedule {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub standard_hours: Vec<StandardHours>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub maintenance_windows: Vec<MaintenanceWindow>,
 }
 
@@ -693,6 +700,7 @@ pub struct GetSeriesFeeChangesParams {
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetSeriesFeeChangesResponse {
     #[serde(rename = "series_fee_change_arr")]
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub series_fee_change_arr: Vec<SeriesFeeChange>,
 }
 
@@ -805,7 +813,9 @@ pub struct EventPosition {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetPositionsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub market_positions: Vec<MarketPosition>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub event_positions: Vec<EventPosition>,
     #[serde(default)]
     pub cursor: Option<String>,
@@ -928,6 +938,7 @@ pub struct Order {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetOrdersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub orders: Vec<Order>,
     #[serde(default)]
     pub cursor: Option<String>,
@@ -1155,6 +1166,7 @@ pub struct GetFillsParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetFillsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub fills: Vec<Fill>,
     #[serde(default)]
     pub cursor: Option<String>,
@@ -1214,6 +1226,7 @@ pub struct GetSettlementsParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetSettlementsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub settlements: Vec<Settlement>,
     #[serde(default)]
     pub cursor: Option<String>,
@@ -1238,12 +1251,14 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
-    pub balance: i64,
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub balance: FixedPointDollars,
     pub updated_ts: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetSubaccountBalancesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub subaccount_balances: Vec<SubaccountBalance>,
 }
 
@@ -1277,6 +1292,12 @@ pub struct GetSubaccountTransfersParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetSubaccountTransfersResponse {
+    #[serde(
+        default,
+        deserialize_with = "deserialize_null_as_empty_vec",
+        alias = "subaccount_transfer_arr",
+        alias = "transfers"
+    )]
     pub subaccount_transfers: Vec<SubaccountTransfer>,
     #[serde(default)]
     pub cursor: Option<String>,
