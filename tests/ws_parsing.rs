@@ -76,9 +76,11 @@ fn ws_orderbook_snapshot_deserializes() {
         "market_ticker": "INXD-25JAN10-T17900",
         "market_id": "abc123",
         "yes": [[50, 100], [51, 200]],
-        "yes_dollars": [["0.50", "100.00"], ["0.51", "200.00"]],
+        "yes_dollars": [["0.50", 100], ["0.51", 200]],
         "no": [[49, 150]],
-        "no_dollars": [["0.49", "150.00"]]
+        "no_dollars": [["0.49", 150]],
+        "yes_dollars_fp": [["0.50", "100.00"], ["0.51", "200.00"]],
+        "no_dollars_fp": [["0.49", "150.00"]]
     }"#;
 
     let snap: WsOrderbookSnapshot = serde_json::from_str(json).unwrap();
@@ -90,7 +92,10 @@ fn ws_orderbook_snapshot_deserializes() {
     assert_eq!(snap.no.len(), 1);
     assert_eq!(snap.no[0], (49, 150));
     assert_eq!(snap.yes_dollars.len(), 2);
+    assert_eq!(snap.yes_dollars[0], ("0.50".to_string(), 100));
     assert_eq!(snap.no_dollars.len(), 1);
+    assert_eq!(snap.yes_dollars_fp.len(), 2);
+    assert_eq!(snap.no_dollars_fp.len(), 1);
 }
 
 #[test]
@@ -106,6 +111,8 @@ fn ws_orderbook_snapshot_deserializes_with_empty_books() {
     assert!(snap.no.is_empty());
     assert!(snap.yes_dollars.is_empty());
     assert!(snap.no_dollars.is_empty());
+    assert!(snap.yes_dollars_fp.is_empty());
+    assert!(snap.no_dollars_fp.is_empty());
 }
 
 #[test]

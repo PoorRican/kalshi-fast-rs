@@ -5,12 +5,14 @@ pub mod rest;
 pub mod types;
 pub mod ws;
 
+// Primary clients
 pub use auth::{KalshiAuth, KalshiAuthHeaders};
 pub use env::{KalshiEnvironment, REST_PREFIX, WS_PATH};
 pub use error::KalshiError;
 pub use rest::KalshiRestClient;
-pub use ws::{
-    KalshiWsClient, WsChannel, WsEnvelope, WsFill, WsOrderbookDelta, WsOrderbookSnapshot, WsTicker,
-};
-pub use types::*;
+pub use ws::KalshiWsClient;
 
+// Backwards-compatible type re-exports
+pub use types::*;
+pub use rest::types::*;
+pub use ws::{WsChannel, WsEnvelope, WsFill, WsOrderbookDelta, WsOrderbookSnapshot, WsTicker};

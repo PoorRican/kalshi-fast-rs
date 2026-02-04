@@ -1,5 +1,5 @@
 use crate::{KalshiAuth, KalshiEnvironment, KalshiError, REST_PREFIX};
-use crate::types::*;
+use crate::rest::types::*;
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Client, Method};
@@ -79,7 +79,7 @@ impl KalshiRestClient {
 
         if require_auth {
             let auth = self.auth.as_ref().ok_or(KalshiError::AuthRequired("REST endpoint"))?;
-            // IMPORTANT: sign the path without query parameters :contentReference[oaicite:23]{index=23}
+            // IMPORTANT: sign the path without query parameters
             Self::insert_auth_headers(&mut headers, auth, &method, full_path)?;
         }
 
@@ -100,34 +100,34 @@ impl KalshiRestClient {
     // Public "market data" endpoints
     // ----------------------------
 
-    /// GET /series  :contentReference[oaicite:24]{index=24}
+    /// GET /series
     pub async fn get_series_list(&self, params: GetSeriesListParams) -> Result<GetSeriesListResponse, KalshiError> {
         let path = Self::full_path("/series");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, false).await
     }
 
-    /// GET /events  (excludes multivariate events) :contentReference[oaicite:25]{index=25}
+    /// GET /events  (excludes multivariate events)
     pub async fn get_events(&self, params: GetEventsParams) -> Result<GetEventsResponse, KalshiError> {
         params.validate()?;
         let path = Self::full_path("/events");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, false).await
     }
 
-    /// GET /events/{event_ticker}  :contentReference[oaicite:26]{index=26}
+    /// GET /events/{event_ticker}
     pub async fn get_event(&self, event_ticker: &str, with_nested_markets: Option<bool>) -> Result<GetEventResponse, KalshiError> {
         let path = Self::full_path(&format!("/events/{event_ticker}"));
         let params = GetEventParams { with_nested_markets };
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, false).await
     }
 
-    /// GET /markets  :contentReference[oaicite:27]{index=27}
+    /// GET /markets
     pub async fn get_markets(&self, params: GetMarketsParams) -> Result<GetMarketsResponse, KalshiError> {
         params.validate()?;
         let path = Self::full_path("/markets");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, false).await
     }
 
-    /// GET /markets/{ticker}  :contentReference[oaicite:28]{index=28}
+    /// GET /markets/{ticker}
     pub async fn get_market(&self, market_ticker: &str) -> Result<GetMarketResponse, KalshiError> {
         let path = Self::full_path(&format!("/markets/{market_ticker}"));
         self.send(Method::GET, &path, Option::<&()>::None, Option::<&()>::None, false).await
@@ -137,36 +137,35 @@ impl KalshiRestClient {
     // Authenticated endpoints (portfolio / orders)
     // ----------------------------
 
-    /// GET /portfolio/balance  :contentReference[oaicite:29]{index=29}
+    /// GET /portfolio/balance
     pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
         self.send(Method::GET, &path, Option::<&()>::None, Option::<&()>::None, true).await
     }
 
-    /// GET /portfolio/positions  :contentReference[oaicite:30]{index=30}
+    /// GET /portfolio/positions
     pub async fn get_positions(&self, params: GetPositionsParams) -> Result<GetPositionsResponse, KalshiError> {
         params.validate()?;
         let path = Self::full_path("/portfolio/positions");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true).await
     }
 
-    /// GET /portfolio/orders  :contentReference[oaicite:31]{index=31}
+    /// GET /portfolio/orders
     pub async fn get_orders(&self, params: GetOrdersParams) -> Result<GetOrdersResponse, KalshiError> {
         params.validate()?;
         let path = Self::full_path("/portfolio/orders");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true).await
     }
 
-    /// POST /portfolio/orders  :contentReference[oaicite:32]{index=32}
+    /// POST /portfolio/orders
     pub async fn create_order(&self, body: CreateOrderRequest) -> Result<CreateOrderResponse, KalshiError> {
         let path = Self::full_path("/portfolio/orders");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true).await
     }
 
-    /// DELETE /portfolio/orders/{order_id}  (optional `subaccount` query param) :contentReference[oaicite:33]{index=33}
+    /// DELETE /portfolio/orders/{order_id}  (optional `subaccount` query param)
     pub async fn cancel_order(&self, order_id: &str, params: CancelOrderParams) -> Result<CancelOrderResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/orders/{order_id}"));
         self.send(Method::DELETE, &path, Some(&params), Option::<&()>::None, true).await
     }
 }
-
