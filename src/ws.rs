@@ -4,6 +4,8 @@ use crate::error::KalshiError;
 
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde_json::value::RawValue;
 use std::fmt;
 
 use tokio_tungstenite::tungstenite::http::{HeaderValue, Request};
@@ -178,28 +180,48 @@ pub struct WsEnvelope {
     pub msg_type: String,
     pub sid: Option<u64>,
     pub seq: Option<u64>,
-    pub msg: Option<serde_json::Value>,
+    pub msg: Option<Box<RawValue>>,
 }
 
 impl WsEnvelope {
+    pub fn msg_raw(&self) -> Option<&str> {
+        self.msg.as_deref().map(|raw| raw.get())
+    }
+
     /// Parse inner message as a ticker update.
     pub fn parse_ticker(&self) -> Result<WsTicker, serde_json::Error> {
-        serde_json::from_value(self.msg.clone().unwrap_or_default())
+        let raw = self
+            .msg
+            .as_deref()
+            .ok_or_else(|| serde_json::Error::custom("missing msg"))?;
+        serde_json::from_str(raw.get())
     }
 
     /// Parse inner message as an orderbook snapshot.
     pub fn parse_orderbook_snapshot(&self) -> Result<WsOrderbookSnapshot, serde_json::Error> {
-        serde_json::from_value(self.msg.clone().unwrap_or_default())
+        let raw = self
+            .msg
+            .as_deref()
+            .ok_or_else(|| serde_json::Error::custom("missing msg"))?;
+        serde_json::from_str(raw.get())
     }
 
     /// Parse inner message as an orderbook delta.
     pub fn parse_orderbook_delta(&self) -> Result<WsOrderbookDelta, serde_json::Error> {
-        serde_json::from_value(self.msg.clone().unwrap_or_default())
+        let raw = self
+            .msg
+            .as_deref()
+            .ok_or_else(|| serde_json::Error::custom("missing msg"))?;
+        serde_json::from_str(raw.get())
     }
 
     /// Parse inner message as a fill.
     pub fn parse_fill(&self) -> Result<WsFill, serde_json::Error> {
-        serde_json::from_value(self.msg.clone().unwrap_or_default())
+        let raw = self
+            .msg
+            .as_deref()
+            .ok_or_else(|| serde_json::Error::custom("missing msg"))?;
+        serde_json::from_str(raw.get())
     }
 }
 
@@ -310,9 +332,8 @@ impl KalshiWsClient {
             match msg {
                 Message::Text(s) => return Ok(serde_json::from_str::<WsEnvelope>(&s)?),
                 Message::Binary(b) => {
-                    // If server ever sends binary JSON, attempt decode.
-                    let s = String::from_utf8(b).map_err(|e| KalshiError::Ws(e.to_string()))?;
-                    return Ok(serde_json::from_str::<WsEnvelope>(&s)?);
+                    // If server sends binary JSON, decode without UTF-8 roundtrip.
+                    return Ok(serde_json::from_slice::<WsEnvelope>(&b)?);
                 }
                 Message::Ping(payload) => {
                     self.write
@@ -332,4 +353,3 @@ impl KalshiWsClient {
         Err(KalshiError::Ws("websocket stream ended".to_string()))
     }
 }
-

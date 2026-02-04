@@ -133,8 +133,8 @@ async fn main() -> anyhow::Result<()> {
                 );
             }
             "subscribed" => println!("[SUBSCRIBED] sid={:?}", envelope.sid),
-            "error" => println!("[ERROR] {:?}", envelope.msg),
-            other => println!("[{}] {:?}", other, envelope.msg),
+            "error" => println!("[ERROR] {:?}", envelope.msg_raw()),
+            other => println!("[{}] {:?}", other, envelope.msg_raw()),
         }
     }
 }
