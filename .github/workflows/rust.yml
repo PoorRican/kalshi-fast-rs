@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  KALSHI_KEY_ID: ${{ secrets.KALSHI_KEY_ID }}
+  KALSHI_PRIVATE_KEY: ${{ secrets.KALSHI_PRIVATE_KEY }}
 
 jobs:
   build:
