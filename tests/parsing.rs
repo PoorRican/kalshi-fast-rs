@@ -1,5 +1,6 @@
 //! Unit tests for REST type serialization/deserialization.
 
+pub(crate) use cargo_husky as _;
 use kalshi::{
     ApplySubaccountTransferResponse, BuySell, CreateOrderRequest, CreateSubaccountResponse,
     ErrorResponse, EventStatus, GetAccountApiLimitsResponse, GetEventsParams,
@@ -18,25 +19,58 @@ use kalshi::{
 
 #[test]
 fn market_status_serializes_correctly() {
-    assert_eq!(serde_json::to_string(&MarketStatus::Open).unwrap(), "\"open\"");
-    assert_eq!(serde_json::to_string(&MarketStatus::Closed).unwrap(), "\"closed\"");
-    assert_eq!(serde_json::to_string(&MarketStatus::Settled).unwrap(), "\"settled\"");
-    assert_eq!(serde_json::to_string(&MarketStatus::Paused).unwrap(), "\"paused\"");
-    assert_eq!(serde_json::to_string(&MarketStatus::Unopened).unwrap(), "\"unopened\"");
+    assert_eq!(
+        serde_json::to_string(&MarketStatus::Open).unwrap(),
+        "\"open\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MarketStatus::Closed).unwrap(),
+        "\"closed\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MarketStatus::Settled).unwrap(),
+        "\"settled\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MarketStatus::Paused).unwrap(),
+        "\"paused\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MarketStatus::Unopened).unwrap(),
+        "\"unopened\""
+    );
 }
 
 #[test]
 fn event_status_serializes_correctly() {
-    assert_eq!(serde_json::to_string(&EventStatus::Open).unwrap(), "\"open\"");
-    assert_eq!(serde_json::to_string(&EventStatus::Closed).unwrap(), "\"closed\"");
-    assert_eq!(serde_json::to_string(&EventStatus::Settled).unwrap(), "\"settled\"");
+    assert_eq!(
+        serde_json::to_string(&EventStatus::Open).unwrap(),
+        "\"open\""
+    );
+    assert_eq!(
+        serde_json::to_string(&EventStatus::Closed).unwrap(),
+        "\"closed\""
+    );
+    assert_eq!(
+        serde_json::to_string(&EventStatus::Settled).unwrap(),
+        "\"settled\""
+    );
 }
 
 #[test]
 fn order_status_serializes_correctly() {
-    assert_eq!(serde_json::to_string(&OrderStatus::Resting).unwrap(), "\"resting\"");
-    assert_eq!(serde_json::to_string(&OrderStatus::Canceled).unwrap(), "\"canceled\"");
-    assert_eq!(serde_json::to_string(&OrderStatus::Executed).unwrap(), "\"executed\"");
+    assert_eq!(
+        serde_json::to_string(&OrderStatus::Resting).unwrap(),
+        "\"resting\""
+    );
+    assert_eq!(
+        serde_json::to_string(&OrderStatus::Canceled).unwrap(),
+        "\"canceled\""
+    );
+    assert_eq!(
+        serde_json::to_string(&OrderStatus::Executed).unwrap(),
+        "\"executed\""
+    );
 }
 
 #[test]
@@ -53,8 +87,14 @@ fn buy_sell_serializes_correctly() {
 
 #[test]
 fn order_type_serializes_correctly() {
-    assert_eq!(serde_json::to_string(&OrderType::Limit).unwrap(), "\"limit\"");
-    assert_eq!(serde_json::to_string(&OrderType::Market).unwrap(), "\"market\"");
+    assert_eq!(
+        serde_json::to_string(&OrderType::Limit).unwrap(),
+        "\"limit\""
+    );
+    assert_eq!(
+        serde_json::to_string(&OrderType::Market).unwrap(),
+        "\"market\""
+    );
 }
 
 #[test]
@@ -76,7 +116,10 @@ fn time_in_force_serializes_correctly() {
 #[test]
 fn mve_filter_serializes_correctly() {
     assert_eq!(serde_json::to_string(&MveFilter::Only).unwrap(), "\"only\"");
-    assert_eq!(serde_json::to_string(&MveFilter::Exclude).unwrap(), "\"exclude\"");
+    assert_eq!(
+        serde_json::to_string(&MveFilter::Exclude).unwrap(),
+        "\"exclude\""
+    );
 }
 
 #[test]
@@ -617,16 +660,26 @@ fn get_markets_params_validates_limit_bounds() {
 fn get_markets_params_validates_event_ticker_count() {
     // 10 is ok
     let params = GetMarketsParams {
-        event_ticker: Some(vec!["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10"]
-            .into_iter().map(String::from).collect()),
+        event_ticker: Some(
+            vec!["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        ),
         ..Default::default()
     };
     assert!(params.validate().is_ok());
 
     // 11 is too many
     let params = GetMarketsParams {
-        event_ticker: Some(vec!["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"]
-            .into_iter().map(String::from).collect()),
+        event_ticker: Some(
+            vec![
+                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        ),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -735,8 +788,14 @@ fn get_orders_params_validates_limit_bounds() {
 #[test]
 fn get_orders_params_validates_event_ticker_count() {
     let params = GetOrdersParams {
-        event_ticker: Some(vec!["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"]
-            .into_iter().map(String::from).collect()),
+        event_ticker: Some(
+            vec![
+                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        ),
         ..Default::default()
     };
     assert!(params.validate().is_err());
