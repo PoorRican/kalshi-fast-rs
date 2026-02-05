@@ -138,8 +138,8 @@ impl RateLimiter {
 ///
 /// # Example
 /// ```no_run
-/// # use kalshi::{KalshiEnvironment, KalshiRestClient, GetMarketsParams};
-/// # async fn example() -> Result<(), kalshi::KalshiError> {
+/// # use kalshi_fast::{KalshiEnvironment, KalshiRestClient, GetMarketsParams};
+/// # async fn example() -> Result<(), kalshi_fast::KalshiError> {
 /// let client = KalshiRestClient::new(KalshiEnvironment::demo());
 /// let mut pager = client.markets_pager(GetMarketsParams::default());
 ///
@@ -783,8 +783,8 @@ impl KalshiRestClient {
     ///
     /// # Example
     /// ```no_run
-    /// # use kalshi::{KalshiEnvironment, KalshiRestClient, GetEventsParams};
-    /// # async fn example() -> Result<(), kalshi::KalshiError> {
+    /// # use kalshi_fast::{KalshiEnvironment, KalshiRestClient, GetEventsParams};
+    /// # async fn example() -> Result<(), kalshi_fast::KalshiError> {
     /// let client = KalshiRestClient::new(KalshiEnvironment::demo());
     /// let mut pager = client.events_pager(GetEventsParams::default());
     ///
@@ -924,9 +924,9 @@ impl KalshiRestClient {
     ///
     /// # Example
     /// ```no_run
-    /// # use kalshi::{KalshiEnvironment, KalshiRestClient, GetEventsParams};
+    /// # use kalshi_fast::{KalshiEnvironment, KalshiRestClient, GetEventsParams};
     /// # use futures::stream::TryStreamExt;
-    /// # async fn example() -> Result<(), kalshi::KalshiError> {
+    /// # async fn example() -> Result<(), kalshi_fast::KalshiError> {
     /// let client = KalshiRestClient::new(KalshiEnvironment::demo());
     /// let events: Vec<_> = client
     ///     .stream_events(GetEventsParams::default(), Some(10))
