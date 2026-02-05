@@ -3,4 +3,5 @@
 .env.test
 *.pem
 *.key
+.idea/
 
