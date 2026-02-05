@@ -1,0 +1,37 @@
+#!/bin/sh
+set -e
+
+# Get the remote and URL
+remote="$1"
+url="$2"
+
+# Find commits being pushed
+z40=0000000000000000000000000000000000000000
+
+while read local_ref local_sha remote_ref remote_sha; do
+    if [ "$local_sha" = "$z40" ]; then
+        # Branch deleted, skip
+        continue
+    fi
+
+    if [ "$remote_sha" = "$z40" ]; then
+        # New branch, check all commits from merge-base with main
+        base=$(git merge-base origin/master "$local_sha" 2>/dev/null || echo "$local_sha~10")
+        range="$base..$local_sha"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+
+    # Check if any .rs files changed in the push range
+    RS_FILES=$(git diff --name-only "$range" 2>/dev/null | grep '\.rs$' || true)
+
+    if [ -n "$RS_FILES" ]; then
+        echo "Rust files changed, running checks..."
+        cargo fmt --check
+        cargo clippy --all-targets -- -D clippy::correctness
+        cargo test
+        exit 0
+    fi
+done
+
+echo "No Rust files in push, skipping checks."
