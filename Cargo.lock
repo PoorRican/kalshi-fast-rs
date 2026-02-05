@@ -707,7 +707,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kalshi"
+name = "kalshi-fast-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
