@@ -116,10 +116,14 @@ pub enum WsEvent {
     /// `attempt` is the 1-based retry count that succeeded.
     /// If [`WsReconnectConfig::resubscribe`] is `true`, all previously
     /// active channels have already been resubscribed.
-    Reconnected { attempt: u32 },
+    Reconnected {
+        attempt: u32,
+    },
     /// Connection was lost and could not be restored within
     /// [`WsReconnectConfig::max_retries`].
-    Disconnected { error: KalshiError },
+    Disconnected {
+        error: KalshiError,
+    },
 }
 
 #[derive(Debug, Clone)]
