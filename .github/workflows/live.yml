@@ -1,0 +1,53 @@
+name: Live Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 10 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+  KALSHI_KEY_ID: ${{ secrets.KALSHI_KEY_ID }}
+  KALSHI_PRIVATE_KEY: ${{ secrets.KALSHI_PRIVATE_KEY }}
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify live test secrets
+        id: secrets
+        shell: bash
+        run: |
+          if [[ -z "$KALSHI_KEY_ID" || -z "$KALSHI_PRIVATE_KEY" ]]; then
+            echo "Live test secrets are not configured; skipping live workflow."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run live integration tests (with retries)
+        if: steps.secrets.outputs.available == 'true'
+        shell: bash
+        run: |
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            until "$@"; do
+              if [[ "$attempt" -ge "$max_attempts" ]]; then
+                echo "Command failed after ${attempt} attempts: $*"
+                return 1
+              fi
+              attempt=$((attempt + 1))
+              echo "Retrying in 5s (${attempt}/${max_attempts})..."
+              sleep 5
+            done
+          }
+
+          retry 3 cargo test --features live-tests --test rest_public --verbose
+          retry 3 cargo test --features live-tests --test rest_auth --verbose
+          retry 3 cargo test --features live-tests --test ws_public --verbose
+          retry 3 cargo test --features live-tests --test ws_auth --verbose
