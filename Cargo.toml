@@ -13,6 +13,10 @@ readme = "README.md"
 [lib]
 name = "kalshi_fast"
 
+[features]
+default = []
+live-tests = []
+
 [dependencies]
 # REST
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
