@@ -999,12 +999,12 @@ impl KalshiWsClient {
         if let Some(mut task) = self.reader_task.take() {
             match tokio_timeout(self.reader_shutdown_timeout, &mut task).await {
                 Ok(joined) => {
-                    if let Err(err) = joined {
-                        if !err.is_cancelled() {
-                            return Err(KalshiError::Ws(format!(
-                                "websocket reader task failed: {err}",
-                            )));
-                        }
+                    if let Err(err) = joined
+                        && !err.is_cancelled()
+                    {
+                        return Err(KalshiError::Ws(format!(
+                            "websocket reader task failed: {err}",
+                        )));
                     }
                 }
                 Err(_) => {
@@ -1066,10 +1066,10 @@ impl KalshiWsClient {
         let mut attempt: u32 = 0;
         loop {
             attempt = attempt.saturating_add(1);
-            if let Some(max) = self.config.max_retries {
-                if attempt > max {
-                    return Ok(WsEvent::Disconnected { error: err });
-                }
+            if let Some(max) = self.config.max_retries
+                && attempt > max
+            {
+                return Ok(WsEvent::Disconnected { error: err });
             }
 
             let delay = self.config.backoff_delay(attempt);
@@ -1311,10 +1311,10 @@ async fn handle_reconnect(
         }
 
         attempt = attempt.saturating_add(1);
-        if let Some(max) = config.max_retries {
-            if attempt > max {
-                return Err(last_err);
-            }
+        if let Some(max) = config.max_retries
+            && attempt > max
+        {
+            return Err(last_err);
         }
 
         let delay = config.backoff_delay(attempt);

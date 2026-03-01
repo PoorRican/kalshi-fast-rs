@@ -131,12 +131,12 @@ pub struct GetEventsParams {
 
 impl GetEventsParams {
     pub fn validate(&self) -> Result<(), KalshiError> {
-        if let Some(limit) = self.limit {
-            if limit == 0 || limit > 200 {
-                return Err(KalshiError::InvalidParams(
-                    "GET /events: limit must be 1..=200".to_string(),
-                ));
-            }
+        if let Some(limit) = self.limit
+            && (limit == 0 || limit > 200)
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /events: limit must be 1..=200".to_string(),
+            ));
         }
         Ok(())
     }
@@ -433,19 +433,19 @@ pub struct GetMarketsParams {
 
 impl GetMarketsParams {
     pub fn validate(&self) -> Result<(), KalshiError> {
-        if let Some(limit) = self.limit {
-            if limit == 0 || limit > 1000 {
-                return Err(KalshiError::InvalidParams(
-                    "GET /markets: limit must be 1..=1000".to_string(),
-                ));
-            }
+        if let Some(limit) = self.limit
+            && (limit == 0 || limit > 1000)
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /markets: limit must be 1..=1000".to_string(),
+            ));
         }
-        if let Some(evts) = &self.event_ticker {
-            if evts.len() > 10 {
-                return Err(KalshiError::InvalidParams(
-                    "GET /markets: event_ticker supports up to 10 tickers".to_string(),
-                ));
-            }
+        if let Some(evts) = &self.event_ticker
+            && evts.len() > 10
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /markets: event_ticker supports up to 10 tickers".to_string(),
+            ));
         }
 
         let created = self.min_created_ts.is_some() || self.max_created_ts.is_some();
@@ -486,18 +486,18 @@ impl GetMarketsParams {
             }
         }
 
-        if created {
-            if matches!(
+        if created
+            && matches!(
                 self.status,
                 Some(MarketStatus::Closed | MarketStatus::Settled | MarketStatus::Paused)
-            ) {
-                return Err(KalshiError::InvalidParams(
+            )
+        {
+            return Err(KalshiError::InvalidParams(
                     "GET /markets: created_ts filters are only compatible with status unopened/open or no status".to_string(),
                 ));
-            }
         }
-        if close {
-            if matches!(
+        if close
+            && matches!(
                 self.status,
                 Some(
                     MarketStatus::Unopened
@@ -505,14 +505,14 @@ impl GetMarketsParams {
                         | MarketStatus::Settled
                         | MarketStatus::Paused
                 )
-            ) {
-                return Err(KalshiError::InvalidParams(
+            )
+        {
+            return Err(KalshiError::InvalidParams(
                     "GET /markets: close_ts filters are only compatible with status closed or no status".to_string(),
                 ));
-            }
         }
-        if settled {
-            if matches!(
+        if settled
+            && matches!(
                 self.status,
                 Some(
                     MarketStatus::Unopened
@@ -520,11 +520,11 @@ impl GetMarketsParams {
                         | MarketStatus::Closed
                         | MarketStatus::Paused
                 )
-            ) {
-                return Err(KalshiError::InvalidParams(
+            )
+        {
+            return Err(KalshiError::InvalidParams(
                     "GET /markets: settled_ts filters are only compatible with status settled or no status".to_string(),
                 ));
-            }
         }
 
         Ok(())
@@ -797,26 +797,26 @@ pub struct GetPositionsParams {
 
 impl GetPositionsParams {
     pub fn validate(&self) -> Result<(), KalshiError> {
-        if let Some(limit) = self.limit {
-            if limit == 0 || limit > 1000 {
-                return Err(KalshiError::InvalidParams(
-                    "GET /portfolio/positions: limit must be 1..=1000".to_string(),
-                ));
-            }
+        if let Some(limit) = self.limit
+            && (limit == 0 || limit > 1000)
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /portfolio/positions: limit must be 1..=1000".to_string(),
+            ));
         }
-        if let Some(evts) = &self.event_ticker {
-            if evts.len() > 10 {
-                return Err(KalshiError::InvalidParams(
-                    "GET /portfolio/positions: event_ticker supports up to 10 tickers".to_string(),
-                ));
-            }
+        if let Some(evts) = &self.event_ticker
+            && evts.len() > 10
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /portfolio/positions: event_ticker supports up to 10 tickers".to_string(),
+            ));
         }
-        if let Some(sub) = self.subaccount {
-            if sub > 32 {
-                return Err(KalshiError::InvalidParams(
-                    "subaccount must be 0..=32".to_string(),
-                ));
-            }
+        if let Some(sub) = self.subaccount
+            && sub > 32
+        {
+            return Err(KalshiError::InvalidParams(
+                "subaccount must be 0..=32".to_string(),
+            ));
         }
         Ok(())
     }
@@ -926,26 +926,26 @@ pub struct GetOrdersParams {
 
 impl GetOrdersParams {
     pub fn validate(&self) -> Result<(), KalshiError> {
-        if let Some(limit) = self.limit {
-            if limit == 0 || limit > 200 {
-                return Err(KalshiError::InvalidParams(
-                    "GET /portfolio/orders: limit must be 1..=200".to_string(),
-                ));
-            }
+        if let Some(limit) = self.limit
+            && (limit == 0 || limit > 200)
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /portfolio/orders: limit must be 1..=200".to_string(),
+            ));
         }
-        if let Some(evts) = &self.event_ticker {
-            if evts.len() > 10 {
-                return Err(KalshiError::InvalidParams(
-                    "GET /portfolio/orders: event_ticker supports up to 10 tickers".to_string(),
-                ));
-            }
+        if let Some(evts) = &self.event_ticker
+            && evts.len() > 10
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /portfolio/orders: event_ticker supports up to 10 tickers".to_string(),
+            ));
         }
-        if let Some(sub) = self.subaccount {
-            if sub > 32 {
-                return Err(KalshiError::InvalidParams(
-                    "subaccount must be 0..=32".to_string(),
-                ));
-            }
+        if let Some(sub) = self.subaccount
+            && sub > 32
+        {
+            return Err(KalshiError::InvalidParams(
+                "subaccount must be 0..=32".to_string(),
+            ));
         }
         Ok(())
     }
@@ -1096,14 +1096,14 @@ impl CreateOrderRequest {
             ));
         }
 
-        if let (Some(count), Some(count_fp)) = (self.count, self.count_fp.as_deref()) {
-            if let Ok(fp_val) = count_fp.parse::<f64>() {
-                let count_val = count as f64;
-                if (fp_val - count_val).abs() > 1e-9 {
-                    return Err(KalshiError::InvalidParams(
-                        "CreateOrderRequest: count and count_fp must match".to_string(),
-                    ));
-                }
+        if let (Some(count), Some(count_fp)) = (self.count, self.count_fp.as_deref())
+            && let Ok(fp_val) = count_fp.parse::<f64>()
+        {
+            let count_val = count as f64;
+            if (fp_val - count_val).abs() > 1e-9 {
+                return Err(KalshiError::InvalidParams(
+                    "CreateOrderRequest: count and count_fp must match".to_string(),
+                ));
             }
         }
 
@@ -1128,12 +1128,12 @@ impl CreateOrderRequest {
             ));
         }
 
-        if matches!(self.r#type, Some(OrderType::Market)) {
-            if has_yes_cents || has_no_cents || has_yes_dollars || has_no_dollars {
-                return Err(KalshiError::InvalidParams(
-                    "CreateOrderRequest: market orders cannot include price fields".to_string(),
-                ));
-            }
+        if matches!(self.r#type, Some(OrderType::Market))
+            && (has_yes_cents || has_no_cents || has_yes_dollars || has_no_dollars)
+        {
+            return Err(KalshiError::InvalidParams(
+                "CreateOrderRequest: market orders cannot include price fields".to_string(),
+            ));
         }
 
         if matches!(self.r#type, Some(OrderType::Limit))
@@ -1144,20 +1144,20 @@ impl CreateOrderRequest {
             ));
         }
 
-        if let Some(sub) = self.subaccount {
-            if sub > 32 {
-                return Err(KalshiError::InvalidParams(
-                    "CreateOrderRequest: subaccount must be 0..=32".to_string(),
-                ));
-            }
+        if let Some(sub) = self.subaccount
+            && sub > 32
+        {
+            return Err(KalshiError::InvalidParams(
+                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
+            ));
         }
 
-        if let Some(floor) = self.sell_position_floor {
-            if floor != 0 {
-                return Err(KalshiError::InvalidParams(
-                    "CreateOrderRequest: sell_position_floor must be 0 (deprecated)".to_string(),
-                ));
-            }
+        if let Some(floor) = self.sell_position_floor
+            && floor != 0
+        {
+            return Err(KalshiError::InvalidParams(
+                "CreateOrderRequest: sell_position_floor must be 0 (deprecated)".to_string(),
+            ));
         }
 
         Ok(())

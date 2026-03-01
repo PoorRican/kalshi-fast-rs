@@ -372,10 +372,10 @@ where
         if state.done {
             return None;
         }
-        if let Some(remaining) = state.remaining {
-            if remaining == 0 {
-                return None;
-            }
+        if let Some(remaining) = state.remaining
+            && remaining == 0
+        {
+            return None;
         }
 
         loop {

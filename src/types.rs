@@ -306,17 +306,13 @@ impl Serialize for OrderStatus {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum YesNo {
+    #[default]
     Yes,
     No,
     #[serde(other)]
     Unknown,
-}
-
-impl Default for YesNo {
-    fn default() -> Self {
-        YesNo::Yes
-    }
 }
 
 impl YesNo {
@@ -345,17 +341,13 @@ impl Serialize for YesNo {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum BuySell {
+    #[default]
     Buy,
     Sell,
     #[serde(other)]
     Unknown,
-}
-
-impl Default for BuySell {
-    fn default() -> Self {
-        BuySell::Buy
-    }
 }
 
 impl BuySell {

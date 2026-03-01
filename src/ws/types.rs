@@ -1936,7 +1936,7 @@ fn parse_borrowed_msg<'a, T: Deserialize<'a>>(
 
 impl<'a> WsEnvelopeRef<'a> {
     pub fn msg_raw(&self) -> Option<&str> {
-        self.msg.as_deref().map(|raw| raw.get())
+        self.msg.map(|raw| raw.get())
     }
 
     pub fn into_message(self) -> Result<WsMessageRef<'a>, KalshiError> {
