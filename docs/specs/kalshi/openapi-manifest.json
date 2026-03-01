@@ -1,0 +1,469 @@
+{
+  "spec_file": "docs/specs/kalshi/openapi.yaml",
+  "info_version": "3.7.0",
+  "operation_count": 77,
+  "operations": [
+    {
+      "operation_id": "GetAccountApiLimits",
+      "http_method": "GET",
+      "path": "/account/limits",
+      "client_method": "get_account_api_limits"
+    },
+    {
+      "operation_id": "GetApiKeys",
+      "http_method": "GET",
+      "path": "/api_keys",
+      "client_method": "get_api_keys"
+    },
+    {
+      "operation_id": "CreateApiKey",
+      "http_method": "POST",
+      "path": "/api_keys",
+      "client_method": "create_api_key"
+    },
+    {
+      "operation_id": "GenerateApiKey",
+      "http_method": "POST",
+      "path": "/api_keys/generate",
+      "client_method": "generate_api_key"
+    },
+    {
+      "operation_id": "DeleteApiKey",
+      "http_method": "DELETE",
+      "path": "/api_keys/{api_key}",
+      "client_method": "delete_api_key"
+    },
+    {
+      "operation_id": "GetCommunicationsID",
+      "http_method": "GET",
+      "path": "/communications/id",
+      "client_method": "get_communications_id"
+    },
+    {
+      "operation_id": "GetQuotes",
+      "http_method": "GET",
+      "path": "/communications/quotes",
+      "client_method": "get_quotes"
+    },
+    {
+      "operation_id": "CreateQuote",
+      "http_method": "POST",
+      "path": "/communications/quotes",
+      "client_method": "create_quote"
+    },
+    {
+      "operation_id": "DeleteQuote",
+      "http_method": "DELETE",
+      "path": "/communications/quotes/{quote_id}",
+      "client_method": "delete_quote"
+    },
+    {
+      "operation_id": "GetQuote",
+      "http_method": "GET",
+      "path": "/communications/quotes/{quote_id}",
+      "client_method": "get_quote"
+    },
+    {
+      "operation_id": "AcceptQuote",
+      "http_method": "PUT",
+      "path": "/communications/quotes/{quote_id}/accept",
+      "client_method": "accept_quote"
+    },
+    {
+      "operation_id": "ConfirmQuote",
+      "http_method": "PUT",
+      "path": "/communications/quotes/{quote_id}/confirm",
+      "client_method": "confirm_quote"
+    },
+    {
+      "operation_id": "GetRFQs",
+      "http_method": "GET",
+      "path": "/communications/rfqs",
+      "client_method": "get_rfqs"
+    },
+    {
+      "operation_id": "CreateRFQ",
+      "http_method": "POST",
+      "path": "/communications/rfqs",
+      "client_method": "create_rfq"
+    },
+    {
+      "operation_id": "DeleteRFQ",
+      "http_method": "DELETE",
+      "path": "/communications/rfqs/{rfq_id}",
+      "client_method": "delete_rfq"
+    },
+    {
+      "operation_id": "GetRFQ",
+      "http_method": "GET",
+      "path": "/communications/rfqs/{rfq_id}",
+      "client_method": "get_rfq"
+    },
+    {
+      "operation_id": "GetEvents",
+      "http_method": "GET",
+      "path": "/events",
+      "client_method": "get_events"
+    },
+    {
+      "operation_id": "GetMultivariateEvents",
+      "http_method": "GET",
+      "path": "/events/multivariate",
+      "client_method": "get_multivariate_events"
+    },
+    {
+      "operation_id": "GetEvent",
+      "http_method": "GET",
+      "path": "/events/{event_ticker}",
+      "client_method": "get_event"
+    },
+    {
+      "operation_id": "GetEventMetadata",
+      "http_method": "GET",
+      "path": "/events/{event_ticker}/metadata",
+      "client_method": "get_event_metadata"
+    },
+    {
+      "operation_id": "GetExchangeAnnouncements",
+      "http_method": "GET",
+      "path": "/exchange/announcements",
+      "client_method": "get_exchange_announcements"
+    },
+    {
+      "operation_id": "GetExchangeSchedule",
+      "http_method": "GET",
+      "path": "/exchange/schedule",
+      "client_method": "get_exchange_schedule"
+    },
+    {
+      "operation_id": "GetExchangeStatus",
+      "http_method": "GET",
+      "path": "/exchange/status",
+      "client_method": "get_exchange_status"
+    },
+    {
+      "operation_id": "GetUserDataTimestamp",
+      "http_method": "GET",
+      "path": "/exchange/user_data_timestamp",
+      "client_method": "get_user_data_timestamp"
+    },
+    {
+      "operation_id": "GetFCMOrders",
+      "http_method": "GET",
+      "path": "/fcm/orders",
+      "client_method": "get_fcm_orders"
+    },
+    {
+      "operation_id": "GetFCMPositions",
+      "http_method": "GET",
+      "path": "/fcm/positions",
+      "client_method": "get_fcm_positions"
+    },
+    {
+      "operation_id": "GetIncentivePrograms",
+      "http_method": "GET",
+      "path": "/incentive_programs",
+      "client_method": "get_incentive_programs"
+    },
+    {
+      "operation_id": "GetLiveDatas",
+      "http_method": "GET",
+      "path": "/live_data/batch",
+      "client_method": "get_live_data_batch"
+    },
+    {
+      "operation_id": "GetLiveData",
+      "http_method": "GET",
+      "path": "/live_data/{type}/milestone/{milestone_id}",
+      "client_method": "get_live_data"
+    },
+    {
+      "operation_id": "GetMarkets",
+      "http_method": "GET",
+      "path": "/markets",
+      "client_method": "get_markets"
+    },
+    {
+      "operation_id": "BatchGetMarketCandlesticks",
+      "http_method": "GET",
+      "path": "/markets/candlesticks",
+      "client_method": "batch_get_market_candlesticks"
+    },
+    {
+      "operation_id": "GetTrades",
+      "http_method": "GET",
+      "path": "/markets/trades",
+      "client_method": "get_trades"
+    },
+    {
+      "operation_id": "GetMarket",
+      "http_method": "GET",
+      "path": "/markets/{ticker}",
+      "client_method": "get_market"
+    },
+    {
+      "operation_id": "GetMarketOrderbook",
+      "http_method": "GET",
+      "path": "/markets/{ticker}/orderbook",
+      "client_method": "get_market_orderbook"
+    },
+    {
+      "operation_id": "GetMilestones",
+      "http_method": "GET",
+      "path": "/milestones",
+      "client_method": "get_milestones"
+    },
+    {
+      "operation_id": "GetMilestone",
+      "http_method": "GET",
+      "path": "/milestones/{milestone_id}",
+      "client_method": "get_milestone"
+    },
+    {
+      "operation_id": "GetMultivariateEventCollections",
+      "http_method": "GET",
+      "path": "/multivariate_event_collections",
+      "client_method": "get_multivariate_event_collections"
+    },
+    {
+      "operation_id": "GetMultivariateEventCollection",
+      "http_method": "GET",
+      "path": "/multivariate_event_collections/{collection_ticker}",
+      "client_method": "get_multivariate_event_collection"
+    },
+    {
+      "operation_id": "CreateMarketInMultivariateEventCollection",
+      "http_method": "POST",
+      "path": "/multivariate_event_collections/{collection_ticker}",
+      "client_method": "create_market_in_multivariate_event_collection"
+    },
+    {
+      "operation_id": "GetMultivariateEventCollectionLookupHistory",
+      "http_method": "GET",
+      "path": "/multivariate_event_collections/{collection_ticker}/lookup",
+      "client_method": "get_multivariate_event_collection_lookup_history"
+    },
+    {
+      "operation_id": "LookupTickersForMarketInMultivariateEventCollection",
+      "http_method": "PUT",
+      "path": "/multivariate_event_collections/{collection_ticker}/lookup",
+      "client_method": "lookup_tickers_for_market_in_multivariate_event_collection"
+    },
+    {
+      "operation_id": "GetBalance",
+      "http_method": "GET",
+      "path": "/portfolio/balance",
+      "client_method": "get_balance"
+    },
+    {
+      "operation_id": "GetFills",
+      "http_method": "GET",
+      "path": "/portfolio/fills",
+      "client_method": "get_fills"
+    },
+    {
+      "operation_id": "GetOrderGroups",
+      "http_method": "GET",
+      "path": "/portfolio/order_groups",
+      "client_method": "get_order_groups"
+    },
+    {
+      "operation_id": "CreateOrderGroup",
+      "http_method": "POST",
+      "path": "/portfolio/order_groups/create",
+      "client_method": "create_order_group"
+    },
+    {
+      "operation_id": "DeleteOrderGroup",
+      "http_method": "DELETE",
+      "path": "/portfolio/order_groups/{order_group_id}",
+      "client_method": "delete_order_group"
+    },
+    {
+      "operation_id": "GetOrderGroup",
+      "http_method": "GET",
+      "path": "/portfolio/order_groups/{order_group_id}",
+      "client_method": "get_order_group"
+    },
+    {
+      "operation_id": "UpdateOrderGroupLimit",
+      "http_method": "PUT",
+      "path": "/portfolio/order_groups/{order_group_id}/limit",
+      "client_method": "update_order_group_limit"
+    },
+    {
+      "operation_id": "ResetOrderGroup",
+      "http_method": "PUT",
+      "path": "/portfolio/order_groups/{order_group_id}/reset",
+      "client_method": "reset_order_group"
+    },
+    {
+      "operation_id": "TriggerOrderGroup",
+      "http_method": "PUT",
+      "path": "/portfolio/order_groups/{order_group_id}/trigger",
+      "client_method": "trigger_order_group"
+    },
+    {
+      "operation_id": "GetOrders",
+      "http_method": "GET",
+      "path": "/portfolio/orders",
+      "client_method": "get_orders"
+    },
+    {
+      "operation_id": "CreateOrder",
+      "http_method": "POST",
+      "path": "/portfolio/orders",
+      "client_method": "create_order"
+    },
+    {
+      "operation_id": "BatchCancelOrders",
+      "http_method": "DELETE",
+      "path": "/portfolio/orders/batched",
+      "client_method": "batch_cancel_orders"
+    },
+    {
+      "operation_id": "BatchCreateOrders",
+      "http_method": "POST",
+      "path": "/portfolio/orders/batched",
+      "client_method": "batch_create_orders"
+    },
+    {
+      "operation_id": "GetOrderQueuePositions",
+      "http_method": "GET",
+      "path": "/portfolio/orders/queue_positions",
+      "client_method": "get_order_queue_positions"
+    },
+    {
+      "operation_id": "CancelOrder",
+      "http_method": "DELETE",
+      "path": "/portfolio/orders/{order_id}",
+      "client_method": "cancel_order"
+    },
+    {
+      "operation_id": "GetOrder",
+      "http_method": "GET",
+      "path": "/portfolio/orders/{order_id}",
+      "client_method": "get_order"
+    },
+    {
+      "operation_id": "AmendOrder",
+      "http_method": "POST",
+      "path": "/portfolio/orders/{order_id}/amend",
+      "client_method": "amend_order"
+    },
+    {
+      "operation_id": "DecreaseOrder",
+      "http_method": "POST",
+      "path": "/portfolio/orders/{order_id}/decrease",
+      "client_method": "decrease_order"
+    },
+    {
+      "operation_id": "GetOrderQueuePosition",
+      "http_method": "GET",
+      "path": "/portfolio/orders/{order_id}/queue_position",
+      "client_method": "get_order_queue_position"
+    },
+    {
+      "operation_id": "GetPositions",
+      "http_method": "GET",
+      "path": "/portfolio/positions",
+      "client_method": "get_positions"
+    },
+    {
+      "operation_id": "GetSettlements",
+      "http_method": "GET",
+      "path": "/portfolio/settlements",
+      "client_method": "get_settlements"
+    },
+    {
+      "operation_id": "CreateSubaccount",
+      "http_method": "POST",
+      "path": "/portfolio/subaccounts",
+      "client_method": "create_subaccount"
+    },
+    {
+      "operation_id": "GetSubaccountBalances",
+      "http_method": "GET",
+      "path": "/portfolio/subaccounts/balances",
+      "client_method": "get_subaccount_balances"
+    },
+    {
+      "operation_id": "ApplySubaccountTransfer",
+      "http_method": "POST",
+      "path": "/portfolio/subaccounts/transfer",
+      "client_method": "transfer_subaccount"
+    },
+    {
+      "operation_id": "GetSubaccountTransfers",
+      "http_method": "GET",
+      "path": "/portfolio/subaccounts/transfers",
+      "client_method": "get_subaccount_transfers"
+    },
+    {
+      "operation_id": "GetPortfolioRestingOrderTotalValue",
+      "http_method": "GET",
+      "path": "/portfolio/summary/total_resting_order_value",
+      "client_method": "get_portfolio_total_resting_order_value"
+    },
+    {
+      "operation_id": "GetFiltersForSports",
+      "http_method": "GET",
+      "path": "/search/filters_by_sport",
+      "client_method": "get_filters_by_sport"
+    },
+    {
+      "operation_id": "GetTagsForSeriesCategories",
+      "http_method": "GET",
+      "path": "/search/tags_by_categories",
+      "client_method": "get_tags_by_categories"
+    },
+    {
+      "operation_id": "GetSeriesList",
+      "http_method": "GET",
+      "path": "/series",
+      "client_method": "get_series_list"
+    },
+    {
+      "operation_id": "GetSeriesFeeChanges",
+      "http_method": "GET",
+      "path": "/series/fee_changes",
+      "client_method": "get_series_fee_changes"
+    },
+    {
+      "operation_id": "GetSeries",
+      "http_method": "GET",
+      "path": "/series/{series_ticker}",
+      "client_method": "get_series"
+    },
+    {
+      "operation_id": "GetMarketCandlesticksByEvent",
+      "http_method": "GET",
+      "path": "/series/{series_ticker}/events/{ticker}/candlesticks",
+      "client_method": "get_event_market_candlesticks"
+    },
+    {
+      "operation_id": "GetEventForecastPercentilesHistory",
+      "http_method": "GET",
+      "path": "/series/{series_ticker}/events/{ticker}/forecast_percentile_history",
+      "client_method": "get_event_forecast_percentile_history"
+    },
+    {
+      "operation_id": "GetMarketCandlesticks",
+      "http_method": "GET",
+      "path": "/series/{series_ticker}/markets/{ticker}/candlesticks",
+      "client_method": "get_market_candlesticks"
+    },
+    {
+      "operation_id": "GetStructuredTargets",
+      "http_method": "GET",
+      "path": "/structured_targets",
+      "client_method": "get_structured_targets"
+    },
+    {
+      "operation_id": "GetStructuredTarget",
+      "http_method": "GET",
+      "path": "/structured_targets/{structured_target_id}",
+      "client_method": "get_structured_target"
+    }
+  ]
+}
