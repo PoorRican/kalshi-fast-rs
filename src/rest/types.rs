@@ -1377,3 +1377,629 @@ pub struct GetSubaccountTransfersResponse {
     #[serde(default)]
     pub cursor: Option<String>,
 }
+
+/// --- Additional OpenAPI v3.7.0 Models ---
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GenericObject {
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EmptyResponse {}
+
+/// GET /api_keys
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetApiKeysResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub api_keys: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateApiKeyRequest {
+    pub name: String,
+    pub public_key: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateApiKeyResponse {
+    pub api_key_id: String,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GenerateApiKeyRequest {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GenerateApiKeyResponse {
+    pub api_key_id: String,
+    pub private_key: String,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetCommunicationsIdResponse {
+    pub communications_id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetQuotesParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote_creator_user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rfq_creator_user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rfq_creator_subtrader_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rfq_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetQuotesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub quotes: Vec<GenericObject>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetQuoteResponse {
+    pub quote: GenericObject,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateQuoteRequest {
+    pub rfq_id: String,
+    pub yes_bid: String,
+    pub no_bid: String,
+    pub rest_remainder: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateQuoteResponse {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AcceptQuoteRequest {
+    pub accepted_side: YesNo,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetRFQsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creator_user_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetRFQsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub rfqs: Vec<GenericObject>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetRFQResponse {
+    pub rfq: GenericObject,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateRFQRequest {
+    pub market_ticker: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contracts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contracts_fp: Option<FixedPointCount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_centi_cents: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_dollars: Option<FixedPointDollars>,
+    pub rest_remainder: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replace_existing: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateRFQResponse {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMultivariateEventsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_nested_markets: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMultivariateEventsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub events: Vec<GenericObject>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+pub type GetEventMetadataResponse = EventMetadata;
+
+pub type GetFcmOrdersResponse = GetOrdersResponse;
+pub type GetFcmPositionsResponse = GetPositionsResponse;
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetFcmOrdersParams {
+    pub subtrader_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<OrderStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetFcmPositionsParams {
+    pub subtrader_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count_filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIncentiveProgramsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+    pub incentive_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetIncentiveProgramsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub incentive_programs: Vec<GenericObject>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GetLiveDatasParams {
+    pub milestone_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetLiveDatasResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub live_datas: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetLiveDataResponse {
+    pub live_data: GenericObject,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BatchGetMarketCandlesticksParams {
+    pub market_tickers: String,
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub period_interval: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_latest_before_start: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BatchGetMarketCandlesticksResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub markets: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMilestonesParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_start_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub competition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+    pub milestone_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub related_event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMilestonesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub milestones: Vec<Milestone>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMilestoneResponse {
+    pub milestone: Milestone,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMultivariateEventCollectionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub associated_event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMultivariateEventCollectionsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub multivariate_contracts: Vec<GenericObject>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMultivariateEventCollectionResponse {
+    pub multivariate_contract: GenericObject,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateMarketInMultivariateEventCollectionRequest {
+    pub selected_markets: Vec<GenericObject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_market_payload: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateMarketInMultivariateEventCollectionResponse {
+    pub event_ticker: String,
+    pub market_ticker: String,
+    #[serde(default)]
+    pub market: Option<Market>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMultivariateEventCollectionLookupHistoryParams {
+    pub lookback_seconds: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMultivariateEventCollectionLookupHistoryResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub lookup_points: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LookupTickersForMarketInMultivariateEventCollectionRequest {
+    pub selected_markets: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LookupTickersForMarketInMultivariateEventCollectionResponse {
+    pub event_ticker: String,
+    pub market_ticker: String,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SubaccountQueryParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetOrderGroupsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub order_groups: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct CreateOrderGroupRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contracts_limit: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contracts_limit_fp: Option<FixedPointCount>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateOrderGroupResponse {
+    pub order_group_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetOrderGroupResponse {
+    pub is_auto_cancel_enabled: bool,
+    #[serde(default)]
+    pub contracts_limit: Option<i64>,
+    #[serde(default)]
+    pub contracts_limit_fp: Option<FixedPointCount>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub orders: Vec<Order>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct UpdateOrderGroupLimitRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contracts_limit: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contracts_limit_fp: Option<FixedPointCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BatchCreateOrdersRequest {
+    pub orders: Vec<CreateOrderRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BatchCreateOrdersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub orders: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchCancelOrdersRequestOrder {
+    pub order_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BatchCancelOrdersRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orders: Option<Vec<BatchCancelOrdersRequestOrder>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BatchCancelOrdersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub orders: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetOrderResponse {
+    pub order: Order,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct AmendOrderRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    pub ticker: String,
+    pub side: YesNo,
+    pub action: BuySell,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_order_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_client_order_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub yes_price: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub no_price: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub yes_price_dollars: Option<FixedPointDollars>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub no_price_dollars: Option<FixedPointDollars>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count_fp: Option<FixedPointCount>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AmendOrderResponse {
+    pub old_order: Order,
+    pub order: Order,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct DecreaseOrderRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_by: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_by_fp: Option<FixedPointCount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_to: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_to_fp: Option<FixedPointCount>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DecreaseOrderResponse {
+    pub order: Order,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetOrderQueuePositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_tickers: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetOrderQueuePositionsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub queue_positions: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetOrderQueuePositionResponse {
+    pub queue_position: i64,
+    #[serde(default)]
+    pub queue_position_fp: Option<FixedPointCount>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetPortfolioRestingOrderTotalValueResponse {
+    pub total_resting_order_value: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetTagsForSeriesCategoriesResponse {
+    #[serde(default)]
+    pub tags_by_categories: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetFiltersBySportsResponse {
+    #[serde(default)]
+    pub filters_by_sports: Map<String, Value>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub sport_ordering: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GetMarketCandlesticksParams {
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub period_interval: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_latest_before_start: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GetEventCandlesticksParams {
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub period_interval: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GetEventForecastPercentileHistoryParams {
+    pub percentiles: Vec<u32>,
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub period_interval: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMarketCandlesticksResponse {
+    pub ticker: String,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub candlesticks: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetEventCandlesticksResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub market_tickers: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub market_candlesticks: Vec<GenericObject>,
+    pub adjusted_end_ts: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetEventForecastPercentilesHistoryResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub forecast_history: Vec<GenericObject>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetStructuredTargetsParams {
+    #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+    pub target_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub competition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetStructuredTargetsResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub structured_targets: Vec<GenericObject>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetStructuredTargetResponse {
+    pub structured_target: GenericObject,
+}

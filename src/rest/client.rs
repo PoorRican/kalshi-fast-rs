@@ -1147,6 +1147,666 @@ impl KalshiRestClient {
     }
 
     // -----------------------------------------------
+    // API keys (authenticated)
+    // -----------------------------------------------
+
+    pub async fn get_api_keys(&self) -> Result<GetApiKeysResponse, KalshiError> {
+        let path = Self::full_path("/api_keys");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn create_api_key(
+        &self,
+        body: CreateApiKeyRequest,
+    ) -> Result<CreateApiKeyResponse, KalshiError> {
+        let path = Self::full_path("/api_keys");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn generate_api_key(
+        &self,
+        body: GenerateApiKeyRequest,
+    ) -> Result<GenerateApiKeyResponse, KalshiError> {
+        let path = Self::full_path("/api_keys/generate");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn delete_api_key(&self, api_key: &str) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/api_keys/{api_key}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    // -----------------------------------------------
+    // Communications (authenticated)
+    // -----------------------------------------------
+
+    pub async fn get_communications_id(&self) -> Result<GetCommunicationsIdResponse, KalshiError> {
+        let path = Self::full_path("/communications/id");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_rfqs(&self, params: GetRFQsParams) -> Result<GetRFQsResponse, KalshiError> {
+        let path = Self::full_path("/communications/rfqs");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn create_rfq(
+        &self,
+        body: CreateRFQRequest,
+    ) -> Result<CreateRFQResponse, KalshiError> {
+        let path = Self::full_path("/communications/rfqs");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn get_rfq(&self, rfq_id: &str) -> Result<GetRFQResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_rfq(&self, rfq_id: &str) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_quotes(
+        &self,
+        params: GetQuotesParams,
+    ) -> Result<GetQuotesResponse, KalshiError> {
+        let path = Self::full_path("/communications/quotes");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn create_quote(
+        &self,
+        body: CreateQuoteRequest,
+    ) -> Result<CreateQuoteResponse, KalshiError> {
+        let path = Self::full_path("/communications/quotes");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn accept_quote(
+        &self,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/quotes/{quote_id}/accept"));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    // -----------------------------------------------
+    // Additional public endpoints
+    // -----------------------------------------------
+
+    pub async fn get_multivariate_events(
+        &self,
+        params: GetMultivariateEventsParams,
+    ) -> Result<GetMultivariateEventsResponse, KalshiError> {
+        let path = Self::full_path("/events/multivariate");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_event_metadata(
+        &self,
+        event_ticker: &str,
+    ) -> Result<GetEventMetadataResponse, KalshiError> {
+        let path = Self::full_path(&format!("/events/{event_ticker}/metadata"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_incentive_programs(
+        &self,
+        params: GetIncentiveProgramsParams,
+    ) -> Result<GetIncentiveProgramsResponse, KalshiError> {
+        let path = Self::full_path("/incentive_programs");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_live_data_batch(
+        &self,
+        params: GetLiveDatasParams,
+    ) -> Result<GetLiveDatasResponse, KalshiError> {
+        let path = Self::full_path("/live_data/batch");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_live_data(
+        &self,
+        live_data_type: &str,
+        milestone_id: &str,
+    ) -> Result<GetLiveDataResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/live_data/{live_data_type}/milestone/{milestone_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn batch_get_market_candlesticks(
+        &self,
+        params: BatchGetMarketCandlesticksParams,
+    ) -> Result<BatchGetMarketCandlesticksResponse, KalshiError> {
+        let path = Self::full_path("/markets/candlesticks");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_milestones(
+        &self,
+        params: GetMilestonesParams,
+    ) -> Result<GetMilestonesResponse, KalshiError> {
+        let path = Self::full_path("/milestones");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_milestone(
+        &self,
+        milestone_id: &str,
+    ) -> Result<GetMilestoneResponse, KalshiError> {
+        let path = Self::full_path(&format!("/milestones/{milestone_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_multivariate_event_collections(
+        &self,
+        params: GetMultivariateEventCollectionsParams,
+    ) -> Result<GetMultivariateEventCollectionsResponse, KalshiError> {
+        let path = Self::full_path("/multivariate_event_collections");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_multivariate_event_collection(
+        &self,
+        collection_ticker: &str,
+    ) -> Result<GetMultivariateEventCollectionResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/multivariate_event_collections/{collection_ticker}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn create_market_in_multivariate_event_collection(
+        &self,
+        collection_ticker: &str,
+        body: CreateMarketInMultivariateEventCollectionRequest,
+    ) -> Result<CreateMarketInMultivariateEventCollectionResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/multivariate_event_collections/{collection_ticker}"
+        ));
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn get_multivariate_event_collection_lookup_history(
+        &self,
+        collection_ticker: &str,
+        params: GetMultivariateEventCollectionLookupHistoryParams,
+    ) -> Result<GetMultivariateEventCollectionLookupHistoryResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/multivariate_event_collections/{collection_ticker}/lookup"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn lookup_tickers_for_market_in_multivariate_event_collection(
+        &self,
+        collection_ticker: &str,
+        body: LookupTickersForMarketInMultivariateEventCollectionRequest,
+    ) -> Result<LookupTickersForMarketInMultivariateEventCollectionResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/multivariate_event_collections/{collection_ticker}/lookup"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn get_market_candlesticks(
+        &self,
+        series_ticker: &str,
+        ticker: &str,
+        params: GetMarketCandlesticksParams,
+    ) -> Result<GetMarketCandlesticksResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/series/{series_ticker}/markets/{ticker}/candlesticks"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_event_market_candlesticks(
+        &self,
+        series_ticker: &str,
+        ticker: &str,
+        params: GetEventCandlesticksParams,
+    ) -> Result<GetEventCandlesticksResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/series/{series_ticker}/events/{ticker}/candlesticks"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_event_forecast_percentile_history(
+        &self,
+        series_ticker: &str,
+        ticker: &str,
+        params: GetEventForecastPercentileHistoryParams,
+    ) -> Result<GetEventForecastPercentilesHistoryResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/series/{series_ticker}/events/{ticker}/forecast_percentile_history"
+        ));
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn get_structured_targets(
+        &self,
+        params: GetStructuredTargetsParams,
+    ) -> Result<GetStructuredTargetsResponse, KalshiError> {
+        let path = Self::full_path("/structured_targets");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_structured_target(
+        &self,
+        structured_target_id: &str,
+    ) -> Result<GetStructuredTargetResponse, KalshiError> {
+        let path = Self::full_path(&format!("/structured_targets/{structured_target_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    // -----------------------------------------------
+    // Additional authenticated endpoints
+    // -----------------------------------------------
+
+    pub async fn get_fcm_orders(
+        &self,
+        params: GetFcmOrdersParams,
+    ) -> Result<GetFcmOrdersResponse, KalshiError> {
+        let path = Self::full_path("/fcm/orders");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn get_fcm_positions(
+        &self,
+        params: GetFcmPositionsParams,
+    ) -> Result<GetFcmPositionsResponse, KalshiError> {
+        let path = Self::full_path("/fcm/positions");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn get_order_groups(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<GetOrderGroupsResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/order_groups");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn create_order_group(
+        &self,
+        body: CreateOrderGroupRequest,
+    ) -> Result<CreateOrderGroupResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/order_groups/create");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn get_order_group(
+        &self,
+        order_group_id: &str,
+        params: SubaccountQueryParams,
+    ) -> Result<GetOrderGroupResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}"));
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn delete_order_group(
+        &self,
+        order_group_id: &str,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_order_group_limit(
+        &self,
+        order_group_id: &str,
+        body: UpdateOrderGroupLimitRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn reset_order_group(
+        &self,
+        order_group_id: &str,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/reset"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
+            .await
+    }
+
+    pub async fn trigger_order_group(
+        &self,
+        order_group_id: &str,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/trigger"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
+            .await
+    }
+
+    pub async fn batch_create_orders(
+        &self,
+        body: BatchCreateOrdersRequest,
+    ) -> Result<BatchCreateOrdersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/orders/batched");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn batch_cancel_orders(
+        &self,
+        body: BatchCancelOrdersRequest,
+    ) -> Result<BatchCancelOrdersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/orders/batched");
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Some(&body),
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_order(&self, order_id: &str) -> Result<GetOrderResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/orders/{order_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn amend_order(
+        &self,
+        order_id: &str,
+        body: AmendOrderRequest,
+    ) -> Result<AmendOrderResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/orders/{order_id}/amend"));
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn decrease_order(
+        &self,
+        order_id: &str,
+        body: DecreaseOrderRequest,
+    ) -> Result<DecreaseOrderResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/orders/{order_id}/decrease"));
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    pub async fn get_order_queue_positions(
+        &self,
+        params: GetOrderQueuePositionsParams,
+    ) -> Result<GetOrderQueuePositionsResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/orders/queue_positions");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    pub async fn get_order_queue_position(
+        &self,
+        order_id: &str,
+    ) -> Result<GetOrderQueuePositionResponse, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/orders/{order_id}/queue_position"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_portfolio_total_resting_order_value(
+        &self,
+    ) -> Result<GetPortfolioRestingOrderTotalValueResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/summary/total_resting_order_value");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_tags_by_categories(
+        &self,
+    ) -> Result<GetTagsForSeriesCategoriesResponse, KalshiError> {
+        let path = Self::full_path("/search/tags_by_categories");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_filters_by_sport(&self) -> Result<GetFiltersBySportsResponse, KalshiError> {
+        let path = Self::full_path("/search/filters_by_sport");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    // -----------------------------------------------
     // Generic pagination
     // -----------------------------------------------
 
@@ -1330,6 +1990,107 @@ impl KalshiRestClient {
         })
     }
 
+    /// Create a pager for iterating over milestones page by page.
+    pub fn milestones_pager(&self, params: GetMilestonesParams) -> CursorPager<Milestone> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client.get_milestones(page_params).await?;
+                Ok((resp.milestones, resp.cursor))
+            })
+        })
+    }
+
+    /// Create a pager for iterating over multivariate events page by page.
+    pub fn multivariate_events_pager(
+        &self,
+        params: GetMultivariateEventsParams,
+    ) -> CursorPager<GenericObject> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client.get_multivariate_events(page_params).await?;
+                Ok((resp.events, resp.cursor))
+            })
+        })
+    }
+
+    /// Create a pager for iterating over multivariate event collections page by page.
+    pub fn multivariate_event_collections_pager(
+        &self,
+        params: GetMultivariateEventCollectionsParams,
+    ) -> CursorPager<GenericObject> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client
+                    .get_multivariate_event_collections(page_params)
+                    .await?;
+                Ok((resp.multivariate_contracts, resp.cursor))
+            })
+        })
+    }
+
+    /// Create a pager for iterating over RFQs page by page.
+    pub fn rfqs_pager(&self, params: GetRFQsParams) -> CursorPager<GenericObject> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client.get_rfqs(page_params).await?;
+                Ok((resp.rfqs, resp.cursor))
+            })
+        })
+    }
+
+    /// Create a pager for iterating over quotes page by page.
+    pub fn quotes_pager(&self, params: GetQuotesParams) -> CursorPager<GenericObject> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client.get_quotes(page_params).await?;
+                Ok((resp.quotes, resp.cursor))
+            })
+        })
+    }
+
+    /// Create a pager for iterating over structured targets page by page.
+    pub fn structured_targets_pager(
+        &self,
+        params: GetStructuredTargetsParams,
+    ) -> CursorPager<GenericObject> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client.get_structured_targets(page_params).await?;
+                Ok((resp.structured_targets, resp.cursor))
+            })
+        })
+    }
+
     // -----------------------------------------------
     // Streams — item-level async iteration
     // -----------------------------------------------
@@ -1430,6 +2191,60 @@ impl KalshiRestClient {
         stream_items(self.subaccount_transfers_pager(params), max_items)
     }
 
+    /// Stream milestones one by one.
+    pub fn stream_milestones(
+        &self,
+        params: GetMilestonesParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<Milestone, KalshiError>> + Send {
+        stream_items(self.milestones_pager(params), max_items)
+    }
+
+    /// Stream multivariate events one by one.
+    pub fn stream_multivariate_events(
+        &self,
+        params: GetMultivariateEventsParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+        stream_items(self.multivariate_events_pager(params), max_items)
+    }
+
+    /// Stream multivariate event collections one by one.
+    pub fn stream_multivariate_event_collections(
+        &self,
+        params: GetMultivariateEventCollectionsParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+        stream_items(self.multivariate_event_collections_pager(params), max_items)
+    }
+
+    /// Stream RFQs one by one.
+    pub fn stream_rfqs(
+        &self,
+        params: GetRFQsParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+        stream_items(self.rfqs_pager(params), max_items)
+    }
+
+    /// Stream quotes one by one.
+    pub fn stream_quotes(
+        &self,
+        params: GetQuotesParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+        stream_items(self.quotes_pager(params), max_items)
+    }
+
+    /// Stream structured targets one by one.
+    pub fn stream_structured_targets(
+        &self,
+        params: GetStructuredTargetsParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+        stream_items(self.structured_targets_pager(params), max_items)
+    }
+
     // -----------------------------------------------
     // Collect-all convenience methods
     // -----------------------------------------------
@@ -1490,6 +2305,102 @@ impl KalshiRestClient {
             async move {
                 let resp = self.get_subaccount_transfers(page_params).await?;
                 Ok((resp.subaccount_transfers, resp.cursor))
+            }
+        })
+        .await
+    }
+
+    /// Fetch all pages for milestones using cursor pagination.
+    pub async fn get_milestones_all(
+        &self,
+        params: GetMilestonesParams,
+    ) -> Result<Vec<Milestone>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self.get_milestones(page_params).await?;
+                Ok((resp.milestones, resp.cursor))
+            }
+        })
+        .await
+    }
+
+    /// Fetch all pages for multivariate events using cursor pagination.
+    pub async fn get_multivariate_events_all(
+        &self,
+        params: GetMultivariateEventsParams,
+    ) -> Result<Vec<GenericObject>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self.get_multivariate_events(page_params).await?;
+                Ok((resp.events, resp.cursor))
+            }
+        })
+        .await
+    }
+
+    /// Fetch all pages for multivariate collections using cursor pagination.
+    pub async fn get_multivariate_event_collections_all(
+        &self,
+        params: GetMultivariateEventCollectionsParams,
+    ) -> Result<Vec<GenericObject>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self.get_multivariate_event_collections(page_params).await?;
+                Ok((resp.multivariate_contracts, resp.cursor))
+            }
+        })
+        .await
+    }
+
+    /// Fetch all pages for RFQs using cursor pagination.
+    pub async fn get_rfqs_all(
+        &self,
+        params: GetRFQsParams,
+    ) -> Result<Vec<GenericObject>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self.get_rfqs(page_params).await?;
+                Ok((resp.rfqs, resp.cursor))
+            }
+        })
+        .await
+    }
+
+    /// Fetch all pages for quotes using cursor pagination.
+    pub async fn get_quotes_all(
+        &self,
+        params: GetQuotesParams,
+    ) -> Result<Vec<GenericObject>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self.get_quotes(page_params).await?;
+                Ok((resp.quotes, resp.cursor))
+            }
+        })
+        .await
+    }
+
+    /// Fetch all pages for structured targets using cursor pagination.
+    pub async fn get_structured_targets_all(
+        &self,
+        params: GetStructuredTargetsParams,
+    ) -> Result<Vec<GenericObject>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self.get_structured_targets(page_params).await?;
+                Ok((resp.structured_targets, resp.cursor))
             }
         })
         .await
