@@ -4,13 +4,15 @@ use crate::{KalshiAuth, KalshiEnvironment, KalshiError, REST_PREFIX};
 
 use futures::future::BoxFuture;
 use futures::stream::{self, Stream};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use reqwest::{Client, Method};
+use rand::random;
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
+use reqwest::{Client, Method, Proxy, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::Mutex;
-use tokio::time::{Duration, Instant};
+use tokio::time::{Duration, Instant, sleep};
 use url::Url;
 
 /// Per-second rate limits for read (GET) and write (POST/DELETE) requests.
@@ -56,6 +58,63 @@ impl RateLimitTier {
     }
 }
 
+/// HTTP retry policy for transient REST failures.
+///
+/// # Default
+///
+/// - Retries enabled for idempotent methods (`GET`, `DELETE`)
+/// - Retries disabled for non-idempotent methods (`POST`, `PUT`, `PATCH`)
+/// - `max_retries = 3` (attempts after the initial request)
+/// - Exponential backoff with jitter
+#[derive(Debug, Clone)]
+pub struct RetryConfig {
+    /// Maximum retries after the initial attempt.
+    pub max_retries: u32,
+    /// Initial backoff delay.
+    pub base_delay: Duration,
+    /// Maximum backoff delay.
+    pub max_delay: Duration,
+    /// Jitter factor in range `[0.0, 1.0]`.
+    pub jitter: f64,
+    /// Whether to retry non-idempotent methods.
+    pub retry_non_idempotent: bool,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            base_delay: Duration::from_millis(250),
+            max_delay: Duration::from_secs(5),
+            jitter: 0.2,
+            retry_non_idempotent: false,
+        }
+    }
+}
+
+impl RetryConfig {
+    fn allows_method(&self, method: &Method) -> bool {
+        matches!(*method, Method::GET | Method::DELETE)
+            || (self.retry_non_idempotent
+                && matches!(*method, Method::POST | Method::PUT | Method::PATCH))
+    }
+
+    fn backoff_delay(&self, retry_number: u32) -> Duration {
+        let exp = 2f64.powi(retry_number.saturating_sub(1) as i32);
+        let mut delay = self.base_delay.mul_f64(exp);
+        if delay > self.max_delay {
+            delay = self.max_delay;
+        }
+
+        let jitter = self.jitter.clamp(0.0, 1.0);
+        if jitter > 0.0 {
+            let factor = 1.0 - jitter + random::<f64>() * (2.0 * jitter);
+            delay = delay.mul_f64(factor);
+        }
+        delay
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum RateLimitKind {
     Read,
@@ -75,14 +134,68 @@ fn build_http_error(
     bytes: &[u8],
     request_id: Option<String>,
 ) -> KalshiError {
+    #[derive(serde::Deserialize)]
+    struct WrappedErrorBody {
+        error: ErrorResponse,
+    }
+
     let raw_body = String::from_utf8_lossy(bytes).to_string();
-    let api_error = serde_json::from_slice::<ErrorResponse>(bytes).ok();
+    let normalize = |error: ErrorResponse| {
+        if error.code.is_some()
+            || error.message.is_some()
+            || error.details.is_some()
+            || error.service.is_some()
+        {
+            Some(error)
+        } else {
+            None
+        }
+    };
+    let api_error = serde_json::from_slice::<WrappedErrorBody>(bytes)
+        .ok()
+        .and_then(|wrapped| normalize(wrapped.error))
+        .or_else(|| {
+            serde_json::from_slice::<ErrorResponse>(bytes)
+                .ok()
+                .and_then(normalize)
+        });
     KalshiError::Http {
         status,
         api_error,
         raw_body,
         request_id,
     }
+}
+
+fn retryable_status(status: StatusCode) -> bool {
+    matches!(
+        status,
+        StatusCode::REQUEST_TIMEOUT
+            | StatusCode::TOO_EARLY
+            | StatusCode::TOO_MANY_REQUESTS
+            | StatusCode::INTERNAL_SERVER_ERROR
+            | StatusCode::BAD_GATEWAY
+            | StatusCode::SERVICE_UNAVAILABLE
+            | StatusCode::GATEWAY_TIMEOUT
+    )
+}
+
+fn retryable_reqwest_error(err: &reqwest::Error) -> bool {
+    err.is_timeout() || err.is_connect() || err.is_request()
+}
+
+fn retry_after_delay(headers: &HeaderMap) -> Option<Duration> {
+    let value = headers.get(RETRY_AFTER)?;
+    let text = value.to_str().ok()?.trim();
+
+    if let Ok(seconds) = text.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    let ts = httpdate::parse_http_date(text).ok()?;
+    let now = SystemTime::now();
+    let delta = ts.duration_since(now).ok()?;
+    Some(delta)
 }
 
 #[derive(Debug)]
@@ -292,6 +405,115 @@ where
     })
 }
 
+/// Builder for [`KalshiRestClient`] with transport and retry customization.
+#[derive(Debug, Clone)]
+pub struct KalshiRestClientBuilder {
+    env: KalshiEnvironment,
+    auth: Option<KalshiAuth>,
+    rate_limit_config: RateLimitConfig,
+    retry_config: RetryConfig,
+    timeout: Option<Duration>,
+    connect_timeout: Option<Duration>,
+    user_agent: Option<String>,
+    default_headers: Option<HeaderMap>,
+    proxy: Option<Proxy>,
+    http_client: Option<Client>,
+}
+
+impl KalshiRestClientBuilder {
+    fn new(env: KalshiEnvironment) -> Self {
+        Self {
+            env,
+            auth: None,
+            rate_limit_config: RateLimitConfig::default(),
+            retry_config: RetryConfig::default(),
+            timeout: None,
+            connect_timeout: None,
+            user_agent: None,
+            default_headers: None,
+            proxy: None,
+            http_client: None,
+        }
+    }
+
+    pub fn with_auth(mut self, auth: KalshiAuth) -> Self {
+        self.auth = Some(auth);
+        self
+    }
+
+    pub fn with_rate_limit_config(mut self, config: RateLimitConfig) -> Self {
+        self.rate_limit_config = config;
+        self
+    }
+
+    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
+        self.retry_config = config;
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = Some(timeout);
+        self
+    }
+
+    pub fn with_user_agent(mut self, user_agent: impl Into<String>) -> Self {
+        self.user_agent = Some(user_agent.into());
+        self
+    }
+
+    pub fn with_default_headers(mut self, headers: HeaderMap) -> Self {
+        self.default_headers = Some(headers);
+        self
+    }
+
+    pub fn with_proxy(mut self, proxy: Proxy) -> Self {
+        self.proxy = Some(proxy);
+        self
+    }
+
+    pub fn with_http_client(mut self, client: Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<KalshiRestClient, KalshiError> {
+        let http = if let Some(client) = self.http_client {
+            client
+        } else {
+            let mut builder = Client::builder();
+            if let Some(timeout) = self.timeout {
+                builder = builder.timeout(timeout);
+            }
+            if let Some(timeout) = self.connect_timeout {
+                builder = builder.connect_timeout(timeout);
+            }
+            if let Some(user_agent) = self.user_agent {
+                builder = builder.user_agent(user_agent);
+            }
+            if let Some(headers) = self.default_headers {
+                builder = builder.default_headers(headers);
+            }
+            if let Some(proxy) = self.proxy {
+                builder = builder.proxy(proxy);
+            }
+            builder.build()?
+        };
+
+        Ok(KalshiRestClient {
+            http,
+            rest_origin: self.env.rest_origin,
+            auth: self.auth,
+            rate_limiter: Arc::new(RateLimiter::new(self.rate_limit_config)),
+            retry_config: self.retry_config,
+        })
+    }
+}
+
 /// Async HTTP client for the Kalshi REST API.
 ///
 /// Provides methods for every public and authenticated endpoint, plus
@@ -330,21 +552,24 @@ pub struct KalshiRestClient {
     rest_origin: Url,
     auth: Option<KalshiAuth>,
     rate_limiter: Arc<RateLimiter>,
+    retry_config: RetryConfig,
 }
 
 impl KalshiRestClient {
+    /// Start a configurable client builder.
+    pub fn builder(env: KalshiEnvironment) -> KalshiRestClientBuilder {
+        KalshiRestClientBuilder::new(env)
+    }
+
     /// Create a new client targeting the given environment (demo or production).
     ///
     /// The client starts **unauthenticated** with the Basic rate-limit tier.
     /// Chain [`with_auth`](Self::with_auth) and/or
     /// [`with_rate_limit_config`](Self::with_rate_limit_config) as needed.
     pub fn new(env: KalshiEnvironment) -> Self {
-        Self {
-            http: Client::new(),
-            rest_origin: env.rest_origin,
-            auth: None,
-            rate_limiter: Arc::new(RateLimiter::new(RateLimitConfig::default())),
-        }
+        Self::builder(env)
+            .build()
+            .expect("default rest client builder should not fail")
     }
 
     /// Attach auth so you can call authenticated endpoints.
@@ -362,6 +587,12 @@ impl KalshiRestClient {
     /// Override rate limits with a custom configuration.
     pub fn with_rate_limit_config(mut self, config: RateLimitConfig) -> Self {
         self.rate_limiter = Arc::new(RateLimiter::new(config));
+        self
+    }
+
+    /// Override retry policy.
+    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
+        self.retry_config = config;
         self
     }
 
@@ -413,48 +644,103 @@ impl KalshiRestClient {
         T: DeserializeOwned,
     {
         let url = self.build_url(full_path)?;
-        let mut headers = HeaderMap::new();
-
-        if require_auth {
-            let auth = self
-                .auth
-                .as_ref()
-                .ok_or(KalshiError::AuthRequired("REST endpoint"))?;
-            // IMPORTANT: sign the path without query parameters
-            Self::insert_auth_headers(&mut headers, auth, &method, full_path)?;
-        }
-
-        self.rate_limiter.wait(rate_limit_kind(&method)).await;
-
-        let mut req = self.http.request(method, url).headers(headers);
-
-        if let Some(q) = query {
-            req = req.query(q);
-        }
-        if let Some(b) = body {
-            req = req.json(b);
-        }
-
-        let resp = req.send().await?;
-        let status = resp.status();
-        let request_id = resp
-            .headers()
-            .get("x-request-id")
-            .or_else(|| resp.headers().get("request-id"))
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-
-        let bytes = resp.bytes().await?;
-        if !status.is_success() {
-            return Err(build_http_error(status, &bytes, request_id));
-        }
-
-        let body_bytes = if bytes.is_empty() {
-            b"{}"
+        let auth = if require_auth {
+            Some(
+                self.auth
+                    .as_ref()
+                    .ok_or(KalshiError::AuthRequired("REST endpoint"))?,
+            )
         } else {
-            bytes.as_ref()
+            None
         };
-        Ok(serde_json::from_slice::<T>(body_bytes)?)
+        let body_bytes = match body {
+            Some(value) => Some(serde_json::to_vec(value)?),
+            None => None,
+        };
+
+        let mut retry_number: u32 = 0;
+
+        loop {
+            let mut headers = HeaderMap::new();
+            if let Some(auth) = auth {
+                // IMPORTANT: sign the path without query parameters.
+                Self::insert_auth_headers(&mut headers, auth, &method, full_path)?;
+            }
+
+            self.rate_limiter.wait(rate_limit_kind(&method)).await;
+
+            let mut req = self
+                .http
+                .request(method.clone(), url.clone())
+                .headers(headers);
+
+            if let Some(q) = query {
+                req = req.query(q);
+            }
+            if let Some(body) = &body_bytes {
+                req = req
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(body.clone());
+            }
+
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let headers = resp.headers().clone();
+                    let request_id = headers
+                        .get("x-request-id")
+                        .or_else(|| headers.get("request-id"))
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string());
+
+                    let retry_after = if status == StatusCode::TOO_MANY_REQUESTS {
+                        retry_after_delay(&headers)
+                    } else {
+                        None
+                    };
+                    let bytes = resp.bytes().await?;
+
+                    if status.is_success() {
+                        let body_bytes = if bytes.is_empty() {
+                            b"{}"
+                        } else {
+                            bytes.as_ref()
+                        };
+                        return Ok(serde_json::from_slice::<T>(body_bytes)?);
+                    }
+
+                    let should_retry = retry_number < self.retry_config.max_retries
+                        && self.retry_config.allows_method(&method)
+                        && retryable_status(status);
+
+                    if should_retry {
+                        retry_number = retry_number.saturating_add(1);
+                        let delay = retry_after
+                            .unwrap_or_else(|| self.retry_config.backoff_delay(retry_number));
+                        if !delay.is_zero() {
+                            sleep(delay).await;
+                        }
+                        continue;
+                    }
+
+                    return Err(build_http_error(status, &bytes, request_id));
+                }
+                Err(err) => {
+                    let should_retry = retry_number < self.retry_config.max_retries
+                        && self.retry_config.allows_method(&method)
+                        && retryable_reqwest_error(&err);
+                    if should_retry {
+                        retry_number = retry_number.saturating_add(1);
+                        let delay = self.retry_config.backoff_delay(retry_number);
+                        if !delay.is_zero() {
+                            sleep(delay).await;
+                        }
+                        continue;
+                    }
+                    return Err(err.into());
+                }
+            }
+        }
     }
 
     // -----------------------------------------------
@@ -1214,9 +1500,127 @@ impl KalshiRestClient {
 mod tests {
     use super::*;
     use futures::stream::TryStreamExt;
+    use reqwest::Method;
     use reqwest::StatusCode;
+    use serde_json::json;
     use std::sync::Arc;
-    use tokio::time::{Duration, timeout};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::time::{Duration, Instant, timeout};
+    use url::Url;
+
+    #[derive(Clone)]
+    struct TestHttpResponse {
+        status: StatusCode,
+        headers: Vec<(String, String)>,
+        body: String,
+    }
+
+    impl TestHttpResponse {
+        fn new(status: StatusCode, body: impl Into<String>) -> Self {
+            Self {
+                status,
+                headers: Vec::new(),
+                body: body.into(),
+            }
+        }
+
+        fn with_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+            self.headers.push((key.into(), value.into()));
+            self
+        }
+    }
+
+    fn header_end(buf: &[u8]) -> Option<usize> {
+        buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4)
+    }
+
+    async fn read_http_request(stream: &mut tokio::net::TcpStream) -> std::io::Result<()> {
+        let mut buffer = Vec::new();
+        let mut chunk = [0u8; 2048];
+        let mut required_body_len: Option<usize> = None;
+        let mut header_len: Option<usize> = None;
+
+        loop {
+            let n = stream.read(&mut chunk).await?;
+            if n == 0 {
+                return Ok(());
+            }
+            buffer.extend_from_slice(&chunk[..n]);
+
+            if header_len.is_none() {
+                if let Some(end) = header_end(&buffer) {
+                    header_len = Some(end);
+                    let headers = String::from_utf8_lossy(&buffer[..end]).to_ascii_lowercase();
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    required_body_len = Some(content_length);
+                }
+            }
+
+            if let (Some(header_len), Some(required_body_len)) = (header_len, required_body_len) {
+                let body_len = buffer.len().saturating_sub(header_len);
+                if body_len >= required_body_len {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    async fn spawn_http_sequence_server(
+        responses: Vec<TestHttpResponse>,
+    ) -> (
+        Url,
+        Arc<AtomicUsize>,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_ref = Arc::clone(&hits);
+
+        let task = tokio::spawn(async move {
+            for response in responses {
+                let (mut stream, _) = listener.accept().await?;
+                read_http_request(&mut stream).await?;
+                hits_ref.fetch_add(1, Ordering::Relaxed);
+
+                let reason = response.status.canonical_reason().unwrap_or("Unknown");
+                let mut reply = format!(
+                    "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+                    response.status.as_u16(),
+                    reason,
+                    response.body.len()
+                );
+                for (key, value) in response.headers {
+                    reply.push_str(&format!("{key}: {value}\r\n"));
+                }
+                reply.push_str("\r\n");
+                reply.push_str(&response.body);
+
+                stream.write_all(reply.as_bytes()).await?;
+                stream.flush().await?;
+            }
+            Ok(())
+        });
+
+        (
+            Url::parse(&format!("http://{addr}")).expect("url"),
+            hits,
+            task,
+        )
+    }
+
+    fn test_env(rest_origin: Url) -> KalshiEnvironment {
+        KalshiEnvironment {
+            rest_origin,
+            ws_url: "ws://127.0.0.1/".to_string(),
+        }
+    }
 
     #[test]
     fn http_error_parses_json_body() {
@@ -1262,6 +1666,223 @@ mod tests {
             }
             other => panic!("unexpected error: {:?}", other),
         }
+    }
+
+    #[test]
+    fn http_error_parses_wrapped_error_envelope() {
+        let body = br#"{"error":{"code":"bad_request","message":"invalid","service":"trade-api"}}"#;
+        let err = build_http_error(StatusCode::BAD_REQUEST, body, None);
+        match err {
+            KalshiError::Http { api_error, .. } => {
+                let api_error = api_error.expect("expected api error");
+                assert_eq!(api_error.code.as_deref(), Some("bad_request"));
+                assert_eq!(api_error.message.as_deref(), Some("invalid"));
+                assert_eq!(api_error.service.as_deref(), Some("trade-api"));
+            }
+            other => panic!("unexpected error: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_retries_on_503_then_succeeds() {
+        let (rest_origin, hits, server) = spawn_http_sequence_server(vec![
+            TestHttpResponse::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                r#"{"code":"unavailable","message":"try again"}"#,
+            ),
+            TestHttpResponse::new(
+                StatusCode::OK,
+                r#"{"exchange_active":true,"trading_active":true}"#,
+            ),
+        ])
+        .await;
+
+        let client = KalshiRestClient::builder(test_env(rest_origin))
+            .with_retry_config(RetryConfig {
+                max_retries: 1,
+                base_delay: Duration::from_millis(1),
+                max_delay: Duration::from_millis(1),
+                jitter: 0.0,
+                retry_non_idempotent: false,
+            })
+            .build()
+            .expect("build client");
+
+        let response = client
+            .get_exchange_status()
+            .await
+            .expect("request succeeds");
+        assert!(response.exchange_active);
+        assert_eq!(hits.load(Ordering::Relaxed), 2);
+        server.await.expect("server").expect("server ok");
+    }
+
+    #[tokio::test]
+    async fn post_does_not_retry_by_default() {
+        let (rest_origin, hits, server) = spawn_http_sequence_server(vec![TestHttpResponse::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"code":"unavailable","message":"retry me"}"#,
+        )])
+        .await;
+
+        let client = KalshiRestClient::builder(test_env(rest_origin))
+            .with_retry_config(RetryConfig {
+                max_retries: 2,
+                base_delay: Duration::from_millis(1),
+                max_delay: Duration::from_millis(1),
+                jitter: 0.0,
+                retry_non_idempotent: false,
+            })
+            .build()
+            .expect("build client");
+
+        let path = KalshiRestClient::full_path("/test-post");
+        let result = client
+            .send::<(), _, serde_json::Value>(
+                Method::POST,
+                &path,
+                Option::<&()>::None,
+                Some(&json!({"x": 1})),
+                false,
+            )
+            .await;
+        assert!(matches!(result, Err(KalshiError::Http { .. })));
+        assert_eq!(hits.load(Ordering::Relaxed), 1);
+        server.await.expect("server").expect("server ok");
+    }
+
+    #[tokio::test]
+    async fn post_retry_opt_in_retries_and_succeeds() {
+        let (rest_origin, hits, server) = spawn_http_sequence_server(vec![
+            TestHttpResponse::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                r#"{"code":"unavailable","message":"retry me"}"#,
+            ),
+            TestHttpResponse::new(StatusCode::OK, r#"{"ok":true}"#),
+        ])
+        .await;
+
+        let client = KalshiRestClient::builder(test_env(rest_origin))
+            .with_retry_config(RetryConfig {
+                max_retries: 1,
+                base_delay: Duration::from_millis(1),
+                max_delay: Duration::from_millis(1),
+                jitter: 0.0,
+                retry_non_idempotent: true,
+            })
+            .build()
+            .expect("build client");
+
+        let path = KalshiRestClient::full_path("/test-post");
+        let value = client
+            .send::<(), _, serde_json::Value>(
+                Method::POST,
+                &path,
+                Option::<&()>::None,
+                Some(&json!({"x": 1})),
+                false,
+            )
+            .await
+            .expect("request succeeds after retry");
+
+        assert_eq!(value["ok"], json!(true));
+        assert_eq!(hits.load(Ordering::Relaxed), 2);
+        server.await.expect("server").expect("server ok");
+    }
+
+    #[tokio::test]
+    async fn retry_after_header_is_honored_for_429() {
+        let (rest_origin, hits, server) = spawn_http_sequence_server(vec![
+            TestHttpResponse::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                r#"{"code":"too_many_requests","message":"slow down"}"#,
+            )
+            .with_header("Retry-After", "1"),
+            TestHttpResponse::new(
+                StatusCode::OK,
+                r#"{"exchange_active":true,"trading_active":true}"#,
+            ),
+        ])
+        .await;
+
+        let client = KalshiRestClient::builder(test_env(rest_origin))
+            .with_retry_config(RetryConfig {
+                max_retries: 1,
+                base_delay: Duration::from_millis(1),
+                max_delay: Duration::from_millis(1),
+                jitter: 0.0,
+                retry_non_idempotent: false,
+            })
+            .build()
+            .expect("build client");
+
+        let start = Instant::now();
+        let _ = client
+            .get_exchange_status()
+            .await
+            .expect("request succeeds");
+        assert!(start.elapsed() >= Duration::from_millis(900));
+        assert_eq!(hits.load(Ordering::Relaxed), 2);
+        server.await.expect("server").expect("server ok");
+    }
+
+    #[tokio::test]
+    async fn request_id_extraction_supports_both_header_names() {
+        let (rest_origin_a, _hits_a, server_a) = spawn_http_sequence_server(vec![
+            TestHttpResponse::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                r#"{"code":"internal","message":"boom"}"#,
+            )
+            .with_header("x-request-id", "req-x"),
+        ])
+        .await;
+
+        let client_a = KalshiRestClient::builder(test_env(rest_origin_a))
+            .with_retry_config(RetryConfig {
+                max_retries: 0,
+                ..Default::default()
+            })
+            .build()
+            .expect("build client");
+        let err_a = client_a
+            .get_exchange_status()
+            .await
+            .expect_err("expected error");
+        match err_a {
+            KalshiError::Http { request_id, .. } => {
+                assert_eq!(request_id.as_deref(), Some("req-x"));
+            }
+            other => panic!("unexpected error: {:?}", other),
+        }
+        server_a.await.expect("server").expect("server ok");
+
+        let (rest_origin_b, _hits_b, server_b) = spawn_http_sequence_server(vec![
+            TestHttpResponse::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                r#"{"code":"internal","message":"boom"}"#,
+            )
+            .with_header("request-id", "req-alt"),
+        ])
+        .await;
+
+        let client_b = KalshiRestClient::builder(test_env(rest_origin_b))
+            .with_retry_config(RetryConfig {
+                max_retries: 0,
+                ..Default::default()
+            })
+            .build()
+            .expect("build client");
+        let err_b = client_b
+            .get_exchange_status()
+            .await
+            .expect_err("expected error");
+        match err_b {
+            KalshiError::Http { request_id, .. } => {
+                assert_eq!(request_id.as_deref(), Some("req-alt"));
+            }
+            other => panic!("unexpected error: {:?}", other),
+        }
+        server_b.await.expect("server").expect("server ok");
     }
 
     #[tokio::test]
