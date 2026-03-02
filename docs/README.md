@@ -1,5 +1,12 @@
 # Kalshi Rust Client
 
+## Spec Parity
+- OpenAPI snapshot: `docs/specs/kalshi/openapi.yaml`
+- AsyncAPI snapshot: `docs/specs/kalshi/asyncapi.yaml`
+- Generated parity report: `docs/spec-parity.md`
+- Regenerate parity artifacts:
+  - `scripts/generate_spec_parity.py`
+
 ## WebSocket Auth
 Kalshi WebSocket connections require authentication, even when subscribing to public channels. Use `KalshiWsClient::connect_authenticated` and provide `KALSHI_KEY_ID` and `KALSHI_PRIVATE_KEY_PATH`.
 
@@ -49,3 +56,11 @@ Note: `get_*_all` loads **all pages into memory** and is intended for convenienc
 - `WsEvent::Disconnected { error }`
 
 Reconnect uses exponential backoff with jitter, resubscribes to active channels by default, and **does not** attempt sequence resync (callers must handle any gaps).
+
+## Deterministic vs Live Tests
+- Deterministic tests run by default: `cargo test --all-targets`
+- Live integration tests are feature-gated:
+  - `cargo test --features live-tests --test rest_public`
+  - `cargo test --features live-tests --test rest_auth`
+  - `cargo test --features live-tests --test ws_public`
+  - `cargo test --features live-tests --test ws_auth`

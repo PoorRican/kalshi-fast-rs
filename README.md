@@ -4,14 +4,17 @@
 [![Documentation](https://docs.rs/kalshi-fast-rs/badge.svg)](https://docs.rs/kalshi-fast-rs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-High-performance async Rust client for the [Kalshi](https://kalshi.com) prediction markets API.
+High-performance async Rust client for the [Kalshi](https://kalshi.com) Trade API.
 
-## Features
+## Highlights
 
-- **Full WebSocket support** - Real-time streaming with auto-reconnect and resubscribe
-- **Complete REST API** - All public and authenticated endpoints
-- **Pagination helpers** - Page-level (`CursorPager`) and item-level (`stream_*`) iteration
-- **RSA-PSS authentication** - Secure signing for private endpoints
+- REST parity with current OpenAPI snapshot (`77/77` path+method operations)
+- WebSocket parity with current AsyncAPI snapshot, including `user_orders`
+- Additive compatibility: legacy V1 WS methods still work; docs-aligned V2 methods are available
+- Deterministic REST resilience: retries, exponential backoff+jitter, `429 Retry-After` support
+- Builder-based transport controls: timeout, connect timeout, headers, user-agent, proxy, custom `reqwest::Client`
+- Explicit WebSocket lifecycle controls: `close()` + configurable `shutdown_timeout(...)`
+- Pager/stream/all helpers for cursor endpoints
 
 ## Installation
 
@@ -19,40 +22,42 @@ High-performance async Rust client for the [Kalshi](https://kalshi.com) predicti
 cargo add kalshi-fast-rs
 ```
 
-## Quick Start
-
-See [examples](https://github.com/PoorRican/kalshi-fast-rs/tree/master/examples) for more advanced usage.
-
-### REST API - List Markets
+## REST Quick Start (Builder + Retry)
 
 ```rust
-use kalshi_fast::{GetMarketsParams, KalshiEnvironment, KalshiRestClient, MarketStatus};
+use std::time::Duration;
+
+use kalshi_fast::{
+    KalshiEnvironment, KalshiRestClient, RateLimitConfig, RetryConfig,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let client = KalshiRestClient::new(KalshiEnvironment::demo());
-
-    let resp = client
-        .get_markets(GetMarketsParams {
-            limit: Some(10),
-            status: Some(MarketStatus::Open),
-            ..Default::default()
+    let client = KalshiRestClient::builder(KalshiEnvironment::demo())
+        .with_rate_limit_config(RateLimitConfig { read_rps: 30, write_rps: 15 })
+        .with_retry_config(RetryConfig {
+            max_retries: 4,
+            base_delay: Duration::from_millis(200),
+            max_delay: Duration::from_secs(2),
+            jitter: 0.2,
+            retry_non_idempotent: false,
         })
-        .await?;
+        .with_timeout(Duration::from_secs(10))
+        .with_connect_timeout(Duration::from_secs(3))
+        .build()?;
 
-    for market in resp.markets {
-        println!("{}", market.ticker);
-    }
+    let status = client.get_exchange_status().await?;
+    println!("exchange_active={}", status.exchange_active);
     Ok(())
 }
 ```
 
-### WebSocket - Ticker Stream
+## WebSocket V2 Quick Start (`user_orders`)
 
 ```rust
 use kalshi_fast::{
-    KalshiAuth, KalshiEnvironment, KalshiWsClient, WsChannel,
-    WsDataMessage, WsEvent, WsMessage, WsReaderConfig, WsReconnectConfig, WsSubscriptionParams,
+    KalshiAuth, KalshiEnvironment, KalshiWsClient, WsChannel, WsDataMessage, WsEvent, WsMessage,
+    WsReconnectConfig, WsSubscriptionParamsV2,
 };
 
 #[tokio::main]
@@ -68,84 +73,47 @@ async fn main() -> anyhow::Result<()> {
         WsReconnectConfig::default(),
     ).await?;
 
-    ws.subscribe(WsSubscriptionParams {
-        channels: vec![WsChannel::Ticker],
+    ws.subscribe_v2(WsSubscriptionParamsV2 {
+        channels: vec![WsChannel::UserOrders],
         ..Default::default()
     }).await?;
 
-    let events = ws.start_reader(WsReaderConfig::default()).await?;
-
-    while let Some(event) = events.next().await {
-        match event {
-            WsEvent::Message(WsMessage::Data(WsDataMessage::Ticker { msg, .. })) => {
-                println!("{}: {}", msg.market_ticker, msg.price);
-            }
-            WsEvent::Raw(_) => {}
-            WsEvent::Reconnected { attempt } => println!("Reconnected (attempt {})", attempt),
-            WsEvent::Disconnected { .. } => break,
-            _ => {}
+    while let Ok(event) = ws.next_event_v2().await {
+        if let WsEvent::Message(WsMessage::Data(WsDataMessage::UserOrder { msg, .. })) = event {
+            println!("order={} ticker={} status={:?}", msg.order_id, msg.ticker, msg.status);
         }
     }
+
     Ok(())
 }
 ```
 
-## Performance
+## Examples
 
-Optimized for low-latency algorithmic trading:
+- `examples/rest_retry_config.rs`
+- `examples/rfq_quotes_order_groups.rs`
+- `examples/ws_user_orders_v2.rs`
+- `examples/list_open_markets.rs`
+- `examples/orderbook_stream.rs`
 
-- **Single-pass WS parsing** - Tagged deserialization avoids double parsing for known types
-- **Borrowed message views** - `WsRawEvent::parse_borrowed` minimizes allocations
-- **Deferred JSON parsing** - Uses `serde_json::RawValue` for unknown types
-- **Split read/write streams** - No lock contention on WebSocket operations
-- **Efficient subscription tracking** - HashMap-based channel management
+## Spec Parity Artifacts
 
-## Pagination
-
-Two pagination styles are available:
-
-**Page-level** with `CursorPager`:
-```rust
-let mut pager = client.markets_pager(GetMarketsParams::default());
-while let Some(page) = pager.next_page().await? {
-    for market in page {
-        println!("{}", market.ticker);
-    }
-}
-```
-
-**Item-level** with streams:
-```rust
-use futures::stream::TryStreamExt;
-
-let markets: Vec<_> = client
-    .stream_markets(GetMarketsParams::default(), Some(250))
-    .try_collect()
-    .await?;
-```
-
-## WebSocket Reconnect
-
-`KalshiWsClient` handles reconnection automatically with exponential backoff and resubscribes to active channels. Connection events are exposed via `WsEvent`:
-
-- `WsEvent::Message(...)` - Incoming data
-- `WsEvent::Raw(...)` - Incoming bytes when using `WsReaderMode::Raw`
-- `WsEvent::Reconnected { attempt }` - Connection restored
-- `WsEvent::Disconnected { error }` - Connection lost (after max retries)
-
-Note: Sequence resync is not automatic; callers must handle any gaps.
+- OpenAPI snapshot: `docs/specs/kalshi/openapi.yaml`
+- AsyncAPI snapshot: `docs/specs/kalshi/asyncapi.yaml`
+- Parity report: `docs/spec-parity.md`
+- Regeneration script: `scripts/generate_spec_parity.py`
 
 ## Environment Variables
 
-For authenticated endpoints:
-- `KALSHI_KEY_ID` - Your API key ID
-- `KALSHI_PRIVATE_KEY_PATH` - Path to your RSA private key (PEM format)
+- `KALSHI_KEY_ID`
+- `KALSHI_PRIVATE_KEY_PATH`
+- Optional for some examples: `KALSHI_MARKET_TICKER`
 
-## Documentation
+## References
 
-- [API Documentation](https://docs.rs/kalshi-fast-rs)
-- [Examples](https://github.com/PoorRican/kalshi-fast-rs/tree/master/examples)
-- [Kalshi API Docs](https://trading-api.readme.io/reference/getting-started)
+- [Kalshi OpenAPI](https://docs.kalshi.com/openapi.yaml)
+- [Kalshi AsyncAPI](https://docs.kalshi.com/asyncapi.yaml)
+- [Kalshi WebSocket Quickstart](https://docs.kalshi.com/getting_started/quick_start_websockets)
 
 ## License
 

@@ -1,3 +1,5 @@
+#![cfg(feature = "live-tests")]
+
 mod common;
 
 use kalshi_fast::{

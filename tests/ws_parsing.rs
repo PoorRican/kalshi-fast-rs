@@ -44,6 +44,28 @@ fn ws_message_subscribed_parses() {
 }
 
 #[test]
+fn ws_message_subscribed_parses_sid_from_msg() {
+    let json = r#"{
+        "id": 6,
+        "type": "subscribed",
+        "msg": {
+            "channel": "ticker",
+            "sid": 321
+        }
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::Subscribed { id, sid } => {
+            assert_eq!(id, Some(6));
+            assert_eq!(sid, Some(321));
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
 fn ws_message_list_subscriptions_parses() {
     let json = r#"{
         "id": 7,
@@ -63,6 +85,38 @@ fn ws_message_list_subscriptions_parses() {
             assert_eq!(subscriptions.len(), 1);
             assert_eq!(subscriptions[0].sid, 1);
             assert_eq!(subscriptions[0].market_tickers.as_ref().unwrap()[0], "TEST");
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn ws_message_list_subscriptions_parses_from_ok_msg_array() {
+    let json = r#"{
+        "id": 8,
+        "type": "ok",
+        "msg": [
+            {"channel": "ticker", "sid": 11},
+            {"channel": "trade", "sid": 12}
+        ]
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::ListSubscriptions { id, subscriptions } => {
+            assert_eq!(id, Some(8));
+            assert_eq!(subscriptions.len(), 2);
+            assert_eq!(subscriptions[0].sid, 11);
+            assert_eq!(
+                subscriptions[0].channel,
+                Some(kalshi_fast::WsChannel::Ticker)
+            );
+            assert_eq!(subscriptions[1].sid, 12);
+            assert_eq!(
+                subscriptions[1].channel,
+                Some(kalshi_fast::WsChannel::Trade)
+            );
         }
         other => panic!("unexpected: {:?}", other),
     }
@@ -117,28 +171,6 @@ fn ws_ticker_message_parses() {
         WsMessage::Data(WsDataMessage::Ticker { msg, .. }) => {
             assert_eq!(msg.market_ticker, "INXD-25JAN10-T17900");
             assert_eq!(msg.price, 55);
-        }
-        other => panic!("unexpected: {:?}", other),
-    }
-}
-
-#[test]
-fn ws_ticker_v2_message_parses() {
-    let json = r#"{
-        "type": "ticker_v2",
-        "msg": {
-            "market_ticker": "INXD-25JAN10-T17900",
-            "price": 55,
-            "ts": 1700000000000
-        }
-    }"#;
-
-    let env: WsEnvelope = serde_json::from_str(json).unwrap();
-    let msg = env.into_message().unwrap();
-    match msg {
-        WsMessage::Data(WsDataMessage::TickerV2 { msg, .. }) => {
-            assert_eq!(msg.market_ticker, "INXD-25JAN10-T17900");
-            assert_eq!(msg.price, Some(55));
         }
         other => panic!("unexpected: {:?}", other),
     }
@@ -629,6 +661,41 @@ fn ws_order_group_updates_message_parses() {
                 WsOrderGroupEventType::LimitUpdated
             ));
             assert_eq!(msg.contracts_limit_fp.as_deref(), Some("150.00"));
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn ws_user_order_message_parses() {
+    let json = r#"{
+        "type": "user_order",
+        "sid": 2,
+        "msg": {
+            "order_id": "12e9c0eb-ff95-49d8-9d95-304f331093d2",
+            "user_id": "f57fcae6-fb98-4c89-bad2-55c85e80f89a",
+            "ticker": "INXD-26FEB14-T19000",
+            "status": "resting",
+            "side": "yes",
+            "yes_price_dollars": "0.5500",
+            "fill_count_fp": "0.00",
+            "remaining_count_fp": "10.00",
+            "initial_count_fp": "10.00",
+            "taker_fill_cost_dollars": "0.0000",
+            "maker_fill_cost_dollars": "0.0000",
+            "client_order_id": "abc-123",
+            "created_time": "2026-02-14T12:00:00Z"
+        }
+    }"#;
+
+    let env: WsEnvelope = serde_json::from_str(json).unwrap();
+    let msg = env.into_message().unwrap();
+    match msg {
+        WsMessage::Data(WsDataMessage::UserOrder { sid, msg, .. }) => {
+            assert_eq!(sid, Some(2));
+            assert_eq!(msg.ticker, "INXD-26FEB14-T19000");
+            assert_eq!(msg.yes_price_dollars.as_deref(), Some("0.5500"));
+            assert_eq!(msg.remaining_count_fp.as_deref(), Some("10.00"));
         }
         other => panic!("unexpected: {:?}", other),
     }

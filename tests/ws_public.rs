@@ -1,3 +1,5 @@
+#![cfg(feature = "live-tests")]
+
 mod common;
 
 use kalshi_fast::{
@@ -61,41 +63,6 @@ async fn test_ws_ticker_subscribe() {
 }
 
 #[tokio::test]
-async fn test_ws_ticker_v2_subscribe() {
-    common::load_env();
-    let auth = common::load_auth();
-
-    let mut ws = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        KalshiWsLowLevelClient::connect_authenticated(common::demo_env(), auth).await
-    })
-    .await
-    .expect("timeout")
-    .expect("connection failed");
-
-    let sub_id = ws
-        .subscribe(WsSubscriptionParams {
-            channels: vec![WsChannel::TickerV2],
-            ..Default::default()
-        })
-        .await
-        .expect("subscribe failed");
-
-    assert!(sub_id > 0);
-
-    // Read first message
-    let msg = tokio::time::timeout(Duration::from_secs(10), async { ws.next_message().await })
-        .await
-        .expect("timeout")
-        .expect("receive failed");
-
-    match msg {
-        WsMessage::Subscribed { .. } => {}
-        WsMessage::Data(WsDataMessage::TickerV2 { .. }) => {}
-        other => panic!("unexpected message: {:?}", other),
-    }
-}
-
-#[tokio::test]
 async fn test_ws_private_channel_requires_auth_flag() {
     common::load_env();
     let auth = common::load_auth();
@@ -138,7 +105,6 @@ fn test_client_rejects_private_channel_without_auth() {
 
     // And false for public channels
     assert!(!WsChannel::Ticker.is_private());
-    assert!(!WsChannel::TickerV2.is_private());
     assert!(!WsChannel::Trade.is_private());
     assert!(!WsChannel::MarketLifecycleV2.is_private());
     assert!(!WsChannel::Multivariate.is_private());

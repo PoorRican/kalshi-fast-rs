@@ -4,7 +4,7 @@ use crate::error::KalshiError;
 use crate::ws::types::{
     WsEnvelope, WsListSubscriptionsCmd, WsMessage, WsRawEvent, WsSubscribeCmd,
     WsSubscriptionParams, WsUnsubscribeCmd, WsUnsubscribeParams, WsUpdateSubscriptionCmd,
-    WsUpdateSubscriptionParams, validate_subscription,
+    WsUpdateSubscriptionParams, validate_subscription, validate_update,
 };
 
 use futures::{SinkExt, StreamExt};
@@ -14,9 +14,9 @@ use rand::random;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, watch};
 use tokio::task::JoinHandle;
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, sleep, timeout as tokio_timeout};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -191,25 +191,55 @@ impl SubscriptionTracker {
     }
 
     fn apply_update(&mut self, update: &WsUpdateSubscriptionParams) {
-        if let Some(params) = self.active.get_mut(&update.sid) {
-            if let Some(value) = update.market_tickers.clone() {
-                params.market_tickers = Some(value);
-            }
-            if let Some(value) = update.market_ids.clone() {
-                params.market_ids = Some(value);
-            }
-            if let Some(value) = update.event_tickers.clone() {
-                params.event_tickers = Some(value);
-            }
-            if let Some(value) = update.send_initial_snapshot {
-                params.send_initial_snapshot = Some(value);
-            }
-            if let Some(value) = update.shard_factor {
-                params.shard_factor = Some(value);
-            }
-            if let Some(value) = update.shard_key.clone() {
-                params.shard_key = Some(value);
-            }
+        use crate::ws::types::WsUpdateAction;
+
+        let sid = match update.target_sid() {
+            Some(sid) => sid,
+            None => return,
+        };
+
+        let Some(params) = self.active.get_mut(&sid) else {
+            return;
+        };
+
+        let mut incoming_tickers = update.market_tickers.clone().unwrap_or_default();
+        if let Some(single) = update.market_ticker.clone() {
+            incoming_tickers.push(single);
+        }
+
+        let mut incoming_ids = update.market_ids.clone().unwrap_or_default();
+        if let Some(single) = update.market_id.clone() {
+            incoming_ids.push(single);
+        }
+
+        let apply_vec =
+            |target: &mut Option<Vec<String>>, incoming: Vec<String>, action: WsUpdateAction| {
+                if incoming.is_empty() {
+                    return;
+                }
+                let values = target.get_or_insert_with(Vec::new);
+                match action {
+                    WsUpdateAction::AddMarkets => {
+                        for value in incoming {
+                            if !values.iter().any(|v| v == &value) {
+                                values.push(value);
+                            }
+                        }
+                    }
+                    WsUpdateAction::DeleteMarkets => {
+                        values.retain(|current| !incoming.iter().any(|value| value == current));
+                        if values.is_empty() {
+                            *target = None;
+                        }
+                    }
+                }
+            };
+
+        apply_vec(&mut params.market_tickers, incoming_tickers, update.action);
+        apply_vec(&mut params.market_ids, incoming_ids, update.action);
+
+        if let Some(value) = update.send_initial_snapshot {
+            params.send_initial_snapshot = Some(value);
         }
     }
 
@@ -375,15 +405,22 @@ impl KalshiWsLowLevelClient {
         Ok(id)
     }
 
-    /// Unsubscribe from a subscription by its `sid`. Returns the command `id`.
-    pub async fn unsubscribe(&mut self, sid: u64) -> Result<u64, KalshiError> {
+    ///
+    /// Unsubscribe from one or more subscriptions by SID. Returns the command `id`.
+    pub async fn unsubscribe(&mut self, params: WsUnsubscribeParams) -> Result<u64, KalshiError> {
+        if params.sids.is_empty() {
+            return Err(KalshiError::InvalidParams(
+                "unsubscribe: at least one sid is required".to_string(),
+            ));
+        }
+
         let id = self.next_id;
         self.next_id += 1;
 
         let cmd = WsUnsubscribeCmd {
             id,
             cmd: "unsubscribe",
-            params: WsUnsubscribeParams { sid },
+            params,
         };
 
         let text = serde_json::to_string(&cmd)?;
@@ -400,6 +437,8 @@ impl KalshiWsLowLevelClient {
         &mut self,
         params: WsUpdateSubscriptionParams,
     ) -> Result<u64, KalshiError> {
+        validate_update(&params)?;
+
         let id = self.next_id;
         self.next_id += 1;
 
@@ -408,7 +447,6 @@ impl KalshiWsLowLevelClient {
             cmd: "update_subscription",
             params,
         };
-
         let text = serde_json::to_string(&cmd)?;
         self.write
             .send(Message::Text(text))
@@ -456,6 +494,11 @@ impl KalshiWsLowLevelClient {
     pub async fn next_message(&mut self) -> Result<WsMessage, KalshiError> {
         let bytes = self.next_json_bytes().await?;
         WsMessage::from_bytes(&bytes)
+    }
+
+    /// Gracefully close the underlying WebSocket.
+    pub async fn close(&mut self) -> Result<(), KalshiError> {
+        self.send_raw(Message::Close(None)).await
     }
 }
 
@@ -505,7 +548,9 @@ pub struct KalshiWsClient {
     tracker: Arc<Mutex<SubscriptionTracker>>,
     reader: Option<WsEventReceiver>,
     outgoing: Option<mpsc::Sender<Message>>,
+    shutdown: Option<watch::Sender<bool>>,
     reader_task: Option<JoinHandle<()>>,
+    reader_shutdown_timeout: Duration,
     next_id: u64,
 }
 
@@ -528,7 +573,9 @@ impl KalshiWsClient {
             tracker: Arc::new(Mutex::new(SubscriptionTracker::default())),
             reader: None,
             outgoing: None,
+            shutdown: None,
             reader_task: None,
+            reader_shutdown_timeout: Duration::from_secs(5),
             next_id: 1,
         })
     }
@@ -551,7 +598,9 @@ impl KalshiWsClient {
             tracker: Arc::new(Mutex::new(SubscriptionTracker::default())),
             reader: None,
             outgoing: None,
+            shutdown: None,
             reader_task: None,
+            reader_shutdown_timeout: Duration::from_secs(5),
             next_id: 1,
         })
     }
@@ -609,22 +658,29 @@ impl KalshiWsClient {
         Ok(id)
     }
 
-    /// Unsubscribe from a subscription by its `sid`. Returns the command `id`.
-    pub async fn unsubscribe(&mut self, sid: u64) -> Result<u64, KalshiError> {
+    /// Unsubscribe from one or more subscriptions by SID. Returns the command `id`.
+    pub async fn unsubscribe(&mut self, params: WsUnsubscribeParams) -> Result<u64, KalshiError> {
+        if params.sids.is_empty() {
+            return Err(KalshiError::InvalidParams(
+                "unsubscribe: at least one sid is required".to_string(),
+            ));
+        }
+
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
 
         {
             let mut tracker = self.tracker.lock().await;
-            tracker.drop_active(sid);
+            for sid in &params.sids {
+                tracker.drop_active(*sid);
+            }
         }
 
         let cmd = WsUnsubscribeCmd {
             id,
             cmd: "unsubscribe",
-            params: WsUnsubscribeParams { sid },
+            params,
         };
-
         let text = serde_json::to_string(&cmd)?;
         self.send_command(Message::Text(text)).await?;
         Ok(id)
@@ -635,6 +691,8 @@ impl KalshiWsClient {
         &mut self,
         params: WsUpdateSubscriptionParams,
     ) -> Result<u64, KalshiError> {
+        validate_update(&params)?;
+
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
 
@@ -689,6 +747,7 @@ impl KalshiWsClient {
 
         let (event_tx, event_rx) = mpsc::channel(config.buffer_size);
         let (outgoing_tx, outgoing_rx) = mpsc::channel(config.buffer_size);
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         let tracker = self.tracker.clone();
         let env = self.env.clone();
@@ -705,6 +764,7 @@ impl KalshiWsClient {
                 tracker,
                 event_tx,
                 outgoing_rx,
+                shutdown_rx,
                 mode,
             )
             .await;
@@ -713,9 +773,55 @@ impl KalshiWsClient {
         let receiver = WsEventReceiver::new(event_rx);
         self.reader = Some(receiver.clone());
         self.outgoing = Some(outgoing_tx);
+        self.shutdown = Some(shutdown_tx);
         self.reader_task = Some(task);
 
         Ok(receiver)
+    }
+
+    /// Configure how long [`close`](Self::close) waits for the reader task.
+    pub fn shutdown_timeout(&mut self, timeout: Duration) -> &mut Self {
+        self.reader_shutdown_timeout = timeout;
+        self
+    }
+
+    /// Gracefully close the WebSocket and stop background tasks.
+    pub async fn close(&mut self) -> Result<(), KalshiError> {
+        if let Some(sender) = &self.outgoing {
+            let _ = sender.send(Message::Close(None)).await;
+        } else if let Some(client) = &mut self.client {
+            let _ = client.close().await;
+        }
+
+        self.signal_shutdown();
+        self.outgoing = None;
+
+        if let Some(mut task) = self.reader_task.take() {
+            match tokio_timeout(self.reader_shutdown_timeout, &mut task).await {
+                Ok(joined) => {
+                    if let Err(err) = joined
+                        && !err.is_cancelled()
+                    {
+                        return Err(KalshiError::Ws(format!(
+                            "websocket reader task failed: {err}",
+                        )));
+                    }
+                }
+                Err(_) => {
+                    task.abort();
+                    return Err(KalshiError::Ws(format!(
+                        "websocket reader shutdown timed out after {:?}",
+                        self.reader_shutdown_timeout
+                    )));
+                }
+            }
+        }
+
+        self.reader = None;
+        self.shutdown = None;
+        self.client = None;
+
+        Ok(())
     }
 
     // -----------------------------------------------
@@ -755,10 +861,10 @@ impl KalshiWsClient {
         let mut attempt: u32 = 0;
         loop {
             attempt = attempt.saturating_add(1);
-            if let Some(max) = self.config.max_retries {
-                if attempt > max {
-                    return Ok(WsEvent::Disconnected { error: err });
-                }
+            if let Some(max) = self.config.max_retries
+                && attempt > max
+            {
+                return Ok(WsEvent::Disconnected { error: err });
             }
 
             let delay = self.config.backoff_delay(attempt);
@@ -813,17 +919,45 @@ impl KalshiWsClient {
 
         Ok(())
     }
+
+    fn signal_shutdown(&mut self) {
+        if let Some(tx) = &self.shutdown {
+            let _ = tx.send(true);
+        }
+    }
+}
+
+impl Drop for KalshiWsClient {
+    fn drop(&mut self) {
+        self.signal_shutdown();
+        if let Some(task) = &self.reader_task {
+            task.abort();
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum WsControlMessage {
     #[serde(rename = "subscribed")]
-    Subscribed { id: Option<u64>, sid: Option<u64> },
+    Subscribed {
+        id: Option<u64>,
+        sid: Option<u64>,
+        #[serde(default)]
+        msg: Option<WsControlSubscribedMsg>,
+    },
     #[serde(rename = "unsubscribed")]
     Unsubscribed { sid: Option<u64> },
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Deserialize)]
+struct WsControlSubscribedMsg {
+    #[allow(dead_code)]
+    channel: Option<String>,
+    #[serde(default)]
+    sid: Option<u64>,
 }
 
 async fn reader_loop(
@@ -834,12 +968,21 @@ async fn reader_loop(
     tracker: Arc<Mutex<SubscriptionTracker>>,
     event_tx: mpsc::Sender<WsEvent>,
     mut outgoing_rx: mpsc::Receiver<Message>,
+    mut shutdown_rx: watch::Receiver<bool>,
     mode: WsReaderMode,
 ) {
     let mut outgoing_closed = false;
 
     loop {
+        if *shutdown_rx.borrow() {
+            return;
+        }
+
         let result: Result<(), KalshiError> = tokio::select! {
+            shutdown = shutdown_rx.changed() => {
+                let _ = shutdown;
+                return;
+            }
             frame = client.next_frame() => {
                 match frame {
                     Ok(msg) => handle_incoming_message(msg, &mut client, &tracker, &event_tx, mode).await,
@@ -858,9 +1001,22 @@ async fn reader_loop(
         };
 
         if let Err(_err) = result {
-            match handle_reconnect(&mut client, &env, &auth, &config, &tracker, &event_tx).await {
+            match handle_reconnect(
+                &mut client,
+                &env,
+                &auth,
+                &config,
+                &tracker,
+                &event_tx,
+                &mut shutdown_rx,
+            )
+            .await
+            {
                 Ok(()) => {}
                 Err(err) => {
+                    if *shutdown_rx.borrow() {
+                        return;
+                    }
                     let _ = event_tx.send(WsEvent::Disconnected { error: err }).await;
                     return;
                 }
@@ -911,8 +1067,9 @@ async fn handle_payload(
             if let Ok(control) = serde_json::from_slice::<WsControlMessage>(&bytes) {
                 let mut tracker = tracker.lock().await;
                 match control {
-                    WsControlMessage::Subscribed { id, sid } => {
-                        tracker.handle_subscribed(id, sid);
+                    WsControlMessage::Subscribed { id, sid, msg } => {
+                        tracker
+                            .handle_subscribed(id, sid.or_else(|| msg.and_then(|value| value.sid)));
                     }
                     WsControlMessage::Unsubscribed { sid } => {
                         tracker.handle_unsubscribed(sid);
@@ -938,28 +1095,48 @@ async fn handle_reconnect(
     config: &WsReconnectConfig,
     tracker: &Arc<Mutex<SubscriptionTracker>>,
     event_tx: &mpsc::Sender<WsEvent>,
+    shutdown_rx: &mut watch::Receiver<bool>,
 ) -> Result<(), KalshiError> {
     let mut attempt: u32 = 0;
     let mut last_err = KalshiError::Ws("websocket disconnected".to_string());
 
     loop {
+        if *shutdown_rx.borrow() {
+            return Ok(());
+        }
+
         attempt = attempt.saturating_add(1);
-        if let Some(max) = config.max_retries {
-            if attempt > max {
-                return Err(last_err);
-            }
+        if let Some(max) = config.max_retries
+            && attempt > max
+        {
+            return Err(last_err);
         }
 
         let delay = config.backoff_delay(attempt);
         if !delay.is_zero() {
-            sleep(delay).await;
+            tokio::select! {
+                _ = sleep(delay) => {}
+                changed = shutdown_rx.changed() => {
+                    let _ = changed;
+                    return Ok(());
+                }
+            }
         }
 
-        let reconnect = match auth {
-            Some(auth) => {
-                KalshiWsLowLevelClient::connect_authenticated(env.clone(), auth.clone()).await
+        let reconnect_future = async {
+            match auth {
+                Some(auth) => {
+                    KalshiWsLowLevelClient::connect_authenticated(env.clone(), auth.clone()).await
+                }
+                None => KalshiWsLowLevelClient::connect(env.clone()).await,
             }
-            None => KalshiWsLowLevelClient::connect(env.clone()).await,
+        };
+        let reconnect = tokio::select! {
+            result = reconnect_future => result,
+            changed = shutdown_rx.changed() => {
+                let _ = changed;
+                return Ok(());
+            }
         };
 
         match reconnect {
@@ -989,6 +1166,9 @@ async fn handle_reconnect(
                     }
                 }
 
+                if *shutdown_rx.borrow() {
+                    return Ok(());
+                }
                 let _ = event_tx.send(WsEvent::Reconnected { attempt }).await;
                 return Ok(());
             }
@@ -1005,8 +1185,9 @@ mod tests {
     use super::*;
     use crate::KalshiEnvironment;
     use crate::ws::types::WsChannel;
+    use serde_json::{Value, json};
     use tokio::net::TcpListener;
-    use tokio::time::{Duration, timeout};
+    use tokio::time::{Duration, Instant, timeout};
     use tokio_tungstenite::accept_async;
     use tokio_tungstenite::tungstenite::Message;
     use url::Url;
@@ -1020,7 +1201,6 @@ mod tests {
         assert!(WsChannel::OrderGroupUpdates.is_private());
 
         assert!(!WsChannel::Ticker.is_private());
-        assert!(!WsChannel::TickerV2.is_private());
         assert!(!WsChannel::Trade.is_private());
         assert!(!WsChannel::MarketLifecycleV2.is_private());
         assert!(!WsChannel::Multivariate.is_private());
@@ -1065,6 +1245,8 @@ mod tests {
 
     #[test]
     fn subscription_tracker_apply_update_changes_fields() {
+        use crate::ws::types::WsUpdateAction;
+
         let mut tracker = SubscriptionTracker::default();
         let params = WsSubscriptionParams {
             channels: vec![WsChannel::OrderbookDelta],
@@ -1074,18 +1256,32 @@ mod tests {
         tracker.active.insert(10, params);
 
         let update = WsUpdateSubscriptionParams {
-            sid: 10,
+            action: WsUpdateAction::AddMarkets,
+            sid: Some(10),
+            sids: None,
+            market_ticker: None,
             market_tickers: Some(vec!["B".to_string()]),
+            market_id: None,
             market_ids: None,
-            event_tickers: None,
             send_initial_snapshot: Some(true),
-            shard_factor: None,
-            shard_key: None,
         };
         tracker.apply_update(&update);
 
         let updated = tracker.active.get(&10).unwrap();
-        assert_eq!(updated.market_tickers.as_ref().unwrap()[0], "B");
+        assert!(
+            updated
+                .market_tickers
+                .as_ref()
+                .unwrap()
+                .contains(&"A".to_string())
+        );
+        assert!(
+            updated
+                .market_tickers
+                .as_ref()
+                .unwrap()
+                .contains(&"B".to_string())
+        );
         assert_eq!(updated.send_initial_snapshot, Some(true));
     }
 
@@ -1198,6 +1394,82 @@ mod tests {
             .expect("timeout 2")
             .expect("event 2");
         assert!(matches!(second, WsEvent::Message(_)));
+
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn low_level_unsubscribe_sends_sids_array() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+
+            let frame = ws.next().await.expect("frame").expect("ok frame");
+            let text = match frame {
+                Message::Text(text) => text,
+                other => panic!("expected text frame, got {other:?}"),
+            };
+
+            let payload: Value = serde_json::from_str(&text).expect("valid json");
+            assert_eq!(payload["cmd"], json!("unsubscribe"));
+            assert_eq!(payload["params"]["sids"], json!([7, 9]));
+        });
+
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{}", addr),
+        };
+        let mut client = KalshiWsLowLevelClient::connect(env).await.expect("connect");
+        client
+            .unsubscribe(WsUnsubscribeParams { sids: vec![7, 9] })
+            .await
+            .expect("unsubscribe");
+
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn close_stops_reader_without_waiting_for_reconnect_backoff() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            let _ = ws.close(None).await;
+        });
+
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{}", addr),
+        };
+        let config = WsReconnectConfig {
+            max_retries: None,
+            base_delay: Duration::from_secs(5),
+            max_delay: Duration::from_secs(5),
+            jitter: 0.0,
+            resubscribe: false,
+        };
+        let mut client = KalshiWsClient::connect(env, config).await.expect("connect");
+
+        client
+            .start_reader(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        client.shutdown_timeout(Duration::from_secs(1));
+        let start = Instant::now();
+        client.close().await.expect("close");
+
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert!(client.reader_task.is_none());
 
         server.await.expect("server");
     }

@@ -4,30 +4,35 @@
 //!
 //! ## Features
 //!
-//! - **Full WebSocket support** — real-time streaming with auto-reconnect and resubscribe
-//! - **Complete REST API** — all public and authenticated endpoints
+//! - **OpenAPI parity** — full REST operation coverage for the current docs snapshot
+//! - **AsyncAPI parity** — WebSocket commands, responses, and `user_orders`
 //! - **Pagination helpers** — page-level ([`CursorPager`]) and item-level (`stream_*`) iteration
+//! - **REST reliability controls** — retry/backoff/jitter with `429 Retry-After` support
+//! - **Transport builder** — timeout/connect-timeout/headers/user-agent/proxy/custom client
 //! - **RSA-PSS authentication** — secure signing for private endpoints
 //!
-//! ## Quick Start: REST
+//! ## Quick Start: REST (Builder + Retry)
 //!
 //! ```no_run
-//! use kalshi_fast::{GetMarketsParams, KalshiEnvironment, KalshiRestClient, MarketStatus};
+//! use std::time::Duration;
+//! use kalshi_fast::{
+//!     KalshiEnvironment, KalshiRestClient, RateLimitConfig, RetryConfig,
+//! };
 //!
 //! # async fn run() -> Result<(), kalshi_fast::KalshiError> {
-//! let client = KalshiRestClient::new(KalshiEnvironment::demo());
-//!
-//! let resp = client
-//!     .get_markets(GetMarketsParams {
-//!         limit: Some(10),
-//!         status: Some(MarketStatus::Open),
-//!         ..Default::default()
+//! let client = KalshiRestClient::builder(KalshiEnvironment::demo())
+//!     .with_rate_limit_config(RateLimitConfig { read_rps: 30, write_rps: 15 })
+//!     .with_retry_config(RetryConfig {
+//!         max_retries: 4,
+//!         base_delay: Duration::from_millis(200),
+//!         max_delay: Duration::from_secs(2),
+//!         jitter: 0.2,
+//!         retry_non_idempotent: false,
 //!     })
-//!     .await?;
+//!     .build()?;
 //!
-//! for market in resp.markets {
-//!     println!("{}", market.ticker);
-//! }
+//! let status = client.get_exchange_status().await?;
+//! println!("exchange_active={}", status.exchange_active);
 //! # Ok(())
 //! # }
 //! ```
@@ -53,14 +58,14 @@
 //! ).await?;
 //!
 //! ws.subscribe(WsSubscriptionParams {
-//!     channels: vec![WsChannel::Ticker],
+//!     channels: vec![WsChannel::UserOrders],
 //!     ..Default::default()
 //! }).await?;
 //!
 //! loop {
 //!     match ws.next_event().await? {
-//!         WsEvent::Message(WsMessage::Data(WsDataMessage::Ticker { msg, .. })) => {
-//!             println!("{}: {}", msg.market_ticker, msg.price);
+//!         WsEvent::Message(WsMessage::Data(WsDataMessage::UserOrder { msg, .. })) => {
+//!             println!("order={} status={:?}", msg.order_id, msg.status);
 //!         }
 //!         WsEvent::Reconnected { attempt } => println!("Reconnected (attempt {})", attempt),
 //!         WsEvent::Disconnected { .. } => break,
@@ -167,7 +172,10 @@ pub mod ws;
 pub use auth::{KalshiAuth, KalshiAuthHeaders};
 pub use env::{KalshiEnvironment, REST_PREFIX, WS_PATH};
 pub use error::KalshiError;
-pub use rest::{CursorPager, KalshiRestClient, RateLimitConfig, RateLimitTier};
+pub use rest::{
+    CursorPager, KalshiRestClient, KalshiRestClientBuilder, RateLimitConfig, RateLimitTier,
+    RetryConfig,
+};
 pub use ws::{
     KalshiWsClient, KalshiWsLowLevelClient, WsEvent, WsEventReceiver, WsReaderConfig, WsReaderMode,
     WsReconnectConfig,

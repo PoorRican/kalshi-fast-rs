@@ -12,7 +12,6 @@
 //! | Channel | Auth | Description |
 //! |---------|------|-------------|
 //! | [`WsChannel::Ticker`] | No | Price / volume snapshots |
-//! | [`WsChannel::TickerV2`] | No | Delta-style ticker updates |
 //! | [`WsChannel::Trade`] | No | Public trades |
 //! | [`WsChannel::MarketLifecycleV2`] | No | Market open / close / settle events |
 //! | [`WsChannel::Multivariate`] | No | Multivariate market lookups |
@@ -21,6 +20,7 @@
 //! | [`WsChannel::MarketPositions`] | Yes | Position changes |
 //! | [`WsChannel::Communications`] | Yes | RFQs and quotes |
 //! | [`WsChannel::OrderGroupUpdates`] | Yes | Order-group lifecycle |
+//! | [`WsChannel::UserOrders`] | Yes | User order lifecycle updates |
 //!
 //! # Quick Start — Public Ticker
 //!
