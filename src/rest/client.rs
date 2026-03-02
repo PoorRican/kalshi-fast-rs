@@ -851,6 +851,22 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Get a single historical market by ticker.
+    pub async fn get_historical_market(
+        &self,
+        market_ticker: &str,
+    ) -> Result<GetMarketResponse, KalshiError> {
+        let path = Self::full_path(&format!("/historical/markets/{market_ticker}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
     /// Get the order book for a market, optionally limited to `depth` levels per side.
     pub async fn get_market_orderbook(
         &self,
@@ -883,6 +899,55 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// List historical fills. Requires auth.
+    pub async fn get_historical_fills(
+        &self,
+        params: GetHistoricalFillsParams,
+    ) -> Result<GetFillsResponse, KalshiError> {
+        let path = Self::full_path("/historical/fills");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List historical orders. Requires auth.
+    pub async fn get_historical_orders(
+        &self,
+        params: GetHistoricalOrdersParams,
+    ) -> Result<GetOrdersResponse, KalshiError> {
+        let path = Self::full_path("/historical/orders");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List historical markets.
+    pub async fn get_historical_markets(
+        &self,
+        params: GetHistoricalMarketsParams,
+    ) -> Result<GetMarketsResponse, KalshiError> {
+        let path = Self::full_path("/historical/markets");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Get historical data cutoffs that separate live and historical datasets.
+    pub async fn get_historical_cutoff(&self) -> Result<GetHistoricalCutoffResponse, KalshiError> {
+        let path = Self::full_path("/historical/cutoff");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
             Option::<&()>::None,
             false,
         )
@@ -1534,6 +1599,22 @@ impl KalshiRestClient {
         ));
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await
+    }
+
+    pub async fn get_historical_market_candlesticks(
+        &self,
+        ticker: &str,
+        params: GetMarketCandlesticksHistoricalParams,
+    ) -> Result<GetMarketCandlesticksHistoricalResponse, KalshiError> {
+        let path = Self::full_path(&format!("/historical/markets/{ticker}/candlesticks"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
     }
 
     pub async fn get_market_candlesticks(

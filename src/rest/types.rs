@@ -2355,6 +2355,51 @@ pub struct GetMarketCandlesticksParams {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GetMarketCandlesticksHistoricalParams {
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub period_interval: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalMarketsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mve_filter: Option<MveFilter>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalFillsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalOrdersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct GetEventCandlesticksParams {
     pub start_ts: i64,
     pub end_ts: i64,
@@ -2374,6 +2419,62 @@ pub struct GetMarketCandlesticksResponse {
     pub ticker: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub candlesticks: Vec<MarketCandlestick>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BidAskDistributionHistorical {
+    pub open: FixedPointDollars,
+    pub low: FixedPointDollars,
+    pub high: FixedPointDollars,
+    pub close: FixedPointDollars,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PriceDistributionHistorical {
+    #[serde(default)]
+    pub open: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub low: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub high: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub close: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub mean: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub previous: Option<FixedPointDollars>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MarketCandlestickHistorical {
+    pub end_period_ts: i64,
+    pub yes_bid: BidAskDistributionHistorical,
+    pub yes_ask: BidAskDistributionHistorical,
+    pub price: PriceDistributionHistorical,
+    pub volume: FixedPointCount,
+    pub open_interest: FixedPointCount,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMarketCandlesticksHistoricalResponse {
+    pub ticker: String,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub candlesticks: Vec<MarketCandlestickHistorical>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetHistoricalCutoffResponse {
+    pub market_settled_ts: String,
+    pub trades_created_ts: String,
+    pub orders_updated_ts: String,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

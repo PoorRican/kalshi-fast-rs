@@ -318,6 +318,57 @@ fn get_subaccount_transfers_params_serializes_correctly() {
     assert_eq!(json["limit"], 20);
 }
 
+#[test]
+fn historical_params_serialize_correctly() {
+    let markets = kalshi_fast::GetHistoricalMarketsParams {
+        limit: Some(100),
+        cursor: Some("c2".into()),
+        tickers: Some("MKT-1,MKT-2".into()),
+        event_ticker: Some("EVT-1".into()),
+        mve_filter: Some(MveFilter::Exclude),
+    };
+    let markets_json = serde_json::to_value(&markets).unwrap();
+    assert_eq!(markets_json["limit"], 100);
+    assert_eq!(markets_json["cursor"], "c2");
+    assert_eq!(markets_json["tickers"], "MKT-1,MKT-2");
+    assert_eq!(markets_json["event_ticker"], "EVT-1");
+    assert_eq!(markets_json["mve_filter"], "exclude");
+
+    let fills = kalshi_fast::GetHistoricalFillsParams {
+        ticker: Some("MKT-1".into()),
+        max_ts: Some(1700000000),
+        limit: Some(25),
+        cursor: Some("c3".into()),
+    };
+    let fills_json = serde_json::to_value(&fills).unwrap();
+    assert_eq!(fills_json["ticker"], "MKT-1");
+    assert_eq!(fills_json["max_ts"], 1700000000);
+    assert_eq!(fills_json["limit"], 25);
+    assert_eq!(fills_json["cursor"], "c3");
+
+    let orders = kalshi_fast::GetHistoricalOrdersParams {
+        ticker: Some("MKT-1".into()),
+        max_ts: Some(1700000100),
+        limit: Some(15),
+        cursor: Some("c4".into()),
+    };
+    let orders_json = serde_json::to_value(&orders).unwrap();
+    assert_eq!(orders_json["ticker"], "MKT-1");
+    assert_eq!(orders_json["max_ts"], 1700000100);
+    assert_eq!(orders_json["limit"], 15);
+    assert_eq!(orders_json["cursor"], "c4");
+
+    let candlesticks = kalshi_fast::GetMarketCandlesticksHistoricalParams {
+        start_ts: 1700000000,
+        end_ts: 1700003600,
+        period_interval: 60,
+    };
+    let candlesticks_json = serde_json::to_value(&candlesticks).unwrap();
+    assert_eq!(candlesticks_json["start_ts"], 1700000000);
+    assert_eq!(candlesticks_json["end_ts"], 1700003600);
+    assert_eq!(candlesticks_json["period_interval"], 60);
+}
+
 // ============================================================================
 // Response Deserialization Tests
 // ============================================================================
@@ -564,6 +615,60 @@ fn get_event_candlesticks_response_deserializes_nested_market_arrays() {
     assert_eq!(resp.market_candlesticks.len(), 1);
     assert_eq!(resp.market_candlesticks[0].len(), 1);
     assert_eq!(resp.market_candlesticks[0][0].open_interest_fp, "20.00");
+}
+
+#[test]
+fn get_market_candlesticks_historical_response_deserializes() {
+    let json = r#"{
+        "ticker": "MKT-1",
+        "candlesticks": [{
+            "end_period_ts": 1700003600,
+            "yes_bid": {
+                "open": "0.1000",
+                "low": "0.0900",
+                "high": "0.1100",
+                "close": "0.1000"
+            },
+            "yes_ask": {
+                "open": "0.2000",
+                "low": "0.1900",
+                "high": "0.2100",
+                "close": "0.2000"
+            },
+            "price": {
+                "open": "0.1500",
+                "low": "0.1400",
+                "high": "0.1600",
+                "close": "0.1500",
+                "mean": "0.1500",
+                "previous": "0.1400"
+            },
+            "volume": "10.00",
+            "open_interest": "20.00"
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetMarketCandlesticksHistoricalResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.ticker, "MKT-1");
+    assert_eq!(resp.candlesticks.len(), 1);
+    assert_eq!(resp.candlesticks[0].yes_bid.open, "0.1000");
+    assert_eq!(resp.candlesticks[0].price.mean.as_deref(), Some("0.1500"));
+    assert_eq!(resp.candlesticks[0].volume, "10.00");
+}
+
+#[test]
+fn get_historical_cutoff_response_deserializes() {
+    let json = r#"{
+        "market_settled_ts": "2025-01-01T00:00:00Z",
+        "trades_created_ts": "2025-01-02T00:00:00Z",
+        "orders_updated_ts": "2025-01-03T00:00:00Z"
+    }"#;
+
+    let resp: kalshi_fast::GetHistoricalCutoffResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.market_settled_ts, "2025-01-01T00:00:00Z");
+    assert_eq!(resp.trades_created_ts, "2025-01-02T00:00:00Z");
+    assert_eq!(resp.orders_updated_ts, "2025-01-03T00:00:00Z");
 }
 
 #[test]
