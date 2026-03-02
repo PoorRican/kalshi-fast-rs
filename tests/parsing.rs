@@ -1136,7 +1136,8 @@ fn event_metadata_deserializes_with_all_fields() {
         "image_url": "https://example.com/img.png",
         "featured_image_url": "https://example.com/feat.png",
         "market_details": [{"market_ticker": "MKT-1", "image_url": "https://example.com/m.png", "color_code": "#FF0000"}],
-        "settlement_sources": []
+        "settlement_sources": [],
+        "new_field_from_changelog": "kept"
     }"##;
 
     let meta: EventMetadata = serde_json::from_str(json).unwrap();
@@ -1157,6 +1158,12 @@ fn event_metadata_deserializes_with_all_fields() {
     assert_eq!(
         meta.market_details[0].color_code.as_deref(),
         Some("#FF0000")
+    );
+    assert_eq!(
+        meta.extra
+            .get("new_field_from_changelog")
+            .and_then(|v| v.as_str()),
+        Some("kept")
     );
 }
 
@@ -1188,7 +1195,8 @@ fn event_data_deserializes_with_partial_product_metadata() {
         "event_ticker": "EVT-1",
         "product_metadata": {
             "market_details": [],
-            "settlement_sources": []
+            "settlement_sources": [],
+            "new_product_flag": true
         }
     }"#;
 
@@ -1196,4 +1204,276 @@ fn event_data_deserializes_with_partial_product_metadata() {
     assert_eq!(event.event_ticker, "EVT-1");
     let meta = event.product_metadata.unwrap();
     assert!(meta.image_url.is_none());
+    assert_eq!(
+        meta.extra.get("new_product_flag").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+}
+
+#[test]
+fn get_event_response_deserializes_nested_event_markets() {
+    let json = r#"{
+        "event": {
+            "event_ticker": "EVT-1",
+            "markets": [{
+                "ticker": "MKT-NESTED-1",
+                "market_type": "binary",
+                "yes_bid_dollars": "0.5600",
+                "yes_ask_dollars": "0.5700",
+                "volume_fp": "10.00",
+                "open_interest_fp": "10.00"
+            }]
+        },
+        "markets": [{
+            "ticker": "MKT-TOP-1",
+            "market_type": "binary",
+            "yes_bid_dollars": "0.6600",
+            "yes_ask_dollars": "0.6700",
+            "volume_fp": "11.00",
+            "open_interest_fp": "11.00"
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetEventResponse = serde_json::from_str(json).unwrap();
+    let nested = resp.event.markets.as_ref().unwrap();
+    assert_eq!(nested.len(), 1);
+    assert_eq!(nested[0].ticker, "MKT-NESTED-1");
+    assert_eq!(resp.markets.len(), 1);
+    assert_eq!(resp.markets[0].ticker, "MKT-TOP-1");
+}
+
+#[test]
+fn get_event_response_deserializes_without_removed_cent_fields() {
+    let json = r#"{
+        "event": {
+            "event_ticker": "EVT-2",
+            "markets": [{
+                "ticker": "MKT-2",
+                "market_type": "binary",
+                "yes_bid_dollars": "0.5600",
+                "yes_ask_dollars": "0.5700",
+                "volume_fp": "10.00",
+                "open_interest_fp": "10.00",
+                "notional_value_dollars": "1.0000",
+                "liquidity_dollars": "20.0000",
+                "price_level_structure": "linear_cent",
+                "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
+            }]
+        },
+        "markets": []
+    }"#;
+
+    let resp: kalshi_fast::GetEventResponse = serde_json::from_str(json).unwrap();
+    let market = &resp.event.markets.as_ref().unwrap()[0];
+    assert_eq!(market.yes_bid, None);
+    assert_eq!(market.yes_ask, None);
+    assert_eq!(market.notional_value, None);
+    assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
+    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
+}
+
+#[test]
+fn get_api_keys_response_deserializes_typed() {
+    let json = r#"{
+        "api_keys": [{
+            "api_key_id": "key-1",
+            "name": "test key",
+            "scopes": ["read", "write"]
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetApiKeysResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.api_keys.len(), 1);
+    assert_eq!(resp.api_keys[0].api_key_id, "key-1");
+    assert_eq!(resp.api_keys[0].scopes, vec!["read", "write"]);
+}
+
+#[test]
+fn quotes_and_rfqs_responses_deserialize_typed() {
+    let quotes_json = r#"{
+        "quotes": [{
+            "id": "q-1",
+            "rfq_id": "r-1",
+            "creator_id": "u-1",
+            "rfq_creator_id": "u-2",
+            "market_ticker": "MKT-1",
+            "contracts": 10,
+            "contracts_fp": "10.00",
+            "yes_bid": 44,
+            "no_bid": 56,
+            "yes_bid_dollars": "0.4400",
+            "no_bid_dollars": "0.5600",
+            "created_ts": "2023-11-07T05:31:56Z",
+            "updated_ts": "2023-11-07T05:31:56Z",
+            "status": "open",
+            "rfq_target_cost_dollars": "100.0000"
+        }]
+    }"#;
+    let quotes: kalshi_fast::GetQuotesResponse = serde_json::from_str(quotes_json).unwrap();
+    assert_eq!(quotes.quotes.len(), 1);
+    assert_eq!(
+        quotes.quotes[0].rfq_target_cost_dollars.as_deref(),
+        Some("100.0000")
+    );
+
+    let rfqs_json = r#"{
+        "rfqs": [{
+            "id": "r-1",
+            "creator_id": "u-1",
+            "market_ticker": "MKT-1",
+            "contracts": 10,
+            "contracts_fp": "10.00",
+            "target_cost_dollars": "100.0000",
+            "status": "open",
+            "created_ts": "2023-11-07T05:31:56Z"
+        }]
+    }"#;
+    let rfqs: kalshi_fast::GetRFQsResponse = serde_json::from_str(rfqs_json).unwrap();
+    assert_eq!(rfqs.rfqs.len(), 1);
+    assert_eq!(
+        rfqs.rfqs[0].target_cost_dollars.as_deref(),
+        Some("100.0000")
+    );
+}
+
+#[test]
+fn multivariate_collections_and_lookup_responses_deserialize_typed() {
+    let json = r#"{
+        "multivariate_contracts": [{
+            "collection_ticker": "COL-1",
+            "series_ticker": "SER-1",
+            "title": "Collection",
+            "description": "Desc",
+            "open_date": "2023-11-07T05:31:56Z",
+            "close_date": "2023-11-07T05:31:56Z",
+            "associated_events": [{
+                "ticker": "EVT-1",
+                "is_yes_only": false,
+                "active_quoters": ["u-1"]
+            }],
+            "associated_event_tickers": ["EVT-1"],
+            "is_ordered": false,
+            "is_single_market_per_event": true,
+            "is_all_yes": false,
+            "size_min": 1,
+            "size_max": 2,
+            "functional_description": "f(x)"
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetMultivariateEventCollectionsResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.multivariate_contracts.len(), 1);
+    assert_eq!(
+        resp.multivariate_contracts[0].associated_events[0].ticker,
+        "EVT-1"
+    );
+
+    let lookup_json = r#"{
+        "lookup_points": [{
+            "event_ticker": "EVT-1",
+            "market_ticker": "MKT-1",
+            "selected_markets": [{
+                "event_ticker": "EVT-1",
+                "market_ticker": "MKT-1",
+                "side": "yes"
+            }],
+            "last_queried_ts": "2023-11-07T05:31:56Z"
+        }]
+    }"#;
+    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
+        serde_json::from_str(lookup_json).unwrap();
+    assert_eq!(lookup.lookup_points.len(), 1);
+    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
+}
+
+#[test]
+fn batch_order_responses_deserialize_typed() {
+    let create_json = r#"{
+        "orders": [{
+            "client_order_id": "c-1",
+            "order": {"order_id": "o-1", "ticker": "MKT-1"},
+            "error": null
+        }]
+    }"#;
+    let created: kalshi_fast::BatchCreateOrdersResponse =
+        serde_json::from_str(create_json).unwrap();
+    assert_eq!(created.orders.len(), 1);
+    assert_eq!(
+        created.orders[0]
+            .order
+            .as_ref()
+            .map(|o| o.order_id.as_str()),
+        Some("o-1")
+    );
+
+    let cancel_json = r#"{
+        "orders": [{
+            "order_id": "o-1",
+            "order": {"order_id": "o-1", "ticker": "MKT-1"},
+            "reduced_by": 1,
+            "reduced_by_fp": "1.00",
+            "error": null
+        }]
+    }"#;
+    let canceled: kalshi_fast::BatchCancelOrdersResponse =
+        serde_json::from_str(cancel_json).unwrap();
+    assert_eq!(canceled.orders.len(), 1);
+    assert_eq!(canceled.orders[0].reduced_by_fp, "1.00");
+}
+
+#[test]
+fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
+    let queue_json = r#"{
+        "queue_positions": [{
+            "order_id": "o-1",
+            "market_ticker": "MKT-1",
+            "queue_position": 4,
+            "queue_position_fp": "4.00"
+        }]
+    }"#;
+    let queue: kalshi_fast::GetOrderQueuePositionsResponse =
+        serde_json::from_str(queue_json).unwrap();
+    assert_eq!(queue.queue_positions.len(), 1);
+    assert_eq!(
+        queue.queue_positions[0].queue_position_fp.as_deref(),
+        Some("4.00")
+    );
+
+    let forecast_json = r#"{
+        "forecast_history": [{
+            "event_ticker": "EVT-1",
+            "end_period_ts": 123,
+            "period_interval": 60,
+            "percentile_points": [{
+                "percentile": 5000,
+                "raw_numerical_forecast": 12.3,
+                "numerical_forecast": 12.3,
+                "formatted_forecast": "12.3"
+            }]
+        }]
+    }"#;
+    let forecast: kalshi_fast::GetEventForecastPercentilesHistoryResponse =
+        serde_json::from_str(forecast_json).unwrap();
+    assert_eq!(forecast.forecast_history.len(), 1);
+    assert_eq!(forecast.forecast_history[0].percentile_points.len(), 1);
+
+    let targets_json = r#"{
+        "structured_targets": [{
+            "id": "st-1",
+            "name": "Target 1",
+            "type": "politics",
+            "details": {"k":"v"},
+            "source_id": "source-1",
+            "source_ids": {"alt":"a-1"},
+            "last_updated_ts": "2023-11-07T05:31:56Z"
+        }]
+    }"#;
+    let targets: kalshi_fast::GetStructuredTargetsResponse =
+        serde_json::from_str(targets_json).unwrap();
+    assert_eq!(targets.structured_targets.len(), 1);
+    assert_eq!(
+        targets.structured_targets[0].target_type.as_deref(),
+        Some("politics")
+    );
 }
