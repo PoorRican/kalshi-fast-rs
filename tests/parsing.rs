@@ -377,7 +377,193 @@ fn get_events_response_deserializes() {
 
     let resp: kalshi_fast::GetEventsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.events.len(), 1);
+    assert!(resp.milestones.is_empty());
     assert!(resp.cursor.is_none());
+}
+
+#[test]
+fn get_events_response_deserializes_with_milestones() {
+    let json = r#"{
+        "events": [{"event_ticker": "EVT-1"}],
+        "cursor": "next",
+        "milestones": [{
+            "id": "ms-1",
+            "category": "politics",
+            "type": "debate",
+            "start_date": "2023-11-07T05:31:56Z",
+            "related_event_tickers": ["EVT-1"],
+            "title": "Debate Night",
+            "notification_message": "Debate starts now",
+            "details": {"network": "PBS"},
+            "primary_event_tickers": ["EVT-1"],
+            "last_updated_ts": "2023-11-07T05:31:56Z",
+            "end_date": "2023-11-08T05:31:56Z",
+            "source_id": "src-1",
+            "source_ids": {"provider": "kalshi"}
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetEventsResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.events.len(), 1);
+    assert_eq!(resp.cursor.as_deref(), Some("next"));
+    assert_eq!(resp.milestones.len(), 1);
+    assert_eq!(resp.milestones[0].id.as_deref(), Some("ms-1"));
+    assert_eq!(resp.milestones[0].milestone_type.as_deref(), Some("debate"));
+}
+
+#[test]
+fn get_event_response_deserializes_rich_schema_fields() {
+    let json = r#"{
+        "event": {
+            "event_ticker": "EVT-1",
+            "series_ticker": "SER-1",
+            "sub_title": "Sub",
+            "title": "Title",
+            "collateral_return_type": "binary",
+            "mutually_exclusive": true,
+            "category": "Politics",
+            "available_on_brokers": true,
+            "product_metadata": {},
+            "strike_date": "2023-11-07T05:31:56Z",
+            "strike_period": "day",
+            "last_updated_ts": "2023-11-07T05:31:56Z",
+            "markets": []
+        },
+        "markets": [{
+            "ticker": "MKT-1",
+            "event_ticker": "EVT-1",
+            "market_type": "binary",
+            "yes_bid_size_fp": "10.00",
+            "yes_ask_size_fp": "11.00",
+            "settlement_timer_seconds": 123,
+            "fractional_trading_enabled": true,
+            "notional_value": 100,
+            "notional_value_dollars": "1.0000",
+            "previous_yes_bid": 50,
+            "previous_yes_bid_dollars": "0.5000",
+            "previous_yes_ask": 55,
+            "previous_yes_ask_dollars": "0.5500",
+            "previous_price": 52,
+            "previous_price_dollars": "0.5200",
+            "liquidity": 1000,
+            "liquidity_dollars": "10.0000",
+            "expiration_value": "123.4",
+            "tick_size": 1,
+            "expected_expiration_time": "2023-11-07T05:31:56Z",
+            "settlement_value": 100,
+            "settlement_value_dollars": "1.0000",
+            "settlement_ts": "2023-11-07T05:31:56Z",
+            "fee_waiver_expiration_time": "2023-11-07T05:31:56Z",
+            "early_close_condition": "close when event occurs",
+            "strike_type": "greater",
+            "floor_strike": 100.0,
+            "cap_strike": 200.0,
+            "functional_strike": "f(x)",
+            "mve_collection_ticker": "COL-1",
+            "primary_participant_key": "pk-1",
+            "is_provisional": true,
+            "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}]
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetEventResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.event.event_ticker, "EVT-1");
+    assert_eq!(resp.event.collateral_return_type.as_deref(), Some("binary"));
+    assert_eq!(resp.event.mutually_exclusive, Some(true));
+    assert_eq!(resp.markets.len(), 1);
+    assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
+    assert_eq!(
+        resp.markets[0].liquidity_dollars.as_deref(),
+        Some("10.0000")
+    );
+    assert_eq!(resp.markets[0].strike_type.as_deref(), Some("greater"));
+}
+
+#[test]
+fn batch_get_market_candlesticks_response_deserializes_typed() {
+    let json = r#"{
+        "markets": [{
+            "market_ticker": "MKT-1",
+            "candlesticks": [{
+                "end_period_ts": 123,
+                "yes_bid": {
+                    "open": 10, "open_dollars": "0.1000",
+                    "low": 9, "low_dollars": "0.0900",
+                    "high": 11, "high_dollars": "0.1100",
+                    "close": 10, "close_dollars": "0.1000"
+                },
+                "yes_ask": {
+                    "open": 20, "open_dollars": "0.2000",
+                    "low": 19, "low_dollars": "0.1900",
+                    "high": 21, "high_dollars": "0.2100",
+                    "close": 20, "close_dollars": "0.2000"
+                },
+                "price": {
+                    "open": 15, "open_dollars": "0.1500",
+                    "low": 14, "low_dollars": "0.1400",
+                    "high": 16, "high_dollars": "0.1600",
+                    "close": 15, "close_dollars": "0.1500",
+                    "mean": 15, "mean_dollars": "0.1500",
+                    "previous": 13, "previous_dollars": "0.1300",
+                    "min": 12, "min_dollars": "0.1200",
+                    "max": 17, "max_dollars": "0.1700"
+                },
+                "volume": 123,
+                "volume_fp": "10.00",
+                "open_interest": 456,
+                "open_interest_fp": "20.00"
+            }]
+        }]
+    }"#;
+
+    let resp: kalshi_fast::BatchGetMarketCandlesticksResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.markets.len(), 1);
+    assert_eq!(resp.markets[0].market_ticker, "MKT-1");
+    assert_eq!(resp.markets[0].candlesticks.len(), 1);
+    assert_eq!(resp.markets[0].candlesticks[0].price.mean, Some(15));
+}
+
+#[test]
+fn get_event_candlesticks_response_deserializes_nested_market_arrays() {
+    let json = r#"{
+        "market_tickers": ["MKT-1"],
+        "market_candlesticks": [[{
+            "end_period_ts": 123,
+            "yes_bid": {
+                "open": 10, "open_dollars": "0.1000",
+                "low": 9, "low_dollars": "0.0900",
+                "high": 11, "high_dollars": "0.1100",
+                "close": 10, "close_dollars": "0.1000"
+            },
+            "yes_ask": {
+                "open": 20, "open_dollars": "0.2000",
+                "low": 19, "low_dollars": "0.1900",
+                "high": 21, "high_dollars": "0.2100",
+                "close": 20, "close_dollars": "0.2000"
+            },
+            "price": {
+                "open": 15, "open_dollars": "0.1500",
+                "low": 14, "low_dollars": "0.1400",
+                "high": 16, "high_dollars": "0.1600",
+                "close": 15, "close_dollars": "0.1500",
+                "mean": 15, "mean_dollars": "0.1500",
+                "previous": 13, "previous_dollars": "0.1300",
+                "min": 12, "min_dollars": "0.1200",
+                "max": 17, "max_dollars": "0.1700"
+            },
+            "volume": 123,
+            "volume_fp": "10.00",
+            "open_interest": 456,
+            "open_interest_fp": "20.00"
+        }]],
+        "adjusted_end_ts": 123
+    }"#;
+
+    let resp: kalshi_fast::GetEventCandlesticksResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.market_tickers, vec!["MKT-1"]);
+    assert_eq!(resp.market_candlesticks.len(), 1);
+    assert_eq!(resp.market_candlesticks[0].len(), 1);
+    assert_eq!(resp.market_candlesticks[0][0].open_interest_fp, "20.00");
 }
 
 #[test]
