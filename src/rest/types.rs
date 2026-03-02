@@ -21,13 +21,16 @@ pub struct SettlementSource {
 #[derive(Debug, Clone, Deserialize)]
 pub struct MarketMetadata {
     pub market_ticker: String,
-    pub image_url: String,
-    pub color_code: String,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub color_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct EventMetadata {
-    pub image_url: String,
+    #[serde(default)]
+    pub image_url: Option<String>,
     #[serde(default)]
     pub featured_image_url: Option<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]

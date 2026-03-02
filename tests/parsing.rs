@@ -3,14 +3,15 @@
 pub(crate) use cargo_husky as _;
 use kalshi_fast::{
     ApplySubaccountTransferResponse, BuySell, CreateOrderRequest, CreateSubaccountResponse,
-    ErrorResponse, EventStatus, GetAccountApiLimitsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
-    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
-    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
-    GetTradesResponse, GetUserDataTimestampResponse, MarketStatus, MveFilter, OrderStatus,
-    OrderType, PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, YesNo,
+    ErrorResponse, EventData, EventMetadata, EventStatus, GetAccountApiLimitsResponse,
+    GetEventsParams, GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse,
+    GetExchangeStatusResponse, GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse,
+    GetMarketsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
+    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
+    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
+    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    MveFilter, OrderStatus, OrderType, PositionCountFilter, PriceRange, SelfTradePreventionType,
+    TimeInForce, YesNo,
 };
 
 // ============================================================================
@@ -937,4 +938,76 @@ fn create_order_request_validate_ok_with_yes_price() {
         ..Default::default()
     };
     assert!(req.validate().is_ok());
+}
+
+// ============================================================================
+// Optional Field Deserialization Tests (image_url / color_code)
+// ============================================================================
+
+#[test]
+fn event_metadata_deserializes_with_all_fields() {
+    let json = r##"{
+        "image_url": "https://example.com/img.png",
+        "featured_image_url": "https://example.com/feat.png",
+        "market_details": [{"market_ticker": "MKT-1", "image_url": "https://example.com/m.png", "color_code": "#FF0000"}],
+        "settlement_sources": []
+    }"##;
+
+    let meta: EventMetadata = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        meta.image_url.as_deref(),
+        Some("https://example.com/img.png")
+    );
+    assert_eq!(
+        meta.featured_image_url.as_deref(),
+        Some("https://example.com/feat.png")
+    );
+    assert_eq!(meta.market_details.len(), 1);
+    assert_eq!(meta.market_details[0].market_ticker, "MKT-1");
+    assert_eq!(
+        meta.market_details[0].image_url.as_deref(),
+        Some("https://example.com/m.png")
+    );
+    assert_eq!(
+        meta.market_details[0].color_code.as_deref(),
+        Some("#FF0000")
+    );
+}
+
+#[test]
+fn event_metadata_deserializes_without_image_url() {
+    let json = r#"{
+        "market_details": [],
+        "settlement_sources": []
+    }"#;
+
+    let meta: EventMetadata = serde_json::from_str(json).unwrap();
+    assert!(meta.image_url.is_none());
+    assert!(meta.featured_image_url.is_none());
+}
+
+#[test]
+fn market_metadata_deserializes_without_image_url() {
+    let json = r#"{"market_ticker": "MKT-1"}"#;
+
+    let meta: MarketMetadata = serde_json::from_str(json).unwrap();
+    assert_eq!(meta.market_ticker, "MKT-1");
+    assert!(meta.image_url.is_none());
+    assert!(meta.color_code.is_none());
+}
+
+#[test]
+fn event_data_deserializes_with_partial_product_metadata() {
+    let json = r#"{
+        "event_ticker": "EVT-1",
+        "product_metadata": {
+            "market_details": [],
+            "settlement_sources": []
+        }
+    }"#;
+
+    let event: EventData = serde_json::from_str(json).unwrap();
+    assert_eq!(event.event_ticker, "EVT-1");
+    let meta = event.product_metadata.unwrap();
+    assert!(meta.image_url.is_none());
 }
