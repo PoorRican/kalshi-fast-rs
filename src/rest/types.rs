@@ -148,6 +148,33 @@ impl GetEventsParams {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Milestone {
     #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default, rename = "type")]
+    pub milestone_type: Option<String>,
+    #[serde(default)]
+    pub start_date: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub related_event_tickers: Vec<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub notification_message: Option<String>,
+    #[serde(default)]
+    pub details: Option<Map<String, Value>>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub primary_event_tickers: Vec<String>,
+    #[serde(default)]
+    pub last_updated_ts: Option<String>,
+    #[serde(default)]
+    pub end_date: Option<String>,
+    #[serde(default)]
+    pub source_id: Option<String>,
+    #[serde(default)]
+    pub source_ids: Option<Map<String, Value>>,
+    // Legacy/alternative shape fields still observed in some payloads.
+    #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub ts: Option<i64>,
@@ -163,11 +190,23 @@ pub struct EventData {
     #[serde(default)]
     pub series_ticker: Option<String>,
     #[serde(default)]
+    pub collateral_return_type: Option<String>,
+    #[serde(default)]
+    pub mutually_exclusive: Option<bool>,
+    #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
     pub sub_title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    #[serde(default)]
+    pub available_on_brokers: Option<bool>,
+    #[serde(default)]
+    pub strike_date: Option<String>,
+    #[serde(default)]
+    pub strike_period: Option<String>,
+    #[serde(default)]
+    pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -207,6 +246,8 @@ pub struct EventData {
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetEventsResponse {
     pub events: Vec<EventData>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub milestones: Vec<Milestone>,
     #[serde(default)]
     pub cursor: Option<String>,
 }
@@ -220,6 +261,8 @@ pub struct GetEventParams {
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetEventResponse {
     pub event: EventData,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub markets: Vec<Market>,
 }
 
 /// --- Markets ---
@@ -305,6 +348,8 @@ pub struct Market {
     #[serde(default)]
     pub response_price_units: Option<String>,
     #[serde(default)]
+    pub settlement_timer_seconds: Option<i64>,
+    #[serde(default)]
     pub price_level_structure: Option<String>,
     #[serde(default)]
     pub open_ts: Option<i64>,
@@ -318,6 +363,8 @@ pub struct Market {
     pub open_time: Option<String>,
     #[serde(default)]
     pub close_time: Option<String>,
+    #[serde(default)]
+    pub expected_expiration_time: Option<String>,
     #[serde(default)]
     pub expiration_time: Option<String>,
     #[serde(default)]
@@ -337,7 +384,11 @@ pub struct Market {
     #[serde(default)]
     pub yes_bid: Option<i64>,
     #[serde(default)]
+    pub yes_bid_size_fp: Option<FixedPointCount>,
+    #[serde(default)]
     pub yes_ask: Option<i64>,
+    #[serde(default)]
+    pub yes_ask_size_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_bid: Option<i64>,
     #[serde(default)]
@@ -371,13 +422,61 @@ pub struct Market {
     #[serde(default)]
     pub open_interest_fp: Option<String>,
     #[serde(default)]
+    pub fractional_trading_enabled: Option<bool>,
+    #[serde(default)]
+    pub notional_value: Option<i64>,
+    #[serde(default)]
+    pub notional_value_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub previous_yes_bid: Option<i64>,
+    #[serde(default)]
+    pub previous_yes_bid_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub previous_yes_ask: Option<i64>,
+    #[serde(default)]
+    pub previous_yes_ask_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub previous_price: Option<i64>,
+    #[serde(default)]
+    pub previous_price_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
     pub liquidity: Option<i64>,
     #[serde(default)]
     pub liquidity_fp: Option<String>,
     #[serde(default)]
+    pub liquidity_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub expiration_value: Option<String>,
+    #[serde(default)]
+    pub tick_size: Option<i64>,
+    #[serde(default)]
+    pub settlement_value: Option<i64>,
+    #[serde(default)]
+    pub settlement_value_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub settlement_ts: Option<String>,
+    #[serde(default)]
+    pub fee_waiver_expiration_time: Option<String>,
+    #[serde(default)]
+    pub early_close_condition: Option<String>,
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    #[serde(default)]
+    pub floor_strike: Option<f64>,
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    #[serde(default)]
+    pub functional_strike: Option<String>,
+    #[serde(default)]
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
+    pub mve_collection_ticker: Option<String>,
+    #[serde(default)]
     pub mve_selected_legs: Option<Vec<MveSelectedLeg>>,
+    #[serde(default)]
+    pub primary_participant_key: Option<String>,
+    #[serde(default)]
+    pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
 }
@@ -1655,9 +1754,76 @@ pub struct BatchGetMarketCandlesticksParams {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct BidAskDistribution {
+    pub open: i64,
+    pub open_dollars: FixedPointDollars,
+    pub low: i64,
+    pub low_dollars: FixedPointDollars,
+    pub high: i64,
+    pub high_dollars: FixedPointDollars,
+    pub close: i64,
+    pub close_dollars: FixedPointDollars,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PriceDistribution {
+    #[serde(default)]
+    pub open: Option<i64>,
+    #[serde(default)]
+    pub open_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub low: Option<i64>,
+    #[serde(default)]
+    pub low_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub high: Option<i64>,
+    #[serde(default)]
+    pub high_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub close: Option<i64>,
+    #[serde(default)]
+    pub close_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub mean: Option<i64>,
+    #[serde(default)]
+    pub mean_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub previous: Option<i64>,
+    #[serde(default)]
+    pub previous_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub min: Option<i64>,
+    #[serde(default)]
+    pub min_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub max: Option<i64>,
+    #[serde(default)]
+    pub max_dollars: Option<FixedPointDollars>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MarketCandlestick {
+    pub end_period_ts: i64,
+    pub yes_bid: BidAskDistribution,
+    pub yes_ask: BidAskDistribution,
+    pub price: PriceDistribution,
+    pub volume: i64,
+    pub volume_fp: FixedPointCount,
+    pub open_interest: i64,
+    pub open_interest_fp: FixedPointCount,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MarketCandlesticksResponse {
+    pub market_ticker: String,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub candlesticks: Vec<MarketCandlestick>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct BatchGetMarketCandlesticksResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub markets: Vec<GenericObject>,
+    pub markets: Vec<MarketCandlesticksResponse>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1964,7 +2130,7 @@ pub struct GetEventForecastPercentileHistoryParams {
 pub struct GetMarketCandlesticksResponse {
     pub ticker: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub candlesticks: Vec<GenericObject>,
+    pub candlesticks: Vec<MarketCandlestick>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1972,7 +2138,7 @@ pub struct GetEventCandlesticksResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub market_tickers: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub market_candlesticks: Vec<GenericObject>,
+    pub market_candlesticks: Vec<Vec<MarketCandlestick>>,
     pub adjusted_end_ts: i64,
 }
 
