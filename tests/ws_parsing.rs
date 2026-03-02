@@ -177,28 +177,6 @@ fn ws_ticker_message_parses() {
 }
 
 #[test]
-fn ws_ticker_v2_message_parses() {
-    let json = r#"{
-        "type": "ticker_v2",
-        "msg": {
-            "market_ticker": "INXD-25JAN10-T17900",
-            "price": 55,
-            "ts": 1700000000000
-        }
-    }"#;
-
-    let env: WsEnvelope = serde_json::from_str(json).unwrap();
-    let msg = env.into_message().unwrap();
-    match msg {
-        WsMessage::Data(WsDataMessage::TickerV2 { msg, .. }) => {
-            assert_eq!(msg.market_ticker, "INXD-25JAN10-T17900");
-            assert_eq!(msg.price, Some(55));
-        }
-        other => panic!("unexpected: {:?}", other),
-    }
-}
-
-#[test]
 fn ws_trade_message_parses() {
     let json = r#"{
         "type": "trade",

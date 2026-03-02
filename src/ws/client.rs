@@ -2,11 +2,9 @@ use crate::auth::KalshiAuth;
 use crate::env::{KalshiEnvironment, WS_PATH};
 use crate::error::KalshiError;
 use crate::ws::types::{
-    WsEnvelope, WsListSubscriptionsCmd, WsMessage, WsRawEvent, WsSubscribeCmd, WsSubscribeCmdV2,
-    WsSubscriptionParams, WsSubscriptionParamsV2, WsUnsubscribeCmd, WsUnsubscribeCmdV2,
-    WsUnsubscribeParams, WsUnsubscribeParamsV2, WsUpdateAction, WsUpdateSubscriptionCmd,
-    WsUpdateSubscriptionCmdV2, WsUpdateSubscriptionParams, WsUpdateSubscriptionParamsV2,
-    validate_subscription, validate_subscription_v2, validate_update_v2,
+    WsEnvelope, WsListSubscriptionsCmd, WsMessage, WsRawEvent, WsSubscribeCmd,
+    WsSubscriptionParams, WsUnsubscribeCmd, WsUnsubscribeParams, WsUpdateSubscriptionCmd,
+    WsUpdateSubscriptionParams, validate_subscription, validate_update,
 };
 
 use futures::{SinkExt, StreamExt};
@@ -193,29 +191,8 @@ impl SubscriptionTracker {
     }
 
     fn apply_update(&mut self, update: &WsUpdateSubscriptionParams) {
-        if let Some(params) = self.active.get_mut(&update.sid) {
-            if let Some(value) = update.market_tickers.clone() {
-                params.market_tickers = Some(value);
-            }
-            if let Some(value) = update.market_ids.clone() {
-                params.market_ids = Some(value);
-            }
-            if let Some(value) = update.event_tickers.clone() {
-                params.event_tickers = Some(value);
-            }
-            if let Some(value) = update.send_initial_snapshot {
-                params.send_initial_snapshot = Some(value);
-            }
-            if let Some(value) = update.shard_factor {
-                params.shard_factor = Some(value);
-            }
-            if let Some(value) = update.shard_key.clone() {
-                params.shard_key = Some(value);
-            }
-        }
-    }
+        use crate::ws::types::WsUpdateAction;
 
-    fn apply_update_v2(&mut self, update: &WsUpdateSubscriptionParamsV2) {
         let sid = match update.target_sid() {
             Some(sid) => sid,
             None => return,
@@ -428,65 +405,9 @@ impl KalshiWsLowLevelClient {
         Ok(id)
     }
 
-    /// Subscribe using docs-aligned V2 params.
-    pub async fn subscribe_v2(
-        &mut self,
-        params: WsSubscriptionParamsV2,
-    ) -> Result<u64, KalshiError> {
-        let needs_auth = params.channels.iter().any(|c| c.is_private());
-        if needs_auth && !self.authenticated {
-            return Err(KalshiError::AuthRequired(
-                "WebSocket private channel subscription",
-            ));
-        }
-
-        validate_subscription_v2(&params)?;
-
-        let id = self.next_id;
-        self.next_id += 1;
-
-        let cmd = WsSubscribeCmdV2 {
-            id,
-            cmd: "subscribe",
-            params,
-        };
-
-        let text = serde_json::to_string(&cmd)?;
-        self.write
-            .send(Message::Text(text))
-            .await
-            .map_err(|e| KalshiError::Ws(e.to_string()))?;
-
-        Ok(id)
-    }
-
-    /// Legacy V1 unsubscribe (`sid` scalar). Prefer [`unsubscribe_v2`](Self::unsubscribe_v2).
     ///
-    /// Unsubscribe from a subscription by its `sid`. Returns the command `id`.
-    pub async fn unsubscribe(&mut self, sid: u64) -> Result<u64, KalshiError> {
-        let id = self.next_id;
-        self.next_id += 1;
-
-        let cmd = WsUnsubscribeCmd {
-            id,
-            cmd: "unsubscribe",
-            params: WsUnsubscribeParams { sid },
-        };
-
-        let text = serde_json::to_string(&cmd)?;
-        self.write
-            .send(Message::Text(text))
-            .await
-            .map_err(|e| KalshiError::Ws(e.to_string()))?;
-
-        Ok(id)
-    }
-
-    /// Unsubscribe from one or more subscriptions by SID.
-    pub async fn unsubscribe_v2(
-        &mut self,
-        params: WsUnsubscribeParamsV2,
-    ) -> Result<u64, KalshiError> {
+    /// Unsubscribe from one or more subscriptions by SID. Returns the command `id`.
+    pub async fn unsubscribe(&mut self, params: WsUnsubscribeParams) -> Result<u64, KalshiError> {
         if params.sids.is_empty() {
             return Err(KalshiError::InvalidParams(
                 "unsubscribe: at least one sid is required".to_string(),
@@ -496,7 +417,7 @@ impl KalshiWsLowLevelClient {
         let id = self.next_id;
         self.next_id += 1;
 
-        let cmd = WsUnsubscribeCmdV2 {
+        let cmd = WsUnsubscribeCmd {
             id,
             cmd: "unsubscribe",
             params,
@@ -511,42 +432,17 @@ impl KalshiWsLowLevelClient {
         Ok(id)
     }
 
-    /// Legacy V1 update shape (`sid` scalar). Prefer [`update_subscription_v2`](Self::update_subscription_v2).
-    ///
     /// Update an existing subscription (e.g. change market tickers). Returns the command `id`.
     pub async fn update_subscription(
         &mut self,
         params: WsUpdateSubscriptionParams,
     ) -> Result<u64, KalshiError> {
+        validate_update(&params)?;
+
         let id = self.next_id;
         self.next_id += 1;
 
         let cmd = WsUpdateSubscriptionCmd {
-            id,
-            cmd: "update_subscription",
-            params,
-        };
-
-        let text = serde_json::to_string(&cmd)?;
-        self.write
-            .send(Message::Text(text))
-            .await
-            .map_err(|e| KalshiError::Ws(e.to_string()))?;
-
-        Ok(id)
-    }
-
-    /// Update subscription using docs-aligned V2 params.
-    pub async fn update_subscription_v2(
-        &mut self,
-        params: WsUpdateSubscriptionParamsV2,
-    ) -> Result<u64, KalshiError> {
-        validate_update_v2(&params)?;
-
-        let id = self.next_id;
-        self.next_id += 1;
-
-        let cmd = WsUpdateSubscriptionCmdV2 {
             id,
             cmd: "update_subscription",
             params,
@@ -598,11 +494,6 @@ impl KalshiWsLowLevelClient {
     pub async fn next_message(&mut self) -> Result<WsMessage, KalshiError> {
         let bytes = self.next_json_bytes().await?;
         WsMessage::from_bytes(&bytes)
-    }
-
-    /// Read the next message using docs-aligned V2 parsing.
-    pub async fn next_message_v2(&mut self) -> Result<WsMessage, KalshiError> {
-        self.next_message().await
     }
 
     /// Gracefully close the underlying WebSocket.
@@ -767,66 +658,8 @@ impl KalshiWsClient {
         Ok(id)
     }
 
-    /// Subscribe using docs-aligned V2 parameters.
-    pub async fn subscribe_v2(
-        &mut self,
-        params: WsSubscriptionParamsV2,
-    ) -> Result<u64, KalshiError> {
-        let needs_auth = params.channels.iter().any(|c| c.is_private());
-        if needs_auth && self.auth.is_none() {
-            return Err(KalshiError::AuthRequired(
-                "WebSocket private channel subscription",
-            ));
-        }
-
-        validate_subscription_v2(&params)?;
-
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
-
-        {
-            let mut tracker = self.tracker.lock().await;
-            tracker.record_subscribe_cmd(id, params.clone().into_v1());
-        }
-
-        let cmd = WsSubscribeCmdV2 {
-            id,
-            cmd: "subscribe",
-            params,
-        };
-        let text = serde_json::to_string(&cmd)?;
-        self.send_command(Message::Text(text)).await?;
-        Ok(id)
-    }
-
-    /// Legacy V1 unsubscribe (`sid` scalar). Prefer [`unsubscribe_v2`](Self::unsubscribe_v2).
-    ///
-    /// Unsubscribe from a subscription by its `sid`. Returns the command `id`.
-    pub async fn unsubscribe(&mut self, sid: u64) -> Result<u64, KalshiError> {
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
-
-        {
-            let mut tracker = self.tracker.lock().await;
-            tracker.drop_active(sid);
-        }
-
-        let cmd = WsUnsubscribeCmd {
-            id,
-            cmd: "unsubscribe",
-            params: WsUnsubscribeParams { sid },
-        };
-
-        let text = serde_json::to_string(&cmd)?;
-        self.send_command(Message::Text(text)).await?;
-        Ok(id)
-    }
-
-    /// Unsubscribe using docs-aligned V2 payload (`sids` array).
-    pub async fn unsubscribe_v2(
-        &mut self,
-        params: WsUnsubscribeParamsV2,
-    ) -> Result<u64, KalshiError> {
+    /// Unsubscribe from one or more subscriptions by SID. Returns the command `id`.
+    pub async fn unsubscribe(&mut self, params: WsUnsubscribeParams) -> Result<u64, KalshiError> {
         if params.sids.is_empty() {
             return Err(KalshiError::InvalidParams(
                 "unsubscribe: at least one sid is required".to_string(),
@@ -843,7 +676,7 @@ impl KalshiWsClient {
             }
         }
 
-        let cmd = WsUnsubscribeCmdV2 {
+        let cmd = WsUnsubscribeCmd {
             id,
             cmd: "unsubscribe",
             params,
@@ -853,13 +686,13 @@ impl KalshiWsClient {
         Ok(id)
     }
 
-    /// Legacy V1 update shape (`sid` scalar). Prefer [`update_subscription_v2`](Self::update_subscription_v2).
-    ///
     /// Update an existing subscription (e.g. change market tickers). Returns the command `id`.
     pub async fn update_subscription(
         &mut self,
         params: WsUpdateSubscriptionParams,
     ) -> Result<u64, KalshiError> {
+        validate_update(&params)?;
+
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
 
@@ -869,31 +702,6 @@ impl KalshiWsClient {
         }
 
         let cmd = WsUpdateSubscriptionCmd {
-            id,
-            cmd: "update_subscription",
-            params,
-        };
-        let text = serde_json::to_string(&cmd)?;
-        self.send_command(Message::Text(text)).await?;
-        Ok(id)
-    }
-
-    /// Update a subscription using docs-aligned V2 semantics.
-    pub async fn update_subscription_v2(
-        &mut self,
-        params: WsUpdateSubscriptionParamsV2,
-    ) -> Result<u64, KalshiError> {
-        validate_update_v2(&params)?;
-
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
-
-        {
-            let mut tracker = self.tracker.lock().await;
-            tracker.apply_update_v2(&params);
-        }
-
-        let cmd = WsUpdateSubscriptionCmdV2 {
             id,
             cmd: "update_subscription",
             params,
@@ -969,14 +777,6 @@ impl KalshiWsClient {
         self.reader_task = Some(task);
 
         Ok(receiver)
-    }
-
-    /// Start the background reader in docs-aligned V2 mode.
-    pub async fn start_reader_v2(
-        &mut self,
-        config: WsReaderConfig,
-    ) -> Result<WsEventReceiver, KalshiError> {
-        self.start_reader(config).await
     }
 
     /// Configure how long [`close`](Self::close) waits for the reader task.
@@ -1055,11 +855,6 @@ impl KalshiWsClient {
             }
             Err(err) => self.reconnect_loop(err).await,
         }
-    }
-
-    /// Wait for the next event using docs-aligned V2 parsing.
-    pub async fn next_event_v2(&mut self) -> Result<WsEvent, KalshiError> {
-        self.next_event().await
     }
 
     async fn reconnect_loop(&mut self, mut err: KalshiError) -> Result<WsEvent, KalshiError> {
@@ -1406,7 +1201,6 @@ mod tests {
         assert!(WsChannel::OrderGroupUpdates.is_private());
 
         assert!(!WsChannel::Ticker.is_private());
-        assert!(!WsChannel::TickerV2.is_private());
         assert!(!WsChannel::Trade.is_private());
         assert!(!WsChannel::MarketLifecycleV2.is_private());
         assert!(!WsChannel::Multivariate.is_private());
@@ -1451,6 +1245,8 @@ mod tests {
 
     #[test]
     fn subscription_tracker_apply_update_changes_fields() {
+        use crate::ws::types::WsUpdateAction;
+
         let mut tracker = SubscriptionTracker::default();
         let params = WsSubscriptionParams {
             channels: vec![WsChannel::OrderbookDelta],
@@ -1460,18 +1256,32 @@ mod tests {
         tracker.active.insert(10, params);
 
         let update = WsUpdateSubscriptionParams {
-            sid: 10,
+            action: WsUpdateAction::AddMarkets,
+            sid: Some(10),
+            sids: None,
+            market_ticker: None,
             market_tickers: Some(vec!["B".to_string()]),
+            market_id: None,
             market_ids: None,
-            event_tickers: None,
             send_initial_snapshot: Some(true),
-            shard_factor: None,
-            shard_key: None,
         };
         tracker.apply_update(&update);
 
         let updated = tracker.active.get(&10).unwrap();
-        assert_eq!(updated.market_tickers.as_ref().unwrap()[0], "B");
+        assert!(
+            updated
+                .market_tickers
+                .as_ref()
+                .unwrap()
+                .contains(&"A".to_string())
+        );
+        assert!(
+            updated
+                .market_tickers
+                .as_ref()
+                .unwrap()
+                .contains(&"B".to_string())
+        );
         assert_eq!(updated.send_initial_snapshot, Some(true));
     }
 
@@ -1589,7 +1399,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn low_level_unsubscribe_v2_sends_sids_array() {
+    async fn low_level_unsubscribe_sends_sids_array() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("addr");
 
@@ -1614,7 +1424,7 @@ mod tests {
         };
         let mut client = KalshiWsLowLevelClient::connect(env).await.expect("connect");
         client
-            .unsubscribe_v2(WsUnsubscribeParamsV2 { sids: vec![7, 9] })
+            .unsubscribe(WsUnsubscribeParams { sids: vec![7, 9] })
             .await
             .expect("unsubscribe");
 

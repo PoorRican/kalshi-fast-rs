@@ -5,7 +5,7 @@
 //! ## Features
 //!
 //! - **OpenAPI parity** — full REST operation coverage for the current docs snapshot
-//! - **AsyncAPI parity** — docs-aligned V2 WebSocket commands, responses, and `user_orders`
+//! - **AsyncAPI parity** — WebSocket commands, responses, and `user_orders`
 //! - **Pagination helpers** — page-level ([`CursorPager`]) and item-level (`stream_*`) iteration
 //! - **REST reliability controls** — retry/backoff/jitter with `429 Retry-After` support
 //! - **Transport builder** — timeout/connect-timeout/headers/user-agent/proxy/custom client
@@ -42,7 +42,7 @@
 //! ```no_run
 //! use kalshi_fast::{
 //!     KalshiAuth, KalshiEnvironment, KalshiWsClient, WsChannel,
-//!     WsDataMessage, WsEvent, WsMessage, WsReconnectConfig, WsSubscriptionParamsV2,
+//!     WsDataMessage, WsEvent, WsMessage, WsReconnectConfig, WsSubscriptionParams,
 //! };
 //!
 //! # async fn run() -> Result<(), kalshi_fast::KalshiError> {
@@ -57,13 +57,13 @@
 //!     WsReconnectConfig::default(),
 //! ).await?;
 //!
-//! ws.subscribe_v2(WsSubscriptionParamsV2 {
+//! ws.subscribe(WsSubscriptionParams {
 //!     channels: vec![WsChannel::UserOrders],
 //!     ..Default::default()
 //! }).await?;
 //!
 //! loop {
-//!     match ws.next_event_v2().await? {
+//!     match ws.next_event().await? {
 //!         WsEvent::Message(WsMessage::Data(WsDataMessage::UserOrder { msg, .. })) => {
 //!             println!("order={} status={:?}", msg.order_id, msg.status);
 //!         }

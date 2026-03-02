@@ -1,6 +1,6 @@
 use kalshi_fast::{
     KalshiAuth, KalshiEnvironment, KalshiWsClient, WsChannel, WsDataMessage, WsEvent, WsMessage,
-    WsReconnectConfig, WsSubscriptionParamsV2, WsUpdateAction, WsUpdateSubscriptionParamsV2,
+    WsReconnectConfig, WsSubscriptionParams, WsUpdateAction, WsUpdateSubscriptionParams,
 };
 
 #[tokio::main]
@@ -17,13 +17,13 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     let sub_cmd_id = ws
-        .subscribe_v2(WsSubscriptionParamsV2 {
+        .subscribe(WsSubscriptionParams {
             channels: vec![WsChannel::UserOrders],
             ..Default::default()
         })
         .await?;
 
-    while let Ok(event) = ws.next_event_v2().await {
+    while let Ok(event) = ws.next_event().await {
         match event {
             WsEvent::Message(WsMessage::Subscribed {
                 id: Some(id),
@@ -31,9 +31,9 @@ async fn main() -> anyhow::Result<()> {
             }) if id == sub_cmd_id => {
                 println!("subscribed sid={subscription_id}");
 
-                // V2 update action example (for channels supporting market filters).
+                // Update action example (for channels supporting market filters).
                 let _ = ws
-                    .update_subscription_v2(WsUpdateSubscriptionParamsV2 {
+                    .update_subscription(WsUpdateSubscriptionParams {
                         action: WsUpdateAction::AddMarkets,
                         sid: Some(subscription_id),
                         sids: None,

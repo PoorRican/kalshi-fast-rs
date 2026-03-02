@@ -19,7 +19,6 @@ use std::fmt;
 pub enum WsChannel {
     // Public (no auth required)
     Ticker,
-    TickerV2,
     Trade,
     MarketLifecycleV2,
     Multivariate,
@@ -37,7 +36,6 @@ impl WsChannel {
     pub fn as_str(self) -> &'static str {
         match self {
             WsChannel::Ticker => "ticker",
-            WsChannel::TickerV2 => "ticker_v2",
             WsChannel::Trade => "trade",
             WsChannel::MarketLifecycleV2 => "market_lifecycle_v2",
             WsChannel::Multivariate => "multivariate",
@@ -77,7 +75,6 @@ pub enum WsMsgType {
     ListSubscriptions,
     Error,
     Ticker,
-    TickerV2,
     Trade,
     OrderbookSnapshot,
     OrderbookDelta,
@@ -107,7 +104,6 @@ impl WsMsgType {
             WsMsgType::ListSubscriptions => "list_subscriptions",
             WsMsgType::Error => "error",
             WsMsgType::Ticker => "ticker",
-            WsMsgType::TickerV2 => "ticker_v2",
             WsMsgType::Trade => "trade",
             WsMsgType::OrderbookSnapshot => "orderbook_snapshot",
             WsMsgType::OrderbookDelta => "orderbook_delta",
@@ -137,7 +133,6 @@ impl WsMsgType {
             "list_subscriptions" => WsMsgType::ListSubscriptions,
             "error" => WsMsgType::Error,
             "ticker" => WsMsgType::Ticker,
-            "ticker_v2" => WsMsgType::TickerV2,
             "trade" => WsMsgType::Trade,
             "orderbook_snapshot" => WsMsgType::OrderbookSnapshot,
             "orderbook_delta" => WsMsgType::OrderbookDelta,
@@ -167,7 +162,6 @@ impl WsMsgType {
             "list_subscriptions" => WsMsgType::ListSubscriptions,
             "error" => WsMsgType::Error,
             "ticker" => WsMsgType::Ticker,
-            "ticker_v2" => WsMsgType::TickerV2,
             "trade" => WsMsgType::Trade,
             "orderbook_snapshot" => WsMsgType::OrderbookSnapshot,
             "orderbook_delta" => WsMsgType::OrderbookDelta,
@@ -236,42 +230,52 @@ impl<'de> Deserialize<'de> for WsMsgType {
 }
 
 /// Subscription parameters for WebSocket channels.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WsSubscriptionParams {
     pub channels: Vec<WsChannel>,
-
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub market_tickers: Option<Vec<String>>,
-
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub market_ids: Option<Vec<String>>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_tickers: Option<Vec<String>>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub send_initial_snapshot: Option<bool>,
-
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_ticker_ack: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard_factor: Option<u32>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub shard_key: Option<String>,
+    pub shard_key: Option<u32>,
 }
 
 impl WsSubscriptionParams {
-    pub fn normalized(mut self) -> Self {
-        self.channels.sort_by_key(|c| c.as_str());
-        if let Some(ref mut tickers) = self.market_tickers {
-            tickers.sort();
+    /// Collect all market tickers from both singular and plural fields.
+    pub fn all_market_tickers(&self) -> Vec<&str> {
+        let mut out = Vec::new();
+        if let Some(single) = &self.market_ticker {
+            out.push(single.as_str());
         }
-        if let Some(ref mut ids) = self.market_ids {
-            ids.sort();
+        if let Some(multi) = &self.market_tickers {
+            out.extend(multi.iter().map(String::as_str));
         }
-        if let Some(ref mut tickers) = self.event_tickers {
-            tickers.sort();
+        out
+    }
+
+    /// Collect all market IDs from both singular and plural fields.
+    pub fn all_market_ids(&self) -> Vec<&str> {
+        let mut out = Vec::new();
+        if let Some(single) = &self.market_id {
+            out.push(single.as_str());
         }
-        self
+        if let Some(multi) = &self.market_ids {
+            out.extend(multi.iter().map(String::as_str));
+        }
+        out
     }
 }
 
@@ -314,36 +318,6 @@ pub struct WsTicker {
     pub dollar_volume: i64,
     pub dollar_open_interest: i64,
     pub ts: i64,
-}
-
-/// Ticker V2 channel message (type: "ticker_v2")
-#[derive(Debug, Clone, Deserialize)]
-pub struct WsTickerV2 {
-    pub market_ticker: String,
-    #[serde(default)]
-    pub market_id: Option<String>,
-    #[serde(default)]
-    pub price: Option<i64>,
-    #[serde(default)]
-    pub price_dollars: Option<String>,
-    #[serde(default)]
-    pub yes_bid: Option<i64>,
-    #[serde(default)]
-    pub yes_ask: Option<i64>,
-    #[serde(default)]
-    pub no_bid: Option<i64>,
-    #[serde(default)]
-    pub no_ask: Option<i64>,
-    #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default)]
-    pub volume_fp: Option<String>,
-    #[serde(default)]
-    pub open_interest: Option<i64>,
-    #[serde(default)]
-    pub open_interest_fp: Option<String>,
-    #[serde(default)]
-    pub ts: Option<i64>,
 }
 
 /// Trade channel message (type: "trade")
@@ -503,7 +477,7 @@ pub struct WsMarketLifecycleAdditionalMetadata {
 
 /// Event lifecycle message (type: "event_lifecycle")
 #[derive(Debug, Clone, Deserialize)]
-pub struct WsEventLifecycleV2 {
+pub struct WsEventLifecycle {
     pub event_ticker: String,
     #[serde(default)]
     pub title: Option<String>,
@@ -926,57 +900,6 @@ impl<'a> WsTickerRef<'a> {
     }
 }
 
-/// Ticker V2 channel message (type: "ticker_v2")
-#[derive(Debug, Clone, Deserialize)]
-pub struct WsTickerV2Ref<'a> {
-    #[serde(borrow)]
-    pub market_ticker: Cow<'a, str>,
-    #[serde(default, borrow)]
-    pub market_id: Option<Cow<'a, str>>,
-    #[serde(default)]
-    pub price: Option<i64>,
-    #[serde(default, borrow)]
-    pub price_dollars: Option<Cow<'a, str>>,
-    #[serde(default)]
-    pub yes_bid: Option<i64>,
-    #[serde(default)]
-    pub yes_ask: Option<i64>,
-    #[serde(default)]
-    pub no_bid: Option<i64>,
-    #[serde(default)]
-    pub no_ask: Option<i64>,
-    #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default, borrow)]
-    pub volume_fp: Option<Cow<'a, str>>,
-    #[serde(default)]
-    pub open_interest: Option<i64>,
-    #[serde(default, borrow)]
-    pub open_interest_fp: Option<Cow<'a, str>>,
-    #[serde(default)]
-    pub ts: Option<i64>,
-}
-
-impl<'a> WsTickerV2Ref<'a> {
-    pub fn into_owned(self) -> WsTickerV2 {
-        WsTickerV2 {
-            market_ticker: self.market_ticker.into_owned(),
-            market_id: self.market_id.map(Cow::into_owned),
-            price: self.price,
-            price_dollars: self.price_dollars.map(Cow::into_owned),
-            yes_bid: self.yes_bid,
-            yes_ask: self.yes_ask,
-            no_bid: self.no_bid,
-            no_ask: self.no_ask,
-            volume: self.volume,
-            volume_fp: self.volume_fp.map(Cow::into_owned),
-            open_interest: self.open_interest,
-            open_interest_fp: self.open_interest_fp.map(Cow::into_owned),
-            ts: self.ts,
-        }
-    }
-}
-
 /// Trade channel message (type: "trade")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsTradeRef<'a> {
@@ -1263,7 +1186,7 @@ impl<'a> WsMarketLifecycleAdditionalMetadataRef<'a> {
 
 /// Event lifecycle message (type: "event_lifecycle")
 #[derive(Debug, Clone, Deserialize)]
-pub struct WsEventLifecycleV2Ref<'a> {
+pub struct WsEventLifecycleRef<'a> {
     #[serde(borrow)]
     pub event_ticker: Cow<'a, str>,
     #[serde(default, borrow)]
@@ -1278,9 +1201,9 @@ pub struct WsEventLifecycleV2Ref<'a> {
     pub additional_metadata: Option<WsEventLifecycleAdditionalMetadataRef>,
 }
 
-impl<'a> WsEventLifecycleV2Ref<'a> {
-    pub fn into_owned(self) -> WsEventLifecycleV2 {
-        WsEventLifecycleV2 {
+impl<'a> WsEventLifecycleRef<'a> {
+    pub fn into_owned(self) -> WsEventLifecycle {
+        WsEventLifecycle {
             event_ticker: self.event_ticker.into_owned(),
             title: self.title.map(Cow::into_owned),
             subtitle: self.subtitle.map(Cow::into_owned),
@@ -1820,11 +1743,6 @@ impl WsEnvelope {
                 seq,
                 msg: parse_msg(&msg)?,
             })),
-            WsMsgType::TickerV2 => Ok(WsMessage::Data(WsDataMessage::TickerV2 {
-                sid,
-                seq,
-                msg: parse_msg(&msg)?,
-            })),
             WsMsgType::Trade => Ok(WsMessage::Data(WsDataMessage::Trade {
                 sid,
                 seq,
@@ -2003,11 +1921,6 @@ impl<'a> WsEnvelopeRef<'a> {
                 seq,
                 msg: parse_borrowed_msg(msg)?,
             })),
-            WsMsgType::TickerV2 => Ok(WsMessageRef::Data(WsDataMessageRef::TickerV2 {
-                sid,
-                seq,
-                msg: parse_borrowed_msg(msg)?,
-            })),
             WsMsgType::Trade => Ok(WsMessageRef::Data(WsDataMessageRef::Trade {
                 sid,
                 seq,
@@ -2154,11 +2067,6 @@ pub enum WsDataMessage {
         seq: Option<u64>,
         msg: WsTicker,
     },
-    TickerV2 {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsTickerV2,
-    },
     Trade {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -2192,7 +2100,7 @@ pub enum WsDataMessage {
     EventLifecycle {
         sid: Option<u64>,
         seq: Option<u64>,
-        msg: WsEventLifecycleV2,
+        msg: WsEventLifecycle,
     },
     Multivariate {
         sid: Option<u64>,
@@ -2222,11 +2130,6 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsTickerRef<'a>,
-    },
-    TickerV2 {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsTickerV2Ref<'a>,
     },
     Trade {
         sid: Option<u64>,
@@ -2261,7 +2164,7 @@ pub enum WsDataMessageRef<'a> {
     EventLifecycle {
         sid: Option<u64>,
         seq: Option<u64>,
-        msg: WsEventLifecycleV2Ref<'a>,
+        msg: WsEventLifecycleRef<'a>,
     },
     Multivariate {
         sid: Option<u64>,
@@ -2289,11 +2192,6 @@ impl<'a> WsDataMessageRef<'a> {
     pub fn into_owned(self) -> WsDataMessage {
         match self {
             WsDataMessageRef::Ticker { sid, seq, msg } => WsDataMessage::Ticker {
-                sid,
-                seq,
-                msg: msg.into_owned(),
-            },
-            WsDataMessageRef::TickerV2 { sid, seq, msg } => WsDataMessage::TickerV2 {
                 sid,
                 seq,
                 msg: msg.into_owned(),
@@ -2465,30 +2363,15 @@ pub(crate) struct WsSubscribeCmd {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct WsSubscribeCmdV2 {
-    pub id: u64,
-    pub cmd: &'static str, // "subscribe"
-    pub params: WsSubscriptionParamsV2,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub(crate) struct WsUnsubscribeCmd {
     pub id: u64,
     pub cmd: &'static str,
     pub params: WsUnsubscribeParams,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct WsUnsubscribeCmdV2 {
-    pub id: u64,
-    pub cmd: &'static str,
-    pub params: WsUnsubscribeParamsV2,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct WsUnsubscribeParams {
-    // V1 compatibility shape (single sid). AsyncAPI v2 uses `sids`.
-    pub sid: u64,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WsUnsubscribeParams {
+    pub sids: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2504,142 +2387,8 @@ pub(crate) struct WsUpdateSubscriptionCmd {
     pub params: WsUpdateSubscriptionParams,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct WsUpdateSubscriptionCmdV2 {
-    pub id: u64,
-    pub cmd: &'static str,
-    pub params: WsUpdateSubscriptionParamsV2,
-}
-
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WsUpdateSubscriptionParams {
-    // V1 compatibility shape (single sid). AsyncAPI v2 supports `sid` or `sids` (exactly one).
-    pub sid: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_tickers: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ids: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_tickers: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub send_initial_snapshot: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shard_factor: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shard_key: Option<String>,
-}
-
-pub type WsChannelV2 = WsChannel;
-pub type WsMessageV2 = WsMessage;
-pub type WsDataMessageV2 = WsDataMessage;
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct WsSubscriptionParamsV2 {
-    pub channels: Vec<WsChannelV2>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_tickers: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ids: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_tickers: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub send_initial_snapshot: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skip_ticker_ack: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shard_factor: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shard_key: Option<u32>,
-}
-
-impl WsSubscriptionParamsV2 {
-    pub fn into_v1(self) -> WsSubscriptionParams {
-        let mut market_tickers = self.market_tickers.unwrap_or_default();
-        if let Some(single) = self.market_ticker {
-            market_tickers.push(single);
-        }
-
-        let mut market_ids = self.market_ids.unwrap_or_default();
-        if let Some(single) = self.market_id {
-            market_ids.push(single);
-        }
-
-        WsSubscriptionParams {
-            channels: self.channels,
-            market_tickers: if market_tickers.is_empty() {
-                None
-            } else {
-                Some(market_tickers)
-            },
-            market_ids: if market_ids.is_empty() {
-                None
-            } else {
-                Some(market_ids)
-            },
-            event_tickers: self.event_tickers,
-            send_initial_snapshot: self.send_initial_snapshot,
-            shard_factor: self.shard_factor,
-            shard_key: self.shard_key.map(|v| v.to_string()),
-        }
-    }
-}
-
-pub(crate) fn validate_subscription_v2(params: &WsSubscriptionParamsV2) -> Result<(), KalshiError> {
-    let has_market_ticker = params.market_ticker.is_some();
-    let has_market_tickers = params
-        .market_tickers
-        .as_ref()
-        .map(|values| !values.is_empty())
-        .unwrap_or(false);
-    let has_market_id = params.market_id.is_some();
-    let has_market_ids = params
-        .market_ids
-        .as_ref()
-        .map(|values| !values.is_empty())
-        .unwrap_or(false);
-
-    if has_market_ticker && has_market_tickers {
-        return Err(KalshiError::InvalidParams(
-            "subscribe: provide at most one of market_ticker or market_tickers".to_string(),
-        ));
-    }
-    if has_market_id && has_market_ids {
-        return Err(KalshiError::InvalidParams(
-            "subscribe: provide at most one of market_id or market_ids".to_string(),
-        ));
-    }
-    if (has_market_ticker || has_market_tickers) && (has_market_id || has_market_ids) {
-        return Err(KalshiError::InvalidParams(
-            "subscribe: market_ticker(s) and market_id(s) are mutually exclusive".to_string(),
-        ));
-    }
-    if params.shard_key.is_some() && params.shard_factor.is_none() {
-        return Err(KalshiError::InvalidParams(
-            "subscribe: shard_factor is required when shard_key is set".to_string(),
-        ));
-    }
-
-    validate_subscription(&params.clone().into_v1())
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WsUnsubscribeParamsV2 {
-    pub sids: Vec<u64>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WsUpdateAction {
-    AddMarkets,
-    DeleteMarkets,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WsUpdateSubscriptionParamsV2 {
     pub action: WsUpdateAction,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sid: Option<u64>,
@@ -2657,7 +2406,7 @@ pub struct WsUpdateSubscriptionParamsV2 {
     pub send_initial_snapshot: Option<bool>,
 }
 
-impl WsUpdateSubscriptionParamsV2 {
+impl WsUpdateSubscriptionParams {
     pub fn target_sid(&self) -> Option<u64> {
         self.sid.or_else(|| {
             self.sids
@@ -2667,7 +2416,14 @@ impl WsUpdateSubscriptionParamsV2 {
     }
 }
 
-pub(crate) fn validate_update_v2(params: &WsUpdateSubscriptionParamsV2) -> Result<(), KalshiError> {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WsUpdateAction {
+    AddMarkets,
+    DeleteMarkets,
+}
+
+pub(crate) fn validate_update(params: &WsUpdateSubscriptionParams) -> Result<(), KalshiError> {
     let has_sid = params.sid.is_some();
     let has_sids = params.sids.is_some();
     if has_sid == has_sids {
@@ -2692,6 +2448,37 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParams) -> Result<(),
         ));
     }
 
+    let has_market_ticker = params.market_ticker.is_some();
+    let has_market_tickers = params
+        .market_tickers
+        .as_ref()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    let has_market_id = params.market_id.is_some();
+    let has_market_ids = params
+        .market_ids
+        .as_ref()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    let has_any_market_tickers = has_market_ticker || has_market_tickers;
+    let has_any_market_ids = has_market_id || has_market_ids;
+
+    if has_market_ticker && has_market_tickers {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: provide at most one of market_ticker or market_tickers".to_string(),
+        ));
+    }
+    if has_market_id && has_market_ids {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: provide at most one of market_id or market_ids".to_string(),
+        ));
+    }
+    if has_any_market_tickers && has_any_market_ids {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: market_ticker(s) and market_id(s) are mutually exclusive".to_string(),
+        ));
+    }
+
     let has_orderbook_delta = params
         .channels
         .iter()
@@ -2705,22 +2492,10 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParams) -> Result<(),
         .iter()
         .any(|c| matches!(c, WsChannel::Communications));
 
-    if has_orderbook_delta {
-        let has_market_tickers = params
-            .market_tickers
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false);
-        let has_market_ids = params
-            .market_ids
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false);
-        if !(has_market_tickers || has_market_ids) {
-            return Err(KalshiError::InvalidParams(
-                "subscribe: orderbook_delta requires market_tickers or market_ids".to_string(),
-            ));
-        }
+    if has_orderbook_delta && !(has_any_market_tickers || has_any_market_ids) {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: orderbook_delta requires market_tickers or market_ids".to_string(),
+        ));
     }
 
     if params.send_initial_snapshot.is_some() && !has_orderbook_delta {
@@ -2729,9 +2504,15 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParams) -> Result<(),
         ));
     }
 
-    if params.market_ids.is_some() && has_market_positions {
+    if has_any_market_ids && has_market_positions {
         return Err(KalshiError::InvalidParams(
             "subscribe: market_positions only supports market_tickers".to_string(),
+        ));
+    }
+
+    if params.shard_key.is_some() && params.shard_factor.is_none() {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: shard_factor is required when shard_key is set".to_string(),
         ));
     }
 
@@ -2782,12 +2563,6 @@ enum WsWireMessage {
         seq: Option<u64>,
         msg: WsTicker,
     },
-    #[serde(rename = "ticker_v2")]
-    TickerV2 {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsTickerV2,
-    },
     #[serde(rename = "trade")]
     Trade {
         sid: Option<u64>,
@@ -2828,7 +2603,7 @@ enum WsWireMessage {
     EventLifecycle {
         sid: Option<u64>,
         seq: Option<u64>,
-        msg: WsEventLifecycleV2,
+        msg: WsEventLifecycle,
     },
     #[serde(rename = "multivariate")]
     Multivariate {
@@ -2932,9 +2707,6 @@ impl WsWireMessage {
             },
             WsWireMessage::Ticker { sid, seq, msg } => {
                 WsMessage::Data(WsDataMessage::Ticker { sid, seq, msg })
-            }
-            WsWireMessage::TickerV2 { sid, seq, msg } => {
-                WsMessage::Data(WsDataMessage::TickerV2 { sid, seq, msg })
             }
             WsWireMessage::Trade { sid, seq, msg } => {
                 WsMessage::Data(WsDataMessage::Trade { sid, seq, msg })
@@ -3045,13 +2817,6 @@ enum WsWireMessageRef<'a> {
         #[serde(borrow)]
         msg: WsTickerRef<'a>,
     },
-    #[serde(rename = "ticker_v2")]
-    TickerV2 {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        #[serde(borrow)]
-        msg: WsTickerV2Ref<'a>,
-    },
     #[serde(rename = "trade")]
     Trade {
         sid: Option<u64>,
@@ -3099,7 +2864,7 @@ enum WsWireMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         #[serde(borrow)]
-        msg: WsEventLifecycleV2Ref<'a>,
+        msg: WsEventLifecycleRef<'a>,
     },
     #[serde(rename = "multivariate")]
     Multivariate {
@@ -3212,9 +2977,6 @@ impl<'a> WsWireMessageRef<'a> {
             },
             WsWireMessageRef::Ticker { sid, seq, msg } => {
                 WsMessageRef::Data(WsDataMessageRef::Ticker { sid, seq, msg })
-            }
-            WsWireMessageRef::TickerV2 { sid, seq, msg } => {
-                WsMessageRef::Data(WsDataMessageRef::TickerV2 { sid, seq, msg })
             }
             WsWireMessageRef::Trade { sid, seq, msg } => {
                 WsMessageRef::Data(WsDataMessageRef::Trade { sid, seq, msg })
@@ -3373,7 +3135,7 @@ mod tests {
         let params = WsSubscriptionParams {
             channels: vec![WsChannel::Communications],
             shard_factor: Some(2),
-            shard_key: Some("key".to_string()),
+            shard_key: Some(1),
             ..Default::default()
         };
         assert!(validate_subscription(&params).is_ok());
@@ -3520,21 +3282,32 @@ mod tests {
     #[test]
     fn ws_raw_event_parse_borrowed() {
         let json = r#"{
-            "type":"ticker_v2",
+            "type":"ticker",
             "sid":9,
             "seq":10,
             "msg":{
                 "market_ticker":"TEST",
+                "market_id":"1",
                 "price":1,
+                "yes_bid":1,
+                "yes_ask":2,
                 "price_dollars":"0.01",
-                "ts":123
+                "yes_bid_dollars":"0.01",
+                "yes_ask_dollars":"0.02",
+                "volume":0,
+                "volume_fp":"0",
+                "open_interest":0,
+                "open_interest_fp":"0",
+                "dollar_volume":0,
+                "dollar_open_interest":0,
+                "ts":0
             }
         }"#;
         let raw = WsRawEvent::new(Bytes::from(json));
         let msg = raw.parse_borrowed().unwrap();
         assert!(matches!(
             msg,
-            WsMessageRef::Data(WsDataMessageRef::TickerV2 { .. })
+            WsMessageRef::Data(WsDataMessageRef::Ticker { .. })
         ));
     }
 
@@ -3578,8 +3351,8 @@ mod tests {
     }
 
     #[test]
-    fn validate_update_v2_requires_exactly_one_sid_target() {
-        let both = WsUpdateSubscriptionParamsV2 {
+    fn validate_update_requires_exactly_one_sid_target() {
+        let both = WsUpdateSubscriptionParams {
             action: WsUpdateAction::AddMarkets,
             sid: Some(1),
             sids: Some(vec![2]),
@@ -3589,9 +3362,9 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
         };
-        assert!(validate_update_v2(&both).is_err());
+        assert!(validate_update(&both).is_err());
 
-        let multi = WsUpdateSubscriptionParamsV2 {
+        let multi = WsUpdateSubscriptionParams {
             action: WsUpdateAction::AddMarkets,
             sid: None,
             sids: Some(vec![1, 2]),
@@ -3601,9 +3374,9 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
         };
-        assert!(validate_update_v2(&multi).is_err());
+        assert!(validate_update(&multi).is_err());
 
-        let valid = WsUpdateSubscriptionParamsV2 {
+        let valid = WsUpdateSubscriptionParams {
             action: WsUpdateAction::DeleteMarkets,
             sid: Some(1),
             sids: None,
@@ -3613,37 +3386,25 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
         };
-        assert!(validate_update_v2(&valid).is_ok());
+        assert!(validate_update(&valid).is_ok());
     }
 
     #[test]
-    fn validate_subscription_v2_enforces_market_target_exclusivity() {
-        let params = WsSubscriptionParamsV2 {
+    fn validate_subscription_enforces_market_target_exclusivity() {
+        let params = WsSubscriptionParams {
             channels: vec![WsChannel::Ticker],
             market_ticker: Some("A".to_string()),
             market_tickers: Some(vec!["B".to_string()]),
-            market_id: None,
-            market_ids: None,
-            event_tickers: None,
-            send_initial_snapshot: None,
-            skip_ticker_ack: None,
-            shard_factor: None,
-            shard_key: None,
+            ..Default::default()
         };
-        assert!(validate_subscription_v2(&params).is_err());
+        assert!(validate_subscription(&params).is_err());
 
-        let params = WsSubscriptionParamsV2 {
+        let params = WsSubscriptionParams {
             channels: vec![WsChannel::Ticker],
             market_ticker: Some("A".to_string()),
-            market_tickers: None,
             market_id: Some("uuid".to_string()),
-            market_ids: None,
-            event_tickers: None,
-            send_initial_snapshot: None,
-            skip_ticker_ack: None,
-            shard_factor: None,
-            shard_key: None,
+            ..Default::default()
         };
-        assert!(validate_subscription_v2(&params).is_err());
+        assert!(validate_subscription(&params).is_err());
     }
 }

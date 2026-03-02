@@ -12,7 +12,6 @@
 //! | Channel | Auth | Description |
 //! |---------|------|-------------|
 //! | [`WsChannel::Ticker`] | No | Price / volume snapshots |
-//! | [`WsChannel::TickerV2`] | No | Delta-style ticker updates |
 //! | [`WsChannel::Trade`] | No | Public trades |
 //! | [`WsChannel::MarketLifecycleV2`] | No | Market open / close / settle events |
 //! | [`WsChannel::Multivariate`] | No | Multivariate market lookups |
@@ -22,13 +21,6 @@
 //! | [`WsChannel::Communications`] | Yes | RFQs and quotes |
 //! | [`WsChannel::OrderGroupUpdates`] | Yes | Order-group lifecycle |
 //! | [`WsChannel::UserOrders`] | Yes | User order lifecycle updates |
-//!
-//! ## V1 + V2 API Surface
-//!
-//! - V2 docs-aligned methods: `subscribe_v2`, `unsubscribe_v2`, `update_subscription_v2`,
-//!   `next_message_v2`, `next_event_v2`, `start_reader_v2`
-//! - V1 methods remain available for backward compatibility.
-//! - Lifecycle controls: `close()` and configurable `shutdown_timeout(...)`.
 //!
 //! # Quick Start — Public Ticker
 //!
