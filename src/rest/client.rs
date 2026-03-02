@@ -1146,6 +1146,35 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Get subaccount netting configuration.
+    ///
+    /// **Requires auth.**
+    pub async fn get_subaccount_netting(
+        &self,
+    ) -> Result<GetSubaccountNettingResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/subaccounts/netting");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Update netting configuration for a subaccount.
+    ///
+    /// **Requires auth.**
+    pub async fn update_subaccount_netting(
+        &self,
+        body: UpdateSubaccountNettingRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/subaccounts/netting");
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
     // -----------------------------------------------
     // API keys (authenticated)
     // -----------------------------------------------
@@ -2009,7 +2038,7 @@ impl KalshiRestClient {
     pub fn multivariate_events_pager(
         &self,
         params: GetMultivariateEventsParams,
-    ) -> CursorPager<GenericObject> {
+    ) -> CursorPager<EventData> {
         let client = self.clone();
         let base_params = params.clone();
         CursorPager::new(params.cursor.clone(), move |cursor| {
@@ -2027,7 +2056,7 @@ impl KalshiRestClient {
     pub fn multivariate_event_collections_pager(
         &self,
         params: GetMultivariateEventCollectionsParams,
-    ) -> CursorPager<GenericObject> {
+    ) -> CursorPager<MultivariateEventCollection> {
         let client = self.clone();
         let base_params = params.clone();
         CursorPager::new(params.cursor.clone(), move |cursor| {
@@ -2044,7 +2073,7 @@ impl KalshiRestClient {
     }
 
     /// Create a pager for iterating over RFQs page by page.
-    pub fn rfqs_pager(&self, params: GetRFQsParams) -> CursorPager<GenericObject> {
+    pub fn rfqs_pager(&self, params: GetRFQsParams) -> CursorPager<RFQ> {
         let client = self.clone();
         let base_params = params.clone();
         CursorPager::new(params.cursor.clone(), move |cursor| {
@@ -2059,7 +2088,7 @@ impl KalshiRestClient {
     }
 
     /// Create a pager for iterating over quotes page by page.
-    pub fn quotes_pager(&self, params: GetQuotesParams) -> CursorPager<GenericObject> {
+    pub fn quotes_pager(&self, params: GetQuotesParams) -> CursorPager<Quote> {
         let client = self.clone();
         let base_params = params.clone();
         CursorPager::new(params.cursor.clone(), move |cursor| {
@@ -2077,7 +2106,7 @@ impl KalshiRestClient {
     pub fn structured_targets_pager(
         &self,
         params: GetStructuredTargetsParams,
-    ) -> CursorPager<GenericObject> {
+    ) -> CursorPager<StructuredTarget> {
         let client = self.clone();
         let base_params = params.clone();
         CursorPager::new(params.cursor.clone(), move |cursor| {
@@ -2205,7 +2234,7 @@ impl KalshiRestClient {
         &self,
         params: GetMultivariateEventsParams,
         max_items: Option<usize>,
-    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+    ) -> impl Stream<Item = Result<EventData, KalshiError>> + Send {
         stream_items(self.multivariate_events_pager(params), max_items)
     }
 
@@ -2214,7 +2243,7 @@ impl KalshiRestClient {
         &self,
         params: GetMultivariateEventCollectionsParams,
         max_items: Option<usize>,
-    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+    ) -> impl Stream<Item = Result<MultivariateEventCollection, KalshiError>> + Send {
         stream_items(self.multivariate_event_collections_pager(params), max_items)
     }
 
@@ -2223,7 +2252,7 @@ impl KalshiRestClient {
         &self,
         params: GetRFQsParams,
         max_items: Option<usize>,
-    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+    ) -> impl Stream<Item = Result<RFQ, KalshiError>> + Send {
         stream_items(self.rfqs_pager(params), max_items)
     }
 
@@ -2232,7 +2261,7 @@ impl KalshiRestClient {
         &self,
         params: GetQuotesParams,
         max_items: Option<usize>,
-    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+    ) -> impl Stream<Item = Result<Quote, KalshiError>> + Send {
         stream_items(self.quotes_pager(params), max_items)
     }
 
@@ -2241,7 +2270,7 @@ impl KalshiRestClient {
         &self,
         params: GetStructuredTargetsParams,
         max_items: Option<usize>,
-    ) -> impl Stream<Item = Result<GenericObject, KalshiError>> + Send {
+    ) -> impl Stream<Item = Result<StructuredTarget, KalshiError>> + Send {
         stream_items(self.structured_targets_pager(params), max_items)
     }
 
@@ -2330,7 +2359,7 @@ impl KalshiRestClient {
     pub async fn get_multivariate_events_all(
         &self,
         params: GetMultivariateEventsParams,
-    ) -> Result<Vec<GenericObject>, KalshiError> {
+    ) -> Result<Vec<EventData>, KalshiError> {
         self.paginate_cursor(params.cursor.clone(), |cursor| {
             let mut page_params = params.clone();
             page_params.cursor = cursor;
@@ -2346,7 +2375,7 @@ impl KalshiRestClient {
     pub async fn get_multivariate_event_collections_all(
         &self,
         params: GetMultivariateEventCollectionsParams,
-    ) -> Result<Vec<GenericObject>, KalshiError> {
+    ) -> Result<Vec<MultivariateEventCollection>, KalshiError> {
         self.paginate_cursor(params.cursor.clone(), |cursor| {
             let mut page_params = params.clone();
             page_params.cursor = cursor;
@@ -2359,10 +2388,7 @@ impl KalshiRestClient {
     }
 
     /// Fetch all pages for RFQs using cursor pagination.
-    pub async fn get_rfqs_all(
-        &self,
-        params: GetRFQsParams,
-    ) -> Result<Vec<GenericObject>, KalshiError> {
+    pub async fn get_rfqs_all(&self, params: GetRFQsParams) -> Result<Vec<RFQ>, KalshiError> {
         self.paginate_cursor(params.cursor.clone(), |cursor| {
             let mut page_params = params.clone();
             page_params.cursor = cursor;
@@ -2375,10 +2401,7 @@ impl KalshiRestClient {
     }
 
     /// Fetch all pages for quotes using cursor pagination.
-    pub async fn get_quotes_all(
-        &self,
-        params: GetQuotesParams,
-    ) -> Result<Vec<GenericObject>, KalshiError> {
+    pub async fn get_quotes_all(&self, params: GetQuotesParams) -> Result<Vec<Quote>, KalshiError> {
         self.paginate_cursor(params.cursor.clone(), |cursor| {
             let mut page_params = params.clone();
             page_params.cursor = cursor;
@@ -2394,7 +2417,7 @@ impl KalshiRestClient {
     pub async fn get_structured_targets_all(
         &self,
         params: GetStructuredTargetsParams,
-    ) -> Result<Vec<GenericObject>, KalshiError> {
+    ) -> Result<Vec<StructuredTarget>, KalshiError> {
         self.paginate_cursor(params.cursor.clone(), |cursor| {
             let mut page_params = params.clone();
             page_params.cursor = cursor;
