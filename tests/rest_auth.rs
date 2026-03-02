@@ -3,8 +3,10 @@
 mod common;
 
 use kalshi_fast::{
-    GetFillsParams, GetOrdersParams, GetPositionsParams, GetSettlementsParams,
-    GetSubaccountTransfersParams, KalshiError, KalshiRestClient,
+    EventStatus, GetEventForecastPercentileHistoryParams, GetEventsParams, GetFillsParams,
+    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetQuotesParams,
+    GetRFQsParams, GetSettlementsParams, GetSubaccountTransfersParams, KalshiError,
+    KalshiRestClient, SubaccountQueryParams,
 };
 
 #[tokio::test]
@@ -181,4 +183,238 @@ async fn test_auth_required_without_auth() {
         Ok(Ok(_)) => panic!("Expected error, got success"),
         Err(_) => panic!("timeout"),
     }
+}
+
+#[tokio::test]
+async fn test_get_portfolio_total_resting_order_value() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_portfolio_total_resting_order_value().await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    assert!(resp.total_resting_order_value >= 0);
+}
+
+#[tokio::test]
+async fn test_get_api_keys() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async { client.get_api_keys().await })
+        .await
+        .expect("timeout")
+        .expect("request failed");
+}
+
+#[tokio::test]
+async fn test_get_communications_id() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_communications_id().await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    assert!(!resp.communications_id.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_order_groups() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_order_groups(SubaccountQueryParams::default())
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+}
+
+#[tokio::test]
+async fn test_get_order_queue_positions() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_order_queue_positions(GetOrderQueuePositionsParams::default())
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+}
+
+#[tokio::test]
+async fn test_get_rfqs() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_rfqs(GetRFQsParams::default()).await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    // RFQs may be empty, but the response should parse
+    let _ = resp.rfqs;
+}
+
+#[tokio::test]
+async fn test_get_quotes() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_quotes(GetQuotesParams::default()).await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    // Quotes may be empty, but the response should parse
+    let _ = resp.quotes;
+}
+
+#[tokio::test]
+async fn test_get_event_forecast_percentile_history() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    // First find an open event with a series_ticker
+    let events_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_events(GetEventsParams {
+                limit: Some(5),
+                status: Some(EventStatus::Open),
+                ..Default::default()
+            })
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    let event = events_resp
+        .events
+        .iter()
+        .find(|e| e.series_ticker.is_some());
+
+    let event = match event {
+        Some(e) => e,
+        None => return,
+    };
+
+    let series_ticker = event.series_ticker.as_ref().unwrap().clone();
+    let event_ticker = event.event_ticker.clone();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_event_forecast_percentile_history(
+                &series_ticker,
+                &event_ticker,
+                GetEventForecastPercentileHistoryParams {
+                    percentiles: vec![25, 50, 75],
+                    start_ts: now - 86400 * 7,
+                    end_ts: now,
+                    period_interval: 3600,
+                },
+            )
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+}
+
+#[tokio::test]
+async fn test_get_subaccount_transfers_all() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let transfers = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_subaccount_transfers_all(GetSubaccountTransfersParams {
+                limit: Some(100),
+                ..Default::default()
+            })
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    // Transfers may be empty on demo
+    let _ = transfers;
+}
+
+#[tokio::test]
+async fn test_get_rfqs_all() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let rfqs = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_rfqs_all(GetRFQsParams::default()).await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    let _ = rfqs;
+}
+
+#[tokio::test]
+async fn test_get_quotes_all() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let quotes = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_quotes_all(GetQuotesParams::default()).await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    let _ = quotes;
+}
+
+#[tokio::test]
+async fn test_get_subaccount_netting() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = KalshiRestClient::new(common::demo_env()).with_auth(auth);
+
+    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_subaccount_netting().await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
 }
