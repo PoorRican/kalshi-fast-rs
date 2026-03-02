@@ -1894,14 +1894,22 @@ pub struct BatchGetMarketCandlesticksParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct BidAskDistribution {
-    pub open: i64,
-    pub open_dollars: FixedPointDollars,
-    pub low: i64,
-    pub low_dollars: FixedPointDollars,
-    pub high: i64,
-    pub high_dollars: FixedPointDollars,
-    pub close: i64,
-    pub close_dollars: FixedPointDollars,
+    #[serde(default)]
+    pub open: Option<i64>,
+    #[serde(default)]
+    pub open_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub low: Option<i64>,
+    #[serde(default)]
+    pub low_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub high: Option<i64>,
+    #[serde(default)]
+    pub high_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub close: Option<i64>,
+    #[serde(default)]
+    pub close_dollars: Option<FixedPointDollars>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

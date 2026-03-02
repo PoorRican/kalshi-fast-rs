@@ -618,6 +618,51 @@ fn get_event_candlesticks_response_deserializes_nested_market_arrays() {
 }
 
 #[test]
+fn batch_get_market_candlesticks_response_deserializes_synthetic_null_ohlc() {
+    let json = r#"{
+        "markets": [{
+            "market_ticker": "MKT-1",
+            "candlesticks": [{
+                "end_period_ts": 124,
+                "yes_bid": {
+                    "open": null, "open_dollars": null,
+                    "low": null, "low_dollars": null,
+                    "high": null, "high_dollars": null,
+                    "close": null, "close_dollars": null
+                },
+                "yes_ask": {
+                    "open": null, "open_dollars": null,
+                    "low": null, "low_dollars": null,
+                    "high": null, "high_dollars": null,
+                    "close": null, "close_dollars": null
+                },
+                "price": {
+                    "open": null, "open_dollars": null,
+                    "low": null, "low_dollars": null,
+                    "high": null, "high_dollars": null,
+                    "close": null, "close_dollars": null,
+                    "mean": null, "mean_dollars": null,
+                    "previous": null, "previous_dollars": null,
+                    "min": null, "min_dollars": null,
+                    "max": null, "max_dollars": null
+                },
+                "volume": 0,
+                "volume_fp": "0.00",
+                "open_interest": 0,
+                "open_interest_fp": "0.00"
+            }]
+        }]
+    }"#;
+
+    let resp: kalshi_fast::BatchGetMarketCandlesticksResponse = serde_json::from_str(json).unwrap();
+    let candle = &resp.markets[0].candlesticks[0];
+    assert_eq!(candle.yes_bid.open, None);
+    assert_eq!(candle.yes_ask.close_dollars, None);
+    assert_eq!(candle.price.open, None);
+    assert_eq!(candle.price.mean_dollars, None);
+}
+
+#[test]
 fn get_market_candlesticks_historical_response_deserializes() {
     let json = r#"{
         "ticker": "MKT-1",
