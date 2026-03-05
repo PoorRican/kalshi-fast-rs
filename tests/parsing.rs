@@ -10,8 +10,8 @@ use kalshi_fast::{
     GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
     GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
     GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
-    MveFilter, OrderStatus, OrderType, PositionCountFilter, PriceRange, SelfTradePreventionType,
-    TimeInForce, YesNo,
+    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
+    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, YesNo,
 };
 
 // ============================================================================
@@ -19,27 +19,133 @@ use kalshi_fast::{
 // ============================================================================
 
 #[test]
-fn market_status_serializes_correctly() {
+fn market_status_query_serializes_correctly() {
     assert_eq!(
-        serde_json::to_string(&MarketStatus::Open).unwrap(),
+        serde_json::to_string(&MarketStatusQuery::Open).unwrap(),
         "\"open\""
     );
     assert_eq!(
-        serde_json::to_string(&MarketStatus::Closed).unwrap(),
+        serde_json::to_string(&MarketStatusQuery::Closed).unwrap(),
         "\"closed\""
     );
     assert_eq!(
-        serde_json::to_string(&MarketStatus::Settled).unwrap(),
+        serde_json::to_string(&MarketStatusQuery::Settled).unwrap(),
         "\"settled\""
     );
     assert_eq!(
-        serde_json::to_string(&MarketStatus::Paused).unwrap(),
+        serde_json::to_string(&MarketStatusQuery::Paused).unwrap(),
         "\"paused\""
     );
     assert_eq!(
-        serde_json::to_string(&MarketStatus::Unopened).unwrap(),
+        serde_json::to_string(&MarketStatusQuery::Unopened).unwrap(),
         "\"unopened\""
     );
+}
+
+#[test]
+fn market_status_from_lifecycle_is_best_effort() {
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Initialized),
+        MarketStatusQuery::Unopened
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Inactive),
+        MarketStatusQuery::Paused
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Active),
+        MarketStatusQuery::Open
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Closed),
+        MarketStatusQuery::Closed
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Determined),
+        MarketStatusQuery::Closed
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Disputed),
+        MarketStatusQuery::Closed
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Amended),
+        MarketStatusQuery::Closed
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Finalized),
+        MarketStatusQuery::Settled
+    );
+    assert_eq!(
+        MarketStatusQuery::from(MarketStatus::Unknown),
+        MarketStatusQuery::Unknown
+    );
+}
+
+#[test]
+fn market_status_from_query_is_best_effort() {
+    assert_eq!(
+        MarketStatus::from(MarketStatusQuery::Unopened),
+        MarketStatus::Initialized
+    );
+    assert_eq!(
+        MarketStatus::from(MarketStatusQuery::Open),
+        MarketStatus::Active
+    );
+    assert_eq!(
+        MarketStatus::from(MarketStatusQuery::Paused),
+        MarketStatus::Inactive
+    );
+    assert_eq!(
+        MarketStatus::from(MarketStatusQuery::Closed),
+        MarketStatus::Closed
+    );
+    assert_eq!(
+        MarketStatus::from(MarketStatusQuery::Settled),
+        MarketStatus::Finalized
+    );
+    assert_eq!(
+        MarketStatus::from(MarketStatusQuery::Unknown),
+        MarketStatus::Unknown
+    );
+}
+
+#[test]
+fn market_status_query_try_from_lifecycle_is_strict() {
+    assert_eq!(
+        MarketStatusQuery::try_from(&MarketStatus::Closed).unwrap(),
+        MarketStatusQuery::Closed
+    );
+    assert_eq!(
+        MarketStatusQuery::try_from(&MarketStatus::Unknown).unwrap(),
+        MarketStatusQuery::Unknown
+    );
+
+    assert!(matches!(
+        MarketStatusQuery::try_from(&MarketStatus::Active),
+        Err(MarketStatusConversionError::LifecycleToQuery(
+            MarketStatus::Active
+        ))
+    ));
+}
+
+#[test]
+fn market_status_try_from_query_is_strict() {
+    assert_eq!(
+        MarketStatus::try_from(&MarketStatusQuery::Closed).unwrap(),
+        MarketStatus::Closed
+    );
+    assert_eq!(
+        MarketStatus::try_from(&MarketStatusQuery::Unknown).unwrap(),
+        MarketStatus::Unknown
+    );
+
+    assert!(matches!(
+        MarketStatus::try_from(&MarketStatusQuery::Open),
+        Err(MarketStatusConversionError::QueryToLifecycle(
+            MarketStatusQuery::Open
+        ))
+    ));
 }
 
 #[test]
@@ -143,7 +249,7 @@ fn self_trade_prevention_type_serializes_correctly() {
 fn get_markets_params_serializes_with_csv_fields() {
     let params = GetMarketsParams {
         limit: Some(50),
-        status: Some(MarketStatus::Open),
+        status: Some(MarketStatusQuery::Open),
         event_ticker: Some(vec!["EVT1".into(), "EVT2".into()]),
         tickers: Some(vec!["TKR1".into(), "TKR2".into(), "TKR3".into()]),
         ..Default::default()
@@ -1043,7 +1149,7 @@ fn get_markets_params_validates_timestamp_mutual_exclusion() {
     // min_updated_ts cannot combine with other filters
     let params = GetMarketsParams {
         min_updated_ts: Some(1000),
-        status: Some(MarketStatus::Open),
+        status: Some(MarketStatusQuery::Open),
         ..Default::default()
     };
     assert!(params.validate().is_err());

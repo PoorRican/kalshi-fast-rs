@@ -3,7 +3,7 @@
 /// - Places an order
 use kalshi_fast::{
     BuySell, CreateOrderRequest, GetMarketsParams, KalshiAuth, KalshiEnvironment, KalshiRestClient,
-    MarketStatus, OrderType, YesNo,
+    MarketStatusQuery, OrderType, YesNo,
 };
 
 #[tokio::main]
@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let resp = client
         .get_markets(GetMarketsParams {
             limit: Some(1),
-            status: Some(MarketStatus::Open),
+            status: Some(MarketStatusQuery::Open),
             ..Default::default()
         })
         .await?;

@@ -7,7 +7,7 @@ use kalshi_fast::{
     GetIncentiveProgramsParams, GetMarketCandlesticksParams, GetMarketsParams, GetMilestonesParams,
     GetMultivariateEventCollectionLookupHistoryParams, GetMultivariateEventCollectionsParams,
     GetMultivariateEventsParams, GetSeriesFeeChangesParams, GetSeriesListParams,
-    GetStructuredTargetsParams, GetTradesParams, KalshiRestClient, MarketStatus,
+    GetStructuredTargetsParams, GetTradesParams, KalshiRestClient, MarketStatusQuery,
 };
 
 #[tokio::test]
@@ -132,7 +132,7 @@ async fn test_get_markets() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(5),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -153,7 +153,7 @@ async fn test_get_market_by_ticker() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -187,7 +187,7 @@ async fn test_get_market_orderbook() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -220,7 +220,7 @@ async fn test_get_trades() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -598,7 +598,7 @@ async fn test_batch_get_market_candlesticks() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -640,7 +640,7 @@ async fn test_get_market_candlesticks() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -754,7 +754,7 @@ async fn test_get_markets_all() {
         client
             .get_markets_all(GetMarketsParams {
                 limit: Some(100),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -776,7 +776,7 @@ async fn test_get_trades_all() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await

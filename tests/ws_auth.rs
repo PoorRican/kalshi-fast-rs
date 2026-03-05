@@ -3,7 +3,7 @@
 mod common;
 
 use kalshi_fast::{
-    GetMarketsParams, KalshiRestClient, KalshiWsLowLevelClient, MarketStatus, WsChannel,
+    GetMarketsParams, KalshiRestClient, KalshiWsLowLevelClient, MarketStatusQuery, WsChannel,
     WsDataMessage, WsMessage, WsSubscriptionParams,
 };
 use std::time::Duration;
@@ -35,7 +35,7 @@ async fn test_ws_orderbook_delta_subscribe() {
         rest_client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await

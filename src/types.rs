@@ -176,11 +176,11 @@ impl Serialize for EventStatus {
     }
 }
 
-/// --- Market Status ---
+/// --- Market Status Query ---
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum MarketStatus {
+pub enum MarketStatusQuery {
     Unopened,
     Open,
     Paused,
@@ -190,26 +190,26 @@ pub enum MarketStatus {
     Unknown,
 }
 
-impl MarketStatus {
+impl MarketStatusQuery {
     pub fn as_str(self) -> &'static str {
         match self {
-            MarketStatus::Unopened => "unopened",
-            MarketStatus::Open => "open",
-            MarketStatus::Paused => "paused",
-            MarketStatus::Closed => "closed",
-            MarketStatus::Settled => "settled",
-            MarketStatus::Unknown => "unknown",
+            MarketStatusQuery::Unopened => "unopened",
+            MarketStatusQuery::Open => "open",
+            MarketStatusQuery::Paused => "paused",
+            MarketStatusQuery::Closed => "closed",
+            MarketStatusQuery::Settled => "settled",
+            MarketStatusQuery::Unknown => "unknown",
         }
     }
 }
 
-impl fmt::Display for MarketStatus {
+impl fmt::Display for MarketStatusQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-impl Serialize for MarketStatus {
+impl Serialize for MarketStatusQuery {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())
     }
@@ -511,14 +511,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn market_status_deserialize_known() {
-        let status: MarketStatus = serde_json::from_str("\"open\"").unwrap();
-        assert!(matches!(status, MarketStatus::Open));
+    fn market_status_query_deserialize_known() {
+        let status: MarketStatusQuery = serde_json::from_str("\"open\"").unwrap();
+        assert!(matches!(status, MarketStatusQuery::Open));
     }
 
     #[test]
-    fn market_status_deserialize_unknown() {
-        let status: MarketStatus = serde_json::from_str("\"mystery\"").unwrap();
-        assert!(matches!(status, MarketStatus::Unknown));
+    fn market_status_query_deserialize_unknown() {
+        let status: MarketStatusQuery = serde_json::from_str("\"mystery\"").unwrap();
+        assert!(matches!(status, MarketStatusQuery::Unknown));
     }
 }
