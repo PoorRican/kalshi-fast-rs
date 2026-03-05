@@ -5,7 +5,7 @@ mod common;
 use kalshi_fast::{
     AmendOrderRequest, BatchCancelOrdersRequest, BatchCreateOrdersRequest, BuySell,
     CancelOrderParams, CreateOrderRequest, GetMarketsParams, GetOrdersParams, KalshiRestClient,
-    MarketStatus, OrderType, YesNo,
+    MarketStatusQuery, OrderType, YesNo,
 };
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ async fn test_order_lifecycle() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -147,7 +147,7 @@ async fn test_batch_order_lifecycle() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await

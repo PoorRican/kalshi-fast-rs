@@ -2,7 +2,7 @@
 ///
 /// Demonstrates saving and restoring pagination state across sessions.
 /// Run multiple times to see it resume from the last checkpoint.
-use kalshi_fast::{GetMarketsParams, KalshiEnvironment, KalshiRestClient, MarketStatus};
+use kalshi_fast::{GetMarketsParams, KalshiEnvironment, KalshiRestClient, MarketStatusQuery};
 use std::fs;
 
 const CURSOR_FILE: &str = "/tmp/market_scan_cursor.txt";
@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut pager = client.markets_pager(GetMarketsParams {
         cursor: start_cursor,
-        status: Some(MarketStatus::Open),
+        status: Some(MarketStatusQuery::Open),
         limit: Some(100),
         ..Default::default()
     });

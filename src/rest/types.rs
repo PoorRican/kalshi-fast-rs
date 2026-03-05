@@ -1,12 +1,13 @@
 use crate::error::KalshiError;
 use crate::types::{
-    BuySell, ErrorResponse, EventStatus, FeeType, FixedPointCount, FixedPointDollars, MarketStatus,
-    MveFilter, OrderStatus, OrderType, PositionCountFilter, SelfTradePreventionType, TimeInForce,
-    TradeTakerSide, YesNo, deserialize_null_as_empty_vec, deserialize_string_or_number,
-    serialize_csv_opt,
+    BuySell, ErrorResponse, EventStatus, FeeType, FixedPointCount, FixedPointDollars,
+    MarketStatusQuery, MveFilter, OrderStatus, OrderType, PositionCountFilter,
+    SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo, deserialize_null_as_empty_vec,
+    deserialize_string_or_number, serialize_csv_opt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::fmt;
 
 /// --- Series ---
 
@@ -282,9 +283,9 @@ pub struct GetEventResponse {
 
 /// --- Markets ---
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum MarketState {
+pub enum MarketStatus {
     Initialized,
     Inactive,
     Active,
@@ -295,6 +296,117 @@ pub enum MarketState {
     Finalized,
     #[serde(other)]
     Unknown,
+}
+
+impl MarketStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MarketStatus::Initialized => "initialized",
+            MarketStatus::Inactive => "inactive",
+            MarketStatus::Active => "active",
+            MarketStatus::Closed => "closed",
+            MarketStatus::Determined => "determined",
+            MarketStatus::Disputed => "disputed",
+            MarketStatus::Amended => "amended",
+            MarketStatus::Finalized => "finalized",
+            MarketStatus::Unknown => "unknown",
+        }
+    }
+}
+
+/// Error returned by strict lifecycle/query status conversions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketStatusConversionError {
+    LifecycleToQuery(MarketStatus),
+    QueryToLifecycle(MarketStatusQuery),
+}
+
+impl fmt::Display for MarketStatusConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MarketStatusConversionError::LifecycleToQuery(status) => write!(
+                f,
+                "cannot strictly convert lifecycle market status `{}` to market status query",
+                status.as_str()
+            ),
+            MarketStatusConversionError::QueryToLifecycle(status) => write!(
+                f,
+                "cannot strictly convert market status query `{}` to lifecycle market status",
+                status.as_str()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for MarketStatusConversionError {}
+
+/// Best-effort compatibility conversion between response lifecycle status and
+/// query status filters.
+///
+/// Prefer using the source enum directly when possible. This mapping is lossy.
+impl From<MarketStatus> for MarketStatusQuery {
+    fn from(status: MarketStatus) -> Self {
+        match status {
+            MarketStatus::Initialized => MarketStatusQuery::Unopened,
+            MarketStatus::Inactive => MarketStatusQuery::Paused,
+            MarketStatus::Active => MarketStatusQuery::Open,
+            MarketStatus::Closed => MarketStatusQuery::Closed,
+            MarketStatus::Determined => MarketStatusQuery::Closed,
+            MarketStatus::Disputed => MarketStatusQuery::Closed,
+            MarketStatus::Amended => MarketStatusQuery::Closed,
+            MarketStatus::Finalized => MarketStatusQuery::Settled,
+            MarketStatus::Unknown => MarketStatusQuery::Unknown,
+        }
+    }
+}
+
+/// Best-effort compatibility conversion between query status filters and
+/// response lifecycle status.
+///
+/// Prefer using the source enum directly when possible. This mapping is lossy.
+impl From<MarketStatusQuery> for MarketStatus {
+    fn from(status: MarketStatusQuery) -> Self {
+        match status {
+            MarketStatusQuery::Unopened => MarketStatus::Initialized,
+            MarketStatusQuery::Open => MarketStatus::Active,
+            MarketStatusQuery::Paused => MarketStatus::Inactive,
+            MarketStatusQuery::Closed => MarketStatus::Closed,
+            MarketStatusQuery::Settled => MarketStatus::Finalized,
+            MarketStatusQuery::Unknown => MarketStatus::Unknown,
+        }
+    }
+}
+
+/// Strict lifecycle-to-query conversion helper.
+///
+/// Prefer direct enum usage whenever possible. This exists for forward
+/// compatibility and only succeeds for one-to-one status values.
+impl TryFrom<&MarketStatus> for MarketStatusQuery {
+    type Error = MarketStatusConversionError;
+
+    fn try_from(status: &MarketStatus) -> Result<Self, Self::Error> {
+        match *status {
+            MarketStatus::Closed => Ok(MarketStatusQuery::Closed),
+            MarketStatus::Unknown => Ok(MarketStatusQuery::Unknown),
+            _ => Err(MarketStatusConversionError::LifecycleToQuery(*status)),
+        }
+    }
+}
+
+/// Strict query-to-lifecycle conversion helper.
+///
+/// Prefer direct enum usage whenever possible. This exists for forward
+/// compatibility and only succeeds for one-to-one status values.
+impl TryFrom<&MarketStatusQuery> for MarketStatus {
+    type Error = MarketStatusConversionError;
+
+    fn try_from(status: &MarketStatusQuery) -> Result<Self, Self::Error> {
+        match *status {
+            MarketStatusQuery::Closed => Ok(MarketStatus::Closed),
+            MarketStatusQuery::Unknown => Ok(MarketStatus::Unknown),
+            _ => Err(MarketStatusConversionError::QueryToLifecycle(*status)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -329,7 +441,7 @@ pub struct Market {
     #[serde(default)]
     pub market_id: Option<String>,
     #[serde(default)]
-    pub status: Option<MarketState>,
+    pub status: Option<MarketStatus>,
     #[serde(default)]
     pub market_type: Option<String>,
     #[serde(default)]
@@ -539,7 +651,7 @@ pub struct GetMarketsParams {
 
     /// Only one status filter may be supplied at a time.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<MarketStatus>,
+    pub status: Option<MarketStatusQuery>,
 
     /// Market tickers comma-separated.
     #[serde(
@@ -610,7 +722,11 @@ impl GetMarketsParams {
         if created
             && matches!(
                 self.status,
-                Some(MarketStatus::Closed | MarketStatus::Settled | MarketStatus::Paused)
+                Some(
+                    MarketStatusQuery::Closed
+                        | MarketStatusQuery::Settled
+                        | MarketStatusQuery::Paused
+                )
             )
         {
             return Err(KalshiError::InvalidParams(
@@ -621,10 +737,10 @@ impl GetMarketsParams {
             && matches!(
                 self.status,
                 Some(
-                    MarketStatus::Unopened
-                        | MarketStatus::Open
-                        | MarketStatus::Settled
-                        | MarketStatus::Paused
+                    MarketStatusQuery::Unopened
+                        | MarketStatusQuery::Open
+                        | MarketStatusQuery::Settled
+                        | MarketStatusQuery::Paused
                 )
             )
         {
@@ -636,10 +752,10 @@ impl GetMarketsParams {
             && matches!(
                 self.status,
                 Some(
-                    MarketStatus::Unopened
-                        | MarketStatus::Open
-                        | MarketStatus::Closed
-                        | MarketStatus::Paused
+                    MarketStatusQuery::Unopened
+                        | MarketStatusQuery::Open
+                        | MarketStatusQuery::Closed
+                        | MarketStatusQuery::Paused
                 )
             )
         {

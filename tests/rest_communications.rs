@@ -3,7 +3,7 @@
 mod common;
 
 use kalshi_fast::{
-    CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, KalshiRestClient, MarketStatus,
+    CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, KalshiRestClient, MarketStatusQuery,
 };
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ async fn test_rfq_lifecycle() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await
@@ -88,7 +88,7 @@ async fn test_quote_lifecycle() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(1),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })
             .await

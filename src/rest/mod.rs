@@ -32,7 +32,7 @@
 //! ```no_run
 //! use kalshi_fast::{
 //!     GetMarketsParams, KalshiAuth, KalshiEnvironment,
-//!     KalshiRestClient, MarketStatus,
+//!     KalshiRestClient, MarketStatusQuery,
 //! };
 //!
 //! # async fn run() -> Result<(), kalshi_fast::KalshiError> {
@@ -44,7 +44,7 @@
 //! // Public endpoint — no auth needed
 //! let resp = client
 //!     .get_markets(GetMarketsParams {
-//!         status: Some(MarketStatus::Open),
+//!         status: Some(MarketStatusQuery::Open),
 //!         limit: Some(5),
 //!         ..Default::default()
 //!     })

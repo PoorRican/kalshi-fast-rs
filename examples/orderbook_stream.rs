@@ -8,7 +8,7 @@
 /// Requires KALSHI_KEY_ID and KALSHI_PRIVATE_KEY_PATH env vars (or .env file)
 use kalshi_fast::{
     GetMarketsParams, KalshiAuth, KalshiEnvironment, KalshiRestClient, KalshiWsClient, Market,
-    MarketStatus, MveFilter, WsDataMessage, WsEvent, WsMessage, WsReconnectConfig,
+    MarketStatusQuery, MveFilter, WsDataMessage, WsEvent, WsMessage, WsReconnectConfig,
     WsSubscriptionParams,
 };
 use std::time::Duration;
@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
         let resp = client
             .get_markets(GetMarketsParams {
                 limit: Some(100),
-                status: Some(MarketStatus::Open),
+                status: Some(MarketStatusQuery::Open),
                 mve_filter: Some(MveFilter::Exclude),
                 cursor: cursor.clone(),
                 ..Default::default()
@@ -90,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
         .get_markets(GetMarketsParams {
             limit: Some(100),
             event_ticker: Some(vec![event_ticker.to_string()]),
-            status: Some(MarketStatus::Open),
+            status: Some(MarketStatusQuery::Open),
             ..Default::default()
         })
         .await?;
