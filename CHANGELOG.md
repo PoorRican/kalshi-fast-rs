@@ -7,6 +7,16 @@ Kalshi docs snapshot tracked by that release.
 
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
+## [0.5.0] - 2026-04-29
+
+### Fixed
+
+- [Rust API] Preserved WebSocket control-frame stream position by carrying `sid`/`seq` on `WsMessageV2::Ok` and `seq` on `WsMessageV2::Unsubscribed`.
+- [WebSocket] Deferred subscription tracker mutations from `update_subscription_v2` and `unsubscribe_v2` until matching server acknowledgements are received, with pending command cleanup on send failures.
+
+### Breaking
+
+- [Rust API] `WsMessageV2::Ok`, `WsMessageRef::Ok`, `WsMessageV2::Unsubscribed`, and `WsMessageRef::Unsubscribed` gained additional struct-variant fields; exhaustive downstream matches must use the new fields or `..`.
 
 ## [0.4.0] - 2026-04-18
 

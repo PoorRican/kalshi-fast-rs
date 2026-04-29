@@ -150,7 +150,7 @@ pub(crate) async fn handle_payload(
                             .handle_subscribed(id, sid.or_else(|| msg.and_then(|value| value.sid)));
                     }
                     WsControlMessage::Unsubscribed { sid } => {
-                        tracker.handle_unsubscribed(sid);
+                        tracker.handle_unsubscribed(None, sid);
                     }
                     WsControlMessage::Other => {}
                 }

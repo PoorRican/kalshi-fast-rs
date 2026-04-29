@@ -156,19 +156,23 @@ impl KalshiWsClient {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
 
-        {
-            let mut tracker = self.tracker.lock().await;
-            tracker.record_subscribe_cmd(id, params.clone());
-        }
-
         let cmd = WsSubscribeCmd {
             id,
             cmd: "subscribe",
             params,
         };
-
         let text = serde_json::to_string(&cmd)?;
-        self.send_command(Message::Text(text)).await?;
+
+        {
+            let mut tracker = self.tracker.lock().await;
+            tracker.record_subscribe_cmd(id, cmd.params.clone());
+        }
+
+        if let Err(err) = self.send_command(Message::Text(text)).await {
+            let mut tracker = self.tracker.lock().await;
+            tracker.drop_pending_subscribe(id);
+            return Err(err);
+        }
         Ok(id)
     }
 
@@ -186,20 +190,23 @@ impl KalshiWsClient {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
 
-        {
-            let mut tracker = self.tracker.lock().await;
-            for sid in &params.sids {
-                tracker.drop_active(*sid);
-            }
-        }
-
         let cmd = WsUnsubscribeCmd {
             id,
             cmd: "unsubscribe",
             params,
         };
         let text = serde_json::to_string(&cmd)?;
-        self.send_command(Message::Text(text)).await?;
+
+        {
+            let mut tracker = self.tracker.lock().await;
+            tracker.record_unsubscribe_cmd(id, cmd.params.sids.clone());
+        }
+
+        if let Err(err) = self.send_command(Message::Text(text)).await {
+            let mut tracker = self.tracker.lock().await;
+            tracker.drop_pending_unsubscribe(id);
+            return Err(err);
+        }
         Ok(id)
     }
 
@@ -213,18 +220,23 @@ impl KalshiWsClient {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
 
-        {
-            let mut tracker = self.tracker.lock().await;
-            tracker.apply_update(&params);
-        }
-
         let cmd = WsUpdateSubscriptionCmd {
             id,
             cmd: "update_subscription",
             params,
         };
         let text = serde_json::to_string(&cmd)?;
-        self.send_command(Message::Text(text)).await?;
+
+        {
+            let mut tracker = self.tracker.lock().await;
+            tracker.record_update_cmd(id, cmd.params.clone());
+        }
+
+        if let Err(err) = self.send_command(Message::Text(text)).await {
+            let mut tracker = self.tracker.lock().await;
+            tracker.drop_pending_update(id);
+            return Err(err);
+        }
         Ok(id)
     }
 
