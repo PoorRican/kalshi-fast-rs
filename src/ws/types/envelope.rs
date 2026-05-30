@@ -978,6 +978,8 @@ mod tests {
                 "yes_price_dollars":"0.10",
                 "no_price_dollars":"0.90",
                 "taker_side":"yes",
+                "taker_outcome_side":"yes",
+                "taker_book_side":"bid",
                 "ts":1704067200,
                 "ts_ms":1704067200000
             }

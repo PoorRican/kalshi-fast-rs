@@ -27,6 +27,12 @@ pub struct WsMarketLifecycleV2 {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// Present on `metadata_updated` events when the floor strike changed.
+    #[serde(default)]
+    pub floor_strike: Option<f64>,
+    /// Present on `metadata_updated` events when the yes subtitle changed.
+    #[serde(default)]
+    pub yes_sub_title: Option<String>,
     #[serde(default)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadata>,
 }
@@ -42,6 +48,7 @@ pub enum WsMarketLifecycleEventType {
     Settled,
     FractionalTradingUpdated,
     PriceLevelStructureUpdated,
+    MetadataUpdated,
     #[serde(other)]
     Unknown,
 }
@@ -131,6 +138,12 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    /// Present on `metadata_updated` events when the floor strike changed.
+    #[serde(default)]
+    pub floor_strike: Option<f64>,
+    /// Present on `metadata_updated` events when the yes subtitle changed.
+    #[serde(default, borrow)]
+    pub yes_sub_title: Option<Cow<'a, str>>,
     #[serde(default, borrow)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadataRef<'a>>,
 }
@@ -149,6 +162,8 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             is_deactivated: self.is_deactivated,
             fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            floor_strike: self.floor_strike,
+            yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
                 .map(WsMarketLifecycleAdditionalMetadataRef::into_owned),

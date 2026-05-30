@@ -1,4 +1,4 @@
-use crate::types::{BuySell, YesNo};
+use crate::types::{BookSide, BuySell, YesNo};
 use serde::Deserialize;
 use std::borrow::Cow;
 
@@ -11,8 +11,20 @@ pub struct WsFill {
     pub client_order_id: Option<String>,
     #[serde(alias = "ticker")]
     pub market_ticker: String,
-    pub side: YesNo,
-    pub action: BuySell,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub side: Option<YesNo>,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub action: Option<BuySell>,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub purchased_side: Option<YesNo>,
+    pub outcome_side: YesNo,
+    pub book_side: BookSide,
     pub count_fp: String,
     pub yes_price_dollars: String,
     pub is_taker: bool,
@@ -20,7 +32,6 @@ pub struct WsFill {
     pub ts: i64,
     pub ts_ms: i64,
     pub post_position_fp: String,
-    pub purchased_side: YesNo,
     #[serde(default)]
     pub created_time: Option<String>,
     #[serde(default)]
@@ -39,8 +50,20 @@ pub struct WsFillRef<'a> {
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(alias = "ticker", borrow)]
     pub market_ticker: Cow<'a, str>,
-    pub side: YesNo,
-    pub action: BuySell,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub side: Option<YesNo>,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub action: Option<BuySell>,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub purchased_side: Option<YesNo>,
+    pub outcome_side: YesNo,
+    pub book_side: BookSide,
     #[serde(borrow)]
     pub count_fp: Cow<'a, str>,
     pub yes_price_dollars: Cow<'a, str>,
@@ -51,7 +74,6 @@ pub struct WsFillRef<'a> {
     pub ts_ms: i64,
     #[serde(borrow)]
     pub post_position_fp: Cow<'a, str>,
-    pub purchased_side: YesNo,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
     #[serde(default)]
@@ -60,6 +82,7 @@ pub struct WsFillRef<'a> {
 }
 
 impl<'a> WsFillRef<'a> {
+    #[allow(deprecated)]
     pub fn into_owned(self) -> WsFill {
         WsFill {
             trade_id: self.trade_id.into_owned(),
@@ -68,6 +91,9 @@ impl<'a> WsFillRef<'a> {
             market_ticker: self.market_ticker.into_owned(),
             side: self.side,
             action: self.action,
+            purchased_side: self.purchased_side,
+            outcome_side: self.outcome_side,
+            book_side: self.book_side,
             count_fp: self.count_fp.into_owned(),
             yes_price_dollars: self.yes_price_dollars.into_owned(),
             is_taker: self.is_taker,
@@ -75,7 +101,6 @@ impl<'a> WsFillRef<'a> {
             ts: self.ts,
             ts_ms: self.ts_ms,
             post_position_fp: self.post_position_fp.into_owned(),
-            purchased_side: self.purchased_side,
             created_time: self.created_time.map(Cow::into_owned),
             subaccount: self.subaccount,
         }
@@ -86,6 +111,7 @@ impl<'a> WsFillRef<'a> {
 mod tests {
     use super::*;
 
+    #[allow(deprecated)]
     #[test]
     fn ws_fill_side_action_parse() {
         let json = r#"{
@@ -101,10 +127,14 @@ mod tests {
             "ts":0,
             "ts_ms":0,
             "post_position_fp":"1.00",
-            "purchased_side":"yes"
+            "purchased_side":"yes",
+            "outcome_side":"no",
+            "book_side":"ask"
         }"#;
         let fill: WsFill = serde_json::from_str(json).unwrap();
-        assert!(matches!(fill.side, YesNo::No));
-        assert!(matches!(fill.action, BuySell::Buy));
+        assert!(matches!(fill.side, Some(YesNo::No)));
+        assert!(matches!(fill.action, Some(BuySell::Buy)));
+        assert!(matches!(fill.outcome_side, YesNo::No));
+        assert!(matches!(fill.book_side, BookSide::Ask));
     }
 }

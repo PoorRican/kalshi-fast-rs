@@ -440,6 +440,41 @@ impl Serialize for TimeInForce {
     }
 }
 
+/// --- Book Side ---
+
+/// Book-vocabulary direction used by the V2 order API and normalized direction fields.
+/// `Bid` ≡ `outcome_side=yes`; `Ask` ≡ `outcome_side=no`.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BookSide {
+    Bid,
+    Ask,
+    #[serde(other)]
+    Unknown,
+}
+
+impl BookSide {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BookSide::Bid => "bid",
+            BookSide::Ask => "ask",
+            BookSide::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for BookSide {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for BookSide {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
 /// --- Self Trade Prevention Type ---
 
 #[derive(Debug, Clone, Copy, Deserialize)]

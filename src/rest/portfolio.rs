@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
+    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
     deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
+    /// Fixed-point dollar string for available balance. Added 2026-05-28.
+    pub balance_dollars: FixedPointDollars,
     pub portfolio_value: i64,
     pub updated_ts: i64,
 }
@@ -177,8 +179,16 @@ pub struct Fill {
     pub trade_id: String,
     pub ticker: String,
     pub market_ticker: String,
-    pub side: YesNo,
-    pub action: BuySell,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub side: Option<YesNo>,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
+    #[serde(default)]
+    pub action: Option<BuySell>,
+    pub outcome_side: YesNo,
+    pub book_side: BookSide,
     pub count_fp: FixedPointCount,
     pub yes_price_dollars: FixedPointDollars,
     pub no_price_dollars: FixedPointDollars,

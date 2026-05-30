@@ -1,5 +1,5 @@
 use crate::types::{
-    FixedPointCount, FixedPointDollars, OrderStatus, SelfTradePreventionType, YesNo,
+    BookSide, FixedPointCount, FixedPointDollars, OrderStatus, SelfTradePreventionType, YesNo,
 };
 use serde::Deserialize;
 
@@ -11,10 +11,18 @@ pub struct WsUserOrder {
     pub ticker: String,
     #[serde(default)]
     pub status: Option<OrderStatus>,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
     #[serde(default)]
     pub side: Option<YesNo>,
+    /// Deprecated — use `outcome_side` instead. Still required until removed upstream.
+    #[deprecated(note = "use outcome_side instead")]
     #[serde(default)]
     pub is_yes: Option<bool>,
+    #[serde(default)]
+    pub outcome_side: Option<YesNo>,
+    #[serde(default)]
+    pub book_side: Option<BookSide>,
     #[serde(default)]
     pub yes_price_dollars: Option<FixedPointDollars>,
     #[serde(default)]

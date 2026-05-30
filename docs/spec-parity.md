@@ -31,6 +31,50 @@ examples are ambiguous.
   should treat `ts_ms` as best-effort and fall back to `ts` (seconds) when
   precise millisecond timing matters.
 
+## Deprecated-but-present Fields
+
+The upstream Kalshi API is migrating order-direction vocabulary from legacy
+`side`/`action`/`taker_side` to the new `outcome_side`/`book_side`/`taker_outcome_side`
+and `taker_book_side` fields. The spec marks the old fields as deprecated but they
+remain present in server responses during the transition.
+
+The crate models this as follows:
+
+| Struct | Deprecated field(s) | Replacement(s) | Modeling |
+|---|---|---|---|
+| `Order` | `side: Option<YesNo>`, `action: Option<BuySell>` | `outcome_side: YesNo`, `book_side: BookSide` | Old fields `#[deprecated]` + `Option`; new fields required |
+| `Fill` | `side: Option<YesNo>`, `action: Option<BuySell>` | `outcome_side: YesNo`, `book_side: BookSide` | Old fields `#[deprecated]` + `Option`; new fields required |
+| `Trade` | `taker_side: Option<TradeTakerSide>` | `taker_outcome_side: TradeTakerSide`, `taker_book_side: BookSide` | Old field `#[deprecated]` + `Option`; new fields required |
+| `WsFill` | `side: Option<YesNo>`, `action: Option<BuySell>`, `purchased_side: Option<YesNo>` | `outcome_side: YesNo`, `book_side: BookSide` | Old fields `#[deprecated]` + `Option`; new fields required |
+| `WsTrade` | `taker_side: Option<TradeTakerSide>` | `taker_outcome_side: TradeTakerSide`, `taker_book_side: BookSide` | Old field `#[deprecated]` + `Option`; new fields required |
+| `WsUserOrder` | `side: Option<YesNo>`, `is_yes: Option<bool>` | `outcome_side: Option<YesNo>`, `book_side: Option<BookSide>` | Old fields `#[deprecated]` + `Option`; new fields `Option` (conditionally present) |
+
+Downstream consumers should read from the replacement fields. The deprecated fields
+are preserved only to avoid silent deserialization failures when the server still
+sends them; they will be removed once Kalshi drops them from responses.
+
+## External API Hosts
+
+Kalshi provides a dedicated external API host for direct/non-FCM members that
+bypasses FCM routing. The crate exposes these via `KalshiEnvironment::external()`
+and `KalshiEnvironment::external_demo()`:
+
+| Environment | REST | WebSocket |
+|---|---|---|
+| Production (FCM) | `https://api.elections.kalshi.com` | `wss://api.elections.kalshi.com/trade-api/ws/v2` |
+| Production (External) | `https://external-api.kalshi.com` | `wss://external-api-ws.kalshi.com/trade-api/ws/v2` |
+| Demo (FCM) | `https://demo-api.kalshi.co` | `wss://demo-api.kalshi.co/trade-api/ws/v2` |
+| Demo (External) | `https://external-api.demo.kalshi.co` | `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` |
+
+New integrations should prefer the external host unless they are FCM members.
+
+## Conditional Fields on `WsMarketLifecycleV2`
+
+`floor_strike` and `yes_sub_title` are only present on `metadata_updated` events.
+Both are modeled as `Option` on `WsMarketLifecycleV2` and its borrowed counterpart.
+The `WsMarketLifecycleAdditionalMetadata` struct similarly carries `floor_strike`
+and other fields that only appear for specific event types.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

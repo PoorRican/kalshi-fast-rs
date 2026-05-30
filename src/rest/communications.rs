@@ -113,6 +113,9 @@ pub struct GetQuotesParams {
     pub rfq_creator_subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_id: Option<String>,
+    /// Filter for quotes responding to RFQs created by the authenticated user (`"self"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rfq_user_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

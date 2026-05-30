@@ -9,6 +9,11 @@ pub const WS_PATH: &str = "/trade-api/ws/v2";
 
 const DEMO_HOST: &str = "demo-api.kalshi.co";
 const LIVE_HOST: &str = "api.elections.kalshi.com";
+/// Dedicated external API host for direct/non-FCM members (preferred for new integrations).
+const EXTERNAL_LIVE_HOST: &str = "external-api.kalshi.com";
+const EXTERNAL_LIVE_WS_HOST: &str = "external-api-ws.kalshi.com";
+const EXTERNAL_DEMO_HOST: &str = "external-api.demo.kalshi.co";
+const EXTERNAL_DEMO_WS_HOST: &str = "external-api-ws.demo.kalshi.co";
 
 #[derive(Debug, Clone)]
 pub struct KalshiEnvironment {
@@ -38,6 +43,28 @@ impl KalshiEnvironment {
             rest_origin: Url::parse(&format!("https://{LIVE_HOST}/"))
                 .expect("valid prod REST origin"),
             ws_url: format!("wss://{LIVE_HOST}{WS_PATH}"),
+        }
+    }
+
+    /// Dedicated external production environment for direct/non-FCM members.
+    /// REST: <https://external-api.kalshi.com/trade-api/v2>
+    /// WS: `wss://external-api-ws.kalshi.com/trade-api/ws/v2`
+    pub fn external() -> Self {
+        Self {
+            rest_origin: Url::parse(&format!("https://{EXTERNAL_LIVE_HOST}/"))
+                .expect("valid external prod REST origin"),
+            ws_url: format!("wss://{EXTERNAL_LIVE_WS_HOST}{WS_PATH}"),
+        }
+    }
+
+    /// Dedicated external demo environment for direct/non-FCM members.
+    /// REST: <https://external-api.demo.kalshi.co/trade-api/v2>
+    /// WS: `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2`
+    pub fn external_demo() -> Self {
+        Self {
+            rest_origin: Url::parse(&format!("https://{EXTERNAL_DEMO_HOST}/"))
+                .expect("valid external demo REST origin"),
+            ws_url: format!("wss://{EXTERNAL_DEMO_WS_HOST}{WS_PATH}"),
         }
     }
 }

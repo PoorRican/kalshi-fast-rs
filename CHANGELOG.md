@@ -8,6 +8,76 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.5.0] - 2026-05-30
+
+### Compatibility
+
+- Docs snapshot: 2026-05-30
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-05-26
+
+### Changelog entries since 2026-04-16 watermark → code mapping
+
+| Entry (approx date) | Disposition |
+|---|---|
+| External API hosts (`external-api.kalshi.com`, `external-api-ws.kalshi.com`, demo equivalents) | Added `KalshiEnvironment::external()` and `external_demo()` in `env.rs` |
+| `BookSide` enum (`bid`/`ask`) added to V2 order vocabulary | Added `BookSide` enum in `types.rs` |
+| `outcome_side` + `book_side` required on `Order` response | Added as required fields; deprecated `side`/`action` as `Option` |
+| `outcome_side` + `book_side` required on `Fill` response | Added as required fields; deprecated `side`/`action` as `Option` |
+| `taker_outcome_side` + `taker_book_side` required on `Trade` response | Added as required fields; deprecated `taker_side` as `Option` |
+| `balance_dollars` required on `GetBalanceResponse` | Added `balance_dollars: FixedPointDollars` |
+| `subaccount` required on `CreateOrderGroupResponse` | Added `subaccount: u32` |
+| V2 single order endpoints (`POST /portfolio/orders/v2`, `DELETE`, `PUT`, `PATCH /decrease`) | Added `CreateOrderV2Request/Response`, `CancelOrderV2{Params,Response}`, `AmendOrderV2Request/Response`, `DecreaseOrderV2Request/Response` and client methods |
+| V2 batch endpoints (`POST /portfolio/batch_orders/v2`, `DELETE`) | Added `BatchCreateOrdersV2Request/Response`, `BatchCancelOrdersV2Request/Response` and client methods |
+| `rfq_user_filter` param added to `GET /portfolio/communications/quotes` | Added `rfq_user_filter: Option<String>` to `GetQuotesParams` |
+| WS `fill` channel: `outcome_side` + `book_side` required; `side`/`action`/`purchased_side` deprecated | Updated `WsFill` / `WsFillRef` |
+| WS `trade` channel: `taker_outcome_side` + `taker_book_side` required; `taker_side` deprecated | Updated `WsTrade` / `WsTradeRef` |
+| WS `user_order` channel: `outcome_side` + `book_side` added | Updated `WsUserOrder` |
+| WS `market_lifecycle_v2` channel: `metadata_updated` event type; `floor_strike` + `yes_sub_title` optional fields | Added `MetadataUpdated` variant and new optional fields to `WsMarketLifecycleV2` |
+| AsyncAPI version unchanged (2.0.0) | No version-level changes needed |
+
+### Added
+
+- [Rust API] `KalshiEnvironment::external()` — REST `https://external-api.kalshi.com` / WS `wss://external-api-ws.kalshi.com/trade-api/ws/v2`; for direct/non-FCM members.
+- [Rust API] `KalshiEnvironment::external_demo()` — demo equivalent for direct members.
+- [Rust API] `BookSide` enum (`Bid` | `Ask` | `Unknown`) in `types.rs`; serialises as `"bid"` / `"ask"`.
+- [Rust API] `outcome_side: YesNo` and `book_side: BookSide` required fields on `Order`, `Fill`.
+- [Rust API] `taker_outcome_side: TradeTakerSide` and `taker_book_side: BookSide` required fields on `Trade`.
+- [Rust API] `balance_dollars: FixedPointDollars` required field on `GetBalanceResponse`.
+- [Rust API] `subaccount: u32` required field on `CreateOrderGroupResponse`.
+- [Rust API] Full V2 single-order surface: `CreateOrderV2Request`, `CreateOrderV2Response`, `CancelOrderV2Params`, `CancelOrderV2Response`, `AmendOrderV2Request`, `AmendOrderV2Response`, `DecreaseOrderV2Request`, `DecreaseOrderV2Response`.
+- [Rust API] Full V2 batch-order surface: `BatchCreateOrdersV2Request`, `BatchCreateOrdersV2Response`, `BatchCreateOrdersV2IndividualResponse`, `BatchCancelOrdersV2Request`, `BatchCancelOrdersV2RequestOrder`, `BatchCancelOrdersV2Response`, `BatchCancelOrdersV2IndividualResponse`.
+- [Rust API] `KalshiRestClient` methods: `create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`, `batch_create_orders_v2`, `batch_cancel_orders_v2`.
+- [Rust API] `rfq_user_filter: Option<String>` on `GetQuotesParams`.
+- [Rust API] `outcome_side: YesNo` and `book_side: BookSide` required fields on `WsFill` / `WsFillRef`.
+- [Rust API] `taker_outcome_side` and `taker_book_side` required fields on `WsTrade` / `WsTradeRef`.
+- [Rust API] `outcome_side: Option<YesNo>` and `book_side: Option<BookSide>` on `WsUserOrder`.
+- [Rust API] `WsMarketLifecycleEventType::MetadataUpdated` variant.
+- [Rust API] `floor_strike: Option<f64>` and `yes_sub_title: Option<String>` on `WsMarketLifecycleV2` and borrowed `WsMarketLifecycleV2Ref`.
+
+### Changed
+
+- [Rust API] `Order::side` and `Order::action` are now `Option<_>` and marked `#[deprecated]`; use `outcome_side` / `book_side`.
+- [Rust API] `Fill::side` and `Fill::action` are now `Option<_>` and marked `#[deprecated]`; use `outcome_side` / `book_side`.
+- [Rust API] `Trade::taker_side` is now `Option<TradeTakerSide>` and marked `#[deprecated]`; use `taker_outcome_side`.
+- [Rust API] `WsFill::side`, `WsFill::action`, `WsFill::purchased_side` are now `Option<_>` and marked `#[deprecated]`.
+- [Rust API] `WsTrade::taker_side` is now `Option<_>` and marked `#[deprecated]`.
+- [Rust API] `WsUserOrder::side` and `WsUserOrder::is_yes` are now `Option<_>` and marked `#[deprecated]`.
+- [Tests] Updated all parsing fixtures to include new required fields (`outcome_side`, `book_side`, `taker_outcome_side`, `taker_book_side`, `balance_dollars`).
+
+### Breaking
+
+- [Rust API] `Order::side` type changed from `YesNo` to `Option<YesNo>` — downstream `match` or direct field access must handle `Option`.
+- [Rust API] `Order::action` type changed from `BuySell` to `Option<BuySell>`.
+- [Rust API] `Fill::side` type changed from `YesNo` to `Option<YesNo>`.
+- [Rust API] `Fill::action` type changed from `BuySell` to `Option<BuySell>`.
+- [Rust API] `Trade::taker_side` type changed from `TradeTakerSide` to `Option<TradeTakerSide>`.
+- [Rust API] `GetBalanceResponse` gains a required `balance_dollars` field — fixture structs in downstream tests must include it.
+- [Rust API] `CreateOrderGroupResponse` gains a required `subaccount` field.
+
+> **Version bump**: 0.4.1 → 0.5.0. Per VERSIONING.md §Pre-1.0: "any breaking Rust API change is a minor bump." Seven type changes from non-optional to `Option` qualify as breaking.
+
 ## [0.4.0] - 2026-04-18
 
 ### Compatibility
