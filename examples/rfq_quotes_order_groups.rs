@@ -57,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
             yes_bid: "0.5200".to_string(),
             no_bid: "0.4800".to_string(),
             rest_remainder: true,
+            post_only: None,
             subaccount: None,
         })
         .await?;

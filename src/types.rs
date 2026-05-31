@@ -136,6 +136,9 @@ pub struct ErrorResponse {
 #[serde(rename_all = "snake_case")]
 pub enum FeeType {
     Quadratic,
+    /// Fee is quadratic with an additional maker-fee component. Added to the spec alongside
+    /// `WsEventFeeUpdate` (2026-05-11).
+    QuadraticWithMakerFees,
     Flat,
     #[serde(other)]
     Unknown,

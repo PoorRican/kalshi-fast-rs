@@ -15,14 +15,26 @@ use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
+/// Balance indexed to a specific exchange shard. Returned in `GetBalanceResponse.balance_breakdown`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i32,
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
     pub portfolio_value: i64,
     pub updated_ts: i64,
-    /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
+    /// Centi-cent precision dollar balance. Spec marks this `required`, but the changelog
+    /// notes it as "direct members only" (added 2026-05-28); modeled as `Option` to survive
+    /// responses from non-direct-member accounts. See `docs/spec-parity.md`.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// Per-exchange-shard balance breakdown. Added alongside multi-shard support.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub balance_breakdown: Vec<IndexedBalance>,
 }
 
 /// GET /portfolio/positions query params

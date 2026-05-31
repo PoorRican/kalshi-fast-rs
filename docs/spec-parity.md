@@ -54,6 +54,37 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The OpenAPI spec marks `GetBalanceResponse.balance_dollars` as `required`, but the changelog
+  entry (2026-05-28) notes it is provided for "direct members only". Modeled as `Option` to survive
+  responses from non-direct-member accounts where the field may be absent. If Kalshi confirms
+  universal presence, this should be promoted to a non-optional field.
+
+- `GetBalanceResponse.balance_breakdown` is an optional array of `IndexedBalance` (per-exchange-shard
+  balance). Not in the required list; deserialized with `deserialize_null_as_empty_vec` so null and
+  absent both parse as an empty `Vec`.
+
+- `FeeType::QuadraticWithMakerFees` is a valid enum value per the OpenAPI spec (`fee_type` enum:
+  `[quadratic, quadratic_with_maker_fees, flat]`). Previously decoded as `FeeType::Unknown`.
+  Adding this variant is a minor-breaking change per VERSIONING.md (see 0.6.0 release notes).
+  The `WsEventFeeUpdate.fee_type_override` field continues to use `Option<String>` to remain
+  lossless for any future unknown fee-type overrides.
+
+- `Market.fractional_trading_enabled` is deprecated by Kalshi ("always true, carries no information")
+  and marked `#[deprecated]` in Rust. The WS lifecycle struct `WsMarketLifecycleV2` also carries
+  this field but was not marked deprecated (it mirrors the REST Market shape; callers should prefer
+  the REST behavior note).
+
+- V2 REST order endpoints (`/portfolio/events/orders`) use `BookSide` (`bid`|`ask`) exclusively for
+  order direction, replacing the legacy `YesNo`+`BuySell` pair from the V1 endpoints. Response
+  shapes are lightweight (order ID, fill counts, timestamp) rather than full `Order` objects.
+  The `exchange_index` field present on V2 request types defaults to `0`; currently only `0` is
+  supported.
+
+- `Quote.post_only` is only visible to the quote creator (not the RFQ creator). Similarly,
+  `Quote.creator_subaccount` is only visible to the quote creator, and `Quote.rfq_creator_subaccount`
+  is only visible to the RFQ creator. All three are modeled as `Option` since they're conditionally
+  present in the response.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

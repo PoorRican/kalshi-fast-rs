@@ -46,6 +46,8 @@ pub struct Quote {
     #[serde(default)]
     pub rest_remainder: Option<bool>,
     #[serde(default)]
+    pub post_only: Option<bool>,
+    #[serde(default)]
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
@@ -57,6 +59,12 @@ pub struct Quote {
     pub rfq_creator_order_id: Option<String>,
     #[serde(default)]
     pub creator_order_id: Option<String>,
+    /// Subaccount of the quote creator (visible when the caller is the quote creator).
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    /// Subaccount of the RFQ creator (visible when the caller is the RFQ creator).
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
     #[serde(default)]
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
@@ -85,6 +93,9 @@ pub struct RFQ {
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
+    /// Subaccount of the RFQ creator (visible when the caller is the RFQ creator).
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default)]
     pub cancelled_ts: Option<String>,
     #[serde(default)]
@@ -138,6 +149,10 @@ pub struct CreateQuoteRequest {
     pub yes_bid: String,
     pub no_bid: String,
     pub rest_remainder: bool,
+    /// If true, the quote creator's resting order is cancelled rather than crossed if it would
+    /// take liquidity (post-only semantics). Defaults to false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
 }

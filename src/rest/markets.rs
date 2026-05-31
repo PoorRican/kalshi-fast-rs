@@ -282,6 +282,9 @@ pub struct Market {
     pub open_interest: Option<i64>,
     #[serde(default)]
     pub open_interest_fp: Option<String>,
+    /// Deprecated by Kalshi: always `true`, carries no information.
+    /// Will be removed after a pre-announced removal date.
+    #[deprecated(note = "Always true; carries no information. Will be removed by Kalshi.")]
     #[serde(default)]
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]

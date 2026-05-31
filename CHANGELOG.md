@@ -8,6 +8,54 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-05-31
+
+### Compatibility
+
+- Docs snapshot: 2026-05-31
+- OpenAPI: 3.13.0 (live)
+- AsyncAPI: live
+- Validated through changelog: 2026-06-04
+
+### Added
+
+- [Rust API] Added V2 REST order types and methods for the `/portfolio/events/orders` endpoint
+  family: `CreateOrderV2Request`, `CreateOrderV2Response`, `CancelOrderV2Response`,
+  `AmendOrderV2Request`, `AmendOrderV2Response`, `DecreaseOrderV2Request`,
+  `DecreaseOrderV2Response`, `BatchCreateOrdersV2Request`, `BatchCreateOrdersV2Response`,
+  `BatchCancelOrdersV2Request`, `BatchCancelOrdersV2Response`, and the corresponding
+  `create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2` methods. The V2 API uses `BookSide`
+  (`bid`|`ask`) and returns lightweight count-and-timestamp summaries instead of full `Order`
+  objects.
+- [Rust API] Added `FeeType::QuadraticWithMakerFees` variant to `FeeType` for the
+  `quadratic_with_maker_fees` enum value now listed in the OpenAPI spec. Previously decoded as
+  `Unknown`.
+- [Rust API] Added `IndexedBalance` struct and `balance_breakdown: Vec<IndexedBalance>` field to
+  `GetBalanceResponse` for the per-exchange-shard balance breakdown included in the OpenAPI spec.
+- [Rust API] Added `post_only: Option<bool>` to `Quote` (response field for the quote creator's
+  post-only setting, visible only to the quote creator).
+- [Rust API] Added `creator_subaccount: Option<u32>` and `rfq_creator_subaccount: Option<u32>` to
+  `Quote`, matching the spec fields added for subaccount visibility.
+- [Rust API] Added `creator_subaccount: Option<u32>` to `RFQ`, matching the spec field.
+- [Rust API] Added `post_only: Option<bool>` to `CreateQuoteRequest` for the post-only quote
+  placement option documented in the OpenAPI spec.
+
+### Changed
+
+- [Rust API] Marked `Market.fractional_trading_enabled` as `#[deprecated]` (the OpenAPI spec now
+  documents this field as deprecated and always `true`; it will be removed after a Kalshi
+  pre-announcement).
+
+### Breaking
+
+- [Rust API] `FeeType::QuadraticWithMakerFees` is a new named variant on the `FeeType` enum.
+  Exhaustive `match` expressions on `FeeType` that list every arm by name (including `Unknown`) will
+  no longer compile without adding a `FeeType::QuadraticWithMakerFees` arm. This is a minor bump per
+  VERSIONING.md rule: "Minor releases are for any intentional breaking change to the public Rust API."
+
+---
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility
