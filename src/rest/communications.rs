@@ -45,6 +45,9 @@ pub struct Quote {
     pub cancelled_ts: Option<String>,
     #[serde(default)]
     pub rest_remainder: Option<bool>,
+    /// Whether the quote creator's order is post-only.
+    #[serde(default)]
+    pub post_only: Option<bool>,
     #[serde(default)]
     pub cancellation_reason: Option<String>,
     #[serde(default)]
@@ -57,6 +60,12 @@ pub struct Quote {
     pub rfq_creator_order_id: Option<String>,
     #[serde(default)]
     pub creator_order_id: Option<String>,
+    /// Subaccount number of the quote creator (visible when caller is the quote creator).
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    /// Subaccount number of the RFQ creator (visible when caller is the RFQ creator).
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
     #[serde(default)]
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
@@ -85,6 +94,10 @@ pub struct RFQ {
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
+    /// Subaccount number of the RFQ creator (visible when caller is the RFQ creator).
+    /// 0 = primary, 1–32 = subaccount.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default)]
     pub cancelled_ts: Option<String>,
     #[serde(default)]

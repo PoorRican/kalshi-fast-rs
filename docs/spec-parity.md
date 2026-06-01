@@ -41,18 +41,33 @@ examples are ambiguous.
   `taker_side` (deprecated) plus `taker_outcome_side` / `taker_book_side`. These follow the same
   `Option` treatment for the same reasons.
 
+- The `is_block_trade` field on `Trade` (REST) is required per the OpenAPI spec (added 2026-05-29).
+  The crate uses `#[serde(default)]` so that any pre-release or cached payloads that lack the field
+  still parse (defaulting to `false`). The WebSocket `WsTrade` type does NOT include `is_block_trade`
+  — the field does not appear in the AsyncAPI `tradePayload` schema.
+
 - The `/margin/fee_tiers` response was restructured on 2026-05-11. The previous tier-name maps
   (`maker_fee_tiers`, `taker_fee_tiers`) were replaced by per-ticker decimal-rate maps
   (`maker_fee_rates`, `taker_fee_rates`). Fee is computed as `notional * rate`.
 
 - `event_fee_update` is an AsyncAPI message delivered on the `market_lifecycle_v2` channel (it is
   not a separately-subscribable channel). It is modeled by `WsEventFeeUpdate`. `fee_type_override`
-  is kept as `Option<String>` rather than reusing the `FeeType` enum, because the spec includes a
-  `quadratic_with_maker_fees` variant not present in `FeeType` and the field must stay lossless for
-  fee math. Both override fields are nullable (`None` when the override is cleared).
+  uses the `FeeType` enum (which includes `QuadraticWithMakerFees` added 2026-05-11). Unknown future
+  variants deserialize as `FeeType::Unknown` so fee math is preserved losslessly. Both override
+  fields are nullable (`None` when the override is cleared).
+
+- The `FeeType` enum covers all values the spec currently documents (`quadratic`,
+  `quadratic_with_maker_fees`, `flat`) plus an `Unknown` catch-all for forward compatibility.
+  The `quadratic_with_maker_fees` variant was added to the spec on 2026-05-11.
+
 - The AsyncAPI marks several timestamp/required fields that the exchange may omit in practice
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
+
+- The OpenAPI `OrderQueuePosition` and `GetOrderQueuePositionResponse` schemas require only
+  `queue_position_fp` (fixed-point). The legacy integer `queue_position` field is no longer in the
+  spec; it is retained in the crate as `Option<i64>` for backward compatibility with any cached
+  responses, but callers should prefer `queue_position_fp`.
 
 ## Test Strategy
 

@@ -1,3 +1,4 @@
+use crate::types::FeeType;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -296,14 +297,12 @@ impl WsEventLifecycleAdditionalMetadataRef {
 ///
 /// Delivered on the `market_lifecycle_v2` channel when an event's fee override
 /// is set or cleared. Both override fields are `null` when the override is
-/// cleared. `fee_type_override` is kept as a raw string (values include
-/// `quadratic`, `quadratic_with_maker_fees`, `flat`) so unknown variants are
-/// preserved losslessly for fee math.
+/// cleared. Unknown fee-type variants deserialize as `FeeType::Unknown`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsEventFeeUpdate {
     pub event_ticker: String,
     #[serde(default)]
-    pub fee_type_override: Option<String>,
+    pub fee_type_override: Option<FeeType>,
     #[serde(default)]
     pub fee_multiplier_override: Option<f64>,
 }
@@ -313,8 +312,9 @@ pub struct WsEventFeeUpdate {
 pub struct WsEventFeeUpdateRef<'a> {
     #[serde(borrow)]
     pub event_ticker: Cow<'a, str>,
-    #[serde(default, borrow)]
-    pub fee_type_override: Option<Cow<'a, str>>,
+    /// `FeeType: Copy` so no borrow is needed.
+    #[serde(default)]
+    pub fee_type_override: Option<FeeType>,
     #[serde(default)]
     pub fee_multiplier_override: Option<f64>,
 }
@@ -323,7 +323,7 @@ impl<'a> WsEventFeeUpdateRef<'a> {
     pub fn into_owned(self) -> WsEventFeeUpdate {
         WsEventFeeUpdate {
             event_ticker: self.event_ticker.into_owned(),
-            fee_type_override: self.fee_type_override.map(Cow::into_owned),
+            fee_type_override: self.fee_type_override,
             fee_multiplier_override: self.fee_multiplier_override,
         }
     }

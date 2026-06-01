@@ -1032,7 +1032,8 @@ fn get_trades_response_deserializes() {
             "taker_side": "yes",
             "taker_outcome_side": "yes",
             "taker_book_side": "bid",
-            "created_time": "2026-04-16T12:00:00Z"
+            "created_time": "2026-04-16T12:00:00Z",
+            "is_block_trade": false
         }],
         "cursor": "c1"
     }"#;
@@ -1929,17 +1930,14 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         "queue_positions": [{
             "order_id": "o-1",
             "market_ticker": "MKT-1",
-            "queue_position": 4,
             "queue_position_fp": "4.00"
         }]
     }"#;
     let queue: kalshi_fast::GetOrderQueuePositionsResponse =
         serde_json::from_str(queue_json).unwrap();
     assert_eq!(queue.queue_positions.len(), 1);
-    assert_eq!(
-        queue.queue_positions[0].queue_position_fp.as_deref(),
-        Some("4.00")
-    );
+    assert_eq!(queue.queue_positions[0].queue_position_fp, "4.00");
+    assert_eq!(queue.queue_positions[0].queue_position, None);
 
     let forecast_json = r#"{
         "forecast_history": [{

@@ -8,6 +8,71 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-01
+
+### Compatibility
+
+- Docs snapshot: 2026-06-01
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-04
+
+### Added
+
+- [Rust API] Added `is_block_trade: bool` to `Trade` (REST). Required by OpenAPI as of 2026-05-29.
+  Uses `#[serde(default)]` so older payloads parse cleanly (defaults to `false`). The WebSocket
+  `WsTrade` type is unchanged — `is_block_trade` does not appear in the AsyncAPI `tradePayload`.
+- [Rust API] Added `is_block_trade: Option<bool>` to `GetTradesParams`. Applies to both
+  `GET /markets/trades` and `GET /historical/trades`. `None` = all trades, `Some(true)` = block
+  only, `Some(false)` = non-block only. Added to the OpenAPI spec on 2026-05-29.
+- [Rust API] Added `FeeType::QuadraticWithMakerFees` variant. The spec documents this value
+  (`quadratic_with_maker_fees`) since at least 2026-05-11 but the crate was missing it.
+- [Rust API] Added V2 order endpoint types and methods:
+  - `CreateOrderV2Request` / `CreateOrderV2Response` → `create_order_v2`
+  - `CancelOrderV2Response` / `CancelOrderV2Params` → `cancel_order_v2`
+  - `DecreaseOrderV2Request` / `DecreaseOrderV2Response` → `decrease_order_v2`
+  - `AmendOrderV2Request` / `AmendOrderV2Response` → `amend_order_v2`
+  - `BatchCreateOrdersV2Request` / `BatchCreateOrdersV2Response` → `batch_create_orders_v2`
+  - `BatchCancelOrdersV2Request` / `BatchCancelOrdersV2Response` → `batch_cancel_orders_v2`
+  - All map to `POST|DELETE /portfolio/events/orders*` endpoints in the OpenAPI spec.
+- [Rust API] Surfaced `creator_subaccount: Option<u32>` on `RFQ` (was previously silently captured
+  by the `extra` catch-all). Field visible when the caller is the RFQ creator.
+- [Rust API] Surfaced `post_only: Option<bool>`, `creator_subaccount: Option<u32>`, and
+  `rfq_creator_subaccount: Option<u32>` on `Quote`. Previously captured by `extra`.
+- [Docs] Updated `docs/spec-parity.md` with notes for `is_block_trade`, `FeeType` variants,
+  `fee_type_override` type change, and queue position field update.
+
+### Changed
+
+- [Rust API] `WsEventFeeUpdate.fee_type_override` changed from `Option<String>` to `Option<FeeType>`.
+  Now that `FeeType::QuadraticWithMakerFees` covers all spec-documented values, using the typed enum
+  is idiomatic. Unknown future values still deserialize as `FeeType::Unknown`, preserving losslessness.
+  Same change applies to `WsEventFeeUpdateRef`.
+
+### Breaking
+
+- [Rust API] `OrderQueuePosition.queue_position` changed from `i64` to `Option<i64>`. The integer
+  `queue_position` field is no longer required by the OpenAPI spec; only `queue_position_fp` is
+  required. Downstream code reading `.queue_position` as an integer must unwrap or use the
+  `.queue_position_fp` string field.
+- [Rust API] `OrderQueuePosition.queue_position_fp` changed from `Option<FixedPointCount>` to
+  `FixedPointCount`. The field is now required by the spec. Downstream code that was calling
+  `.unwrap()` or `.as_deref()` must update to use the field directly.
+- [Rust API] Same `queue_position` and `queue_position_fp` changes apply to
+  `GetOrderQueuePositionResponse`.
+- [Rust API] `WsEventFeeUpdate.fee_type_override` changed from `Option<String>` to `Option<FeeType>`
+  (see Changed section). Downstream code matching on string values must update to match on
+  `FeeType` variants.
+- [Rust API] `FeeType::QuadraticWithMakerFees` is a new variant. Downstream code performing an
+  exhaustive `match` on `FeeType` must handle the new variant (or rely on the existing `Unknown`
+  catch-all arm).
+
+### Version bump rationale
+
+Pre-1.0 per VERSIONING.md: breaking Rust API changes → minor bump. The queue position field type
+changes and the `FeeType` variant addition both require downstream code changes.
+
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility

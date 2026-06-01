@@ -132,10 +132,12 @@ pub struct ErrorResponse {
 
 /// --- Fee Type ---
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeeType {
     Quadratic,
+    /// Quadratic fee schedule with separate maker fee rates (added 2026-05-11).
+    QuadraticWithMakerFees,
     Flat,
     #[serde(other)]
     Unknown,

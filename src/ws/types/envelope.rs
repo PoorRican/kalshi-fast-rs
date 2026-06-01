@@ -860,6 +860,7 @@ impl<'a> WsMessageRef<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::FeeType;
     use bytes::Bytes;
 
     #[test]
@@ -912,10 +913,7 @@ mod tests {
         match msg {
             WsMessageV2::Data(WsDataMessageV2::EventFeeUpdate { msg, .. }) => {
                 assert_eq!(msg.event_ticker, "KXHIGHNY-24JAN01");
-                assert_eq!(
-                    msg.fee_type_override.as_deref(),
-                    Some("quadratic_with_maker_fees")
-                );
+                assert_eq!(msg.fee_type_override, Some(FeeType::QuadraticWithMakerFees));
                 assert_eq!(msg.fee_multiplier_override, Some(1.5));
             }
             _ => panic!("expected event_fee_update data message"),
