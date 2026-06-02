@@ -47,12 +47,32 @@ examples are ambiguous.
 
 - `event_fee_update` is an AsyncAPI message delivered on the `market_lifecycle_v2` channel (it is
   not a separately-subscribable channel). It is modeled by `WsEventFeeUpdate`. `fee_type_override`
-  is kept as `Option<String>` rather than reusing the `FeeType` enum, because the spec includes a
-  `quadratic_with_maker_fees` variant not present in `FeeType` and the field must stay lossless for
-  fee math. Both override fields are nullable (`None` when the override is cleared).
+  is kept as `Option<String>` rather than reusing the `FeeType` enum to stay lossless; both override
+  fields are nullable (`None` when the override is cleared).
 - The AsyncAPI marks several timestamp/required fields that the exchange may omit in practice
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
+
+- `Trade.is_block_trade` is marked required by the OpenAPI spec (added 2026-05-29) but is kept as
+  `Option<bool>` so that historical trade payloads that predate the field still parse without error.
+  New trades from the exchange will always include it.
+
+- `GetBalanceResponse.balance_dollars` is marked required by the OpenAPI spec but is omitted for
+  FCM/non-direct members. Modeled as `Option<FixedPointDollars>` to avoid parse failures for
+  accounts that do not receive it.
+
+- `OrderQueuePosition.queue_position_fp` is the only OpenAPI-required field on that struct.
+  The companion `queue_position: Option<i64>` is retained for backwards compat but is not guaranteed
+  by the spec. Prefer `queue_position_fp` for any precision-sensitive logic.
+
+- `FeeType::QuadraticWithMakerFees` (`quadratic_with_maker_fees`) was added to the OpenAPI enum in
+  the 2026-05-11 `/margin/fee_tiers` restructure. Exhaustive `match` statements must handle this
+  variant.
+
+- The V2 order endpoints (`/portfolio/events/orders*`) use `BookSide` (`bid`/`ask`) for order
+  direction, in contrast to the V1 endpoints which used `YesNo` / `BuySell`. `client_order_id` is
+  required on all V2 create requests for idempotency. V2 responses include `ts_ms` (matching-engine
+  timestamp in milliseconds) as the authoritative timestamp.
 
 ## Test Strategy
 

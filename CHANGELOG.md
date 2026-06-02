@@ -8,6 +8,62 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-02
+
+### Compatibility
+
+- Docs snapshot: 2026-06-02
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-02
+
+### Added
+
+- [Rust API] Added `FeeType::QuadraticWithMakerFees` variant (`quadratic_with_maker_fees`) to the
+  `FeeType` enum in `types.rs`. This variant was introduced in the OpenAPI spec alongside the
+  `/margin/fee_tiers` restructure on 2026-05-11 and was missing from the crate.
+- [Rust API] Added `is_block_trade: Option<bool>` to the public `Trade` struct (REST). The OpenAPI
+  spec marks this field required as of 2026-05-29, but it is kept `Option` for parse safety against
+  historical trade payloads that predate the field.
+- [Rust API] Added `is_block_trade: Option<bool>` to `GetTradesParams` for filtering block vs.
+  non-block trades. Pass `true` for only block trades, `false` for only non-block trades.
+- [Rust API] Added V2 order endpoints under `/portfolio/events/orders`:
+  - `CreateOrderV2Request` / `CreateOrderV2Response` and `create_order_v2()` — `POST /portfolio/events/orders`
+  - `CancelOrderV2Response` / `CancelOrderV2Params` and `cancel_order_v2()` — `DELETE /portfolio/events/orders/{order_id}`
+  - `AmendOrderV2Request` / `AmendOrderV2Response` and `amend_order_v2()` — `POST /portfolio/events/orders/{order_id}/amend`
+  - `DecreaseOrderV2Request` / `DecreaseOrderV2Response` and `decrease_order_v2()` — `POST /portfolio/events/orders/{order_id}/decrease`
+  - `BatchCreateOrdersV2Request` / `BatchCreateOrdersV2Response` and `batch_create_orders_v2()` — `POST /portfolio/events/orders/batched`
+  - `BatchCancelOrdersV2Request` / `BatchCancelOrdersV2Response` and `batch_cancel_orders_v2()` — `DELETE /portfolio/events/orders/batched`
+  - V2 requests use `BookSide` (`bid`/`ask`) for direction rather than `YesNo`/`BuySell`, and carry a
+    required `client_order_id` for idempotency.
+- [Rust API] Added `exchange_index: Option<i32>` to the `Order` struct for the per-shard exchange
+  index field in the OpenAPI spec.
+- [Rust API] Added `IndexedBalance` struct and `balance_breakdown: Vec<IndexedBalance>` to
+  `GetBalanceResponse`. This field carries per-shard balance when an account spans multiple exchange
+  indices.
+- [Rust API] Added `post_only: Option<bool>`, `creator_subaccount: Option<u32>`, and
+  `rfq_creator_subaccount: Option<u32>` to the `Quote` struct in `communications.rs`.
+- [Rust API] Added `creator_subaccount: Option<u32>` to the `RFQ` struct.
+- [Rust API] Added `user_filter: Option<String>` to `GetQuotesParams`. Pass `"self"` to filter to
+  quotes created by the authenticated user.
+- [Rust API] Added `user_filter: Option<String>` to `GetRFQsParams`. Pass `"self"` to filter to
+  RFQs created by the authenticated user.
+
+### Changed
+
+- [Rust API] `OrderQueuePosition` struct: `queue_position_fp` is now the primary non-optional field
+  (`FixedPointCount`); the old `queue_position: i64` (not in OpenAPI `required`) is now
+  `queue_position: Option<i64>`. This matches the OpenAPI spec which only requires `queue_position_fp`.
+
+### Breaking
+
+- [Rust API] `FeeType` gains a new `QuadraticWithMakerFees` variant. Exhaustive `match` expressions
+  over `FeeType` must handle the new variant (or rely on the existing `Unknown` catch-all if the
+  match was already non-exhaustive).
+- [Rust API] `OrderQueuePosition.queue_position` changed from `i64` to `Option<i64>`. Downstream
+  code accessing `queue_position` directly must handle `None`.
+
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility

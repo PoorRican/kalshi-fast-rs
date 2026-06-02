@@ -61,6 +61,15 @@ pub struct Quote {
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_contracts_fp: Option<FixedPointCount>,
+    /// If true, the quote was posted as post-only. Only visible to the quote creator.
+    #[serde(default)]
+    pub post_only: Option<bool>,
+    /// Subaccount number of the quote creator (0 = primary, 1–32 = subaccount).
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    /// Subaccount number of the RFQ creator (0 = primary, 1–32 = subaccount).
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -89,6 +98,9 @@ pub struct RFQ {
     pub cancelled_ts: Option<String>,
     #[serde(default)]
     pub updated_ts: Option<String>,
+    /// Subaccount number of the RFQ creator (0 = primary, 1–32 = subaccount).
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -117,6 +129,9 @@ pub struct GetQuotesParams {
     /// Pass `"self"` to enable. Added 2026-05-07.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_user_filter: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -168,6 +183,9 @@ pub struct GetRFQsParams {
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub creator_user_id: Option<String>,
+    /// Filter to RFQs created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

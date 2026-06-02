@@ -136,6 +136,8 @@ pub struct ErrorResponse {
 #[serde(rename_all = "snake_case")]
 pub enum FeeType {
     Quadratic,
+    /// Added to the OpenAPI enum on 2026-05-11 alongside the `/margin/fee_tiers` restructure.
+    QuadraticWithMakerFees,
     Flat,
     #[serde(other)]
     Unknown,

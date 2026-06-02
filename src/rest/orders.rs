@@ -119,6 +119,10 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Exchange shard identifier. Currently only 0 is supported. Added to the
+    /// OpenAPI schema alongside the V2 order endpoints (2026-05-29 spec).
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -374,18 +378,22 @@ pub struct GetOrderQueuePositionsResponse {
 pub struct OrderQueuePosition {
     pub order_id: String,
     pub market_ticker: String,
-    pub queue_position: i64,
+    /// Legacy integer queue position. Dropped from the OpenAPI `required` list;
+    /// kept optional here for any in-flight responses that still include it.
     #[serde(default)]
-    pub queue_position_fp: Option<FixedPointCount>,
+    pub queue_position: Option<i64>,
+    pub queue_position_fp: FixedPointCount,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetOrderQueuePositionResponse {
-    pub queue_position: i64,
+    /// Legacy integer queue position. Not in the OpenAPI `required` set; kept
+    /// optional for any in-flight responses that still include it.
     #[serde(default)]
-    pub queue_position_fp: Option<FixedPointCount>,
+    pub queue_position: Option<i64>,
+    pub queue_position_fp: FixedPointCount,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -537,6 +545,215 @@ pub struct GetFcmPositionsParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+}
+
+// ── V2 Order Endpoints ────────────────────────────────────────────────────────
+//
+// `/portfolio/events/orders` — the V2 order API (single-book `bid`/`ask` side,
+// fixed-point prices, compact responses).  The legacy `/portfolio/orders`
+// endpoints remain available but their rate-limit costs are increasing.
+
+/// Request body for `POST /portfolio/events/orders`.
+///
+/// Uses `BookSide` (`bid`/`ask`) instead of the legacy `side`/`action` pair.
+/// `count` and `price` are fixed-point strings.  `time_in_force` and
+/// `self_trade_prevention_type` are required.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateOrderV2Request {
+    pub ticker: String,
+    pub client_order_id: String,
+    pub side: BookSide,
+    pub count: FixedPointCount,
+    pub price: FixedPointDollars,
+    pub time_in_force: TimeInForce,
+    pub self_trade_prevention_type: SelfTradePreventionType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cancel_order_on_pause: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order_group_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
+}
+
+/// Response from `POST /portfolio/events/orders`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateOrderV2Response {
+    pub order_id: String,
+    #[serde(default)]
+    pub client_order_id: Option<String>,
+    pub fill_count: FixedPointCount,
+    pub remaining_count: FixedPointCount,
+    pub ts_ms: i64,
+    #[serde(default)]
+    pub average_fill_price: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub average_fee_paid: Option<FixedPointDollars>,
+}
+
+/// Response from `DELETE /portfolio/events/orders/{order_id}`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CancelOrderV2Response {
+    pub order_id: String,
+    #[serde(default)]
+    pub client_order_id: Option<String>,
+    pub reduced_by: FixedPointCount,
+    pub ts_ms: i64,
+}
+
+/// Query params for `DELETE /portfolio/events/orders/{order_id}`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CancelOrderV2Params {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
+}
+
+/// Request body for `POST /portfolio/events/orders/{order_id}/amend`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AmendOrderV2Request {
+    pub ticker: String,
+    pub side: BookSide,
+    pub price: FixedPointDollars,
+    pub count: FixedPointCount,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_order_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_client_order_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
+}
+
+/// Response from `POST /portfolio/events/orders/{order_id}/amend`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AmendOrderV2Response {
+    pub order_id: String,
+    #[serde(default)]
+    pub client_order_id: Option<String>,
+    pub ts_ms: i64,
+    #[serde(default)]
+    pub remaining_count: Option<FixedPointCount>,
+    #[serde(default)]
+    pub fill_count: Option<FixedPointCount>,
+    #[serde(default)]
+    pub average_fill_price: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub average_fee_paid: Option<FixedPointDollars>,
+}
+
+/// Request body for `POST /portfolio/events/orders/{order_id}/decrease`.
+///
+/// Exactly one of `reduce_by` or `reduce_to` must be provided.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DecreaseOrderV2Request {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_by: Option<FixedPointCount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_to: Option<FixedPointCount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
+}
+
+impl DecreaseOrderV2Request {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        let has_by = self.reduce_by.is_some();
+        let has_to = self.reduce_to.is_some();
+        if has_by == has_to {
+            return Err(KalshiError::InvalidParams(
+                "DecreaseOrderV2Request: exactly one of reduce_by or reduce_to must be provided"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Response from `POST /portfolio/events/orders/{order_id}/decrease`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DecreaseOrderV2Response {
+    pub order_id: String,
+    #[serde(default)]
+    pub client_order_id: Option<String>,
+    pub remaining_count: FixedPointCount,
+    pub ts_ms: i64,
+}
+
+/// Request body for `POST /portfolio/events/orders/batched`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchCreateOrdersV2Request {
+    pub orders: Vec<CreateOrderV2Request>,
+}
+
+/// Individual result in `BatchCreateOrdersV2Response`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BatchCreateOrdersV2IndividualResponse {
+    #[serde(default)]
+    pub order_id: Option<String>,
+    #[serde(default)]
+    pub client_order_id: Option<String>,
+    #[serde(default)]
+    pub fill_count: Option<FixedPointCount>,
+    #[serde(default)]
+    pub remaining_count: Option<FixedPointCount>,
+    #[serde(default)]
+    pub average_fill_price: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub average_fee_paid: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub ts_ms: Option<i64>,
+    #[serde(default)]
+    pub error: Option<ErrorResponse>,
+}
+
+/// Response from `POST /portfolio/events/orders/batched`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BatchCreateOrdersV2Response {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub orders: Vec<BatchCreateOrdersV2IndividualResponse>,
+}
+
+/// Individual cancel item in `BatchCancelOrdersV2Request`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchCancelOrdersV2RequestItem {
+    pub order_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
+}
+
+/// Request body for `DELETE /portfolio/events/orders/batched`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchCancelOrdersV2Request {
+    pub orders: Vec<BatchCancelOrdersV2RequestItem>,
+}
+
+/// Individual result in `BatchCancelOrdersV2Response`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BatchCancelOrdersV2IndividualResponse {
+    pub order_id: String,
+    #[serde(default)]
+    pub client_order_id: Option<String>,
+    pub reduced_by: FixedPointCount,
+    #[serde(default)]
+    pub ts_ms: Option<i64>,
+    #[serde(default)]
+    pub error: Option<ErrorResponse>,
+}
+
+/// Response from `DELETE /portfolio/events/orders/batched`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BatchCancelOrdersV2Response {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub orders: Vec<BatchCancelOrdersV2IndividualResponse>,
 }
 
 impl KalshiRestClient {
@@ -786,5 +1003,100 @@ impl KalshiRestClient {
         max_items: Option<usize>,
     ) -> impl Stream<Item = Result<Order, KalshiError>> + Send {
         stream_items(self.orders_pager(params), max_items)
+    }
+
+    // ── V2 order endpoints ─────────────────────────────────────────────────
+
+    /// Place a new order via the V2 endpoint (`POST /portfolio/events/orders`).
+    ///
+    /// Uses `BookSide` side and fixed-point prices. Returns a compact response
+    /// with fill/remaining counts and a matching-engine timestamp.
+    ///
+    /// **Requires auth.**
+    pub async fn create_order_v2(
+        &self,
+        body: CreateOrderV2Request,
+    ) -> Result<CreateOrderV2Response, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Cancel an order via the V2 endpoint (`DELETE /portfolio/events/orders/{order_id}`).
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_order_v2(
+        &self,
+        order_id: &str,
+        params: CancelOrderV2Params,
+    ) -> Result<CancelOrderV2Response, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/events/orders/{order_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Amend an order via the V2 endpoint (`POST /portfolio/events/orders/{order_id}/amend`).
+    ///
+    /// **Requires auth.**
+    pub async fn amend_order_v2(
+        &self,
+        order_id: &str,
+        body: AmendOrderV2Request,
+    ) -> Result<AmendOrderV2Response, KalshiError> {
+        let path = Self::full_path(&format!("/portfolio/events/orders/{order_id}/amend"));
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Decrease an order via the V2 endpoint (`POST /portfolio/events/orders/{order_id}/decrease`).
+    ///
+    /// Exactly one of `reduce_by` or `reduce_to` must be set on `body`.
+    ///
+    /// **Requires auth.**
+    pub async fn decrease_order_v2(
+        &self,
+        order_id: &str,
+        body: DecreaseOrderV2Request,
+    ) -> Result<DecreaseOrderV2Response, KalshiError> {
+        body.validate()?;
+        let path = Self::full_path(&format!("/portfolio/events/orders/{order_id}/decrease"));
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Batch-create orders via the V2 endpoint (`POST /portfolio/events/orders/batched`).
+    ///
+    /// **Requires auth.**
+    pub async fn batch_create_orders_v2(
+        &self,
+        body: BatchCreateOrdersV2Request,
+    ) -> Result<BatchCreateOrdersV2Response, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders/batched");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Batch-cancel orders via the V2 endpoint (`DELETE /portfolio/events/orders/batched`).
+    ///
+    /// **Requires auth.**
+    pub async fn batch_cancel_orders_v2(
+        &self,
+        body: BatchCancelOrdersV2Request,
+    ) -> Result<BatchCancelOrdersV2Response, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders/batched");
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Some(&body),
+            true,
+        )
+        .await
     }
 }
