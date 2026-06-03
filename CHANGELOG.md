@@ -8,11 +8,54 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.5.1] - 2026-06-03
+
+### Compatibility
+
+- Docs snapshot: 2026-06-03
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-11
+
+### Added
+
+- [Rust API] Added `is_block_trade: bool` to `Trade` (REST) for the field added to public trade
+  responses on 2026-05-29. Block trades are those matched off-book (e.g. via RFQ / negotiated block
+  proposal); on-book trades get `false`. The field uses `#[serde(default)]` (defaults to `false`)
+  to tolerate responses from before the field was deployed; see `docs/spec-parity.md`.
+- [Rust API] Added `is_block_trade: Option<bool>` to `GetTradesParams` for the filter parameter
+  added to `GET /markets/trades` and `GET /historical/trades` on 2026-05-29. Pass `Some(true)` for
+  block-only, `Some(false)` for non-block-only, `None` for all trades.
+- [Rust API] Added `creator_subaccount: Option<u32>` to `RFQ` for the field added on 2026-05-07.
+  Subaccount of the RFQ creator; 0 = primary, 1–32 = subaccount. Visible when the caller is the
+  RFQ creator.
+- [Rust API] Added `creator_subaccount: Option<u32>`, `rfq_creator_subaccount: Option<u32>`, and
+  `post_only: Option<bool>` to `Quote`. The subaccount fields mirror the RFQ pattern for the quote
+  creator and the originating RFQ creator respectively. `post_only` indicates whether the quote
+  creator's resting order is post-only and is visible only to the quote creator.
+
+### No-code changelog entries (upstream-only, no struct changes)
+
+- [Upstream] 2026-06-11 (upcoming): Fractional RFQ quantities — `contracts_fp` on
+  `POST /communications/rfqs`, `GET /communications/rfqs`, and `GET /communications/quotes` will
+  accept `0.01`-contract increments. No struct change needed; `contracts_fp` is already
+  `FixedPointCount` (String), which represents any decimal value.
+- [Upstream] 2026-06-02: Transfer-scoped API key permissions (`write::transfer` scope). Auth-scope
+  change only; no Rust struct changes.
+- [Upstream] 2026-06-01 (upcoming): Legacy `POST /portfolio/orders` mutation and batch endpoint
+  rate-limit costs increase to 5× the V2 `POST /portfolio/events/orders` costs. Rate-limit config
+  documentation only; no struct changes.
+- [Upstream] 2026-05-25: Legacy `POST /portfolio/orders` rate-limit costs increased to 15/3/15/15/15/3
+  tokens respectively (interim step; June 1 increase is still pending). Config docs only.
+
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility
 
 - Docs snapshot: 2026-05-29
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
 - Validated through changelog: 2026-06-04
 
 ### Added

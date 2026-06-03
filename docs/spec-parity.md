@@ -54,6 +54,20 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Trade.is_block_trade` (`bool`, REST) was added to the OpenAPI `required` array around 2026-05-29.
+  It is modeled with `#[serde(default)]` (defaults to `false`) rather than hard-requiring the field,
+  because historical trade records returned before the deploy window may omit it. `WsTrade` (AsyncAPI)
+  does not include `is_block_trade`; block-trade context is REST-only.
+
+- `WsFill.purchased_side` (AsyncAPI `fillPayload`) is listed as both `required` and `deprecated: true`
+  in the AsyncAPI spec (same "not removed before May 14, 2026" note as `side`/`action`). It is kept as
+  a non-optional `YesNo` since the spec still marks it required. If the exchange stops emitting it,
+  it can be changed to `Option<YesNo>` at that point.
+
+- `fractional_trading_enabled` on `Market` is listed as `required` in the OpenAPI but also marked
+  `deprecated: true` with a note that it is always `true` and carries no information. The crate models
+  it as `Option<bool>` to remain forward-compatible with its eventual removal.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
