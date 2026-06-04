@@ -45,6 +45,30 @@ examples are ambiguous.
   (`maker_fee_tiers`, `taker_fee_tiers`) were replaced by per-ticker decimal-rate maps
   (`maker_fee_rates`, `taker_fee_rates`). Fee is computed as `notional * rate`.
 
+- `Trade.is_block_trade: bool` was added as a required field by Kalshi on 2026-06-01. It is
+  `true` for trades matched off-book via RFQ or block proposals, `false` for standard order-book
+  fills. It is NOT present on WebSocket `WsTrade` messages (AsyncAPI 2.0.0 does not include it).
+
+- `Trade.taker_outcome_side` and `Trade.taker_book_side` are marked required in OpenAPI 3.20.0
+  and required in the AsyncAPI `tradePayload` schema. However, the canonical AsyncAPI example
+  payload omits both fields, indicating the exchange may send legacy messages without them.
+  Both fields are kept as `Option` on `WsTrade`/`WsTradeRef` to avoid parse failures. On the
+  REST `Trade` struct they are also `Option` for the same reason.
+
+- `CancelOrderResponse.reduced_by` (integer centi-count) and
+  `BatchCancelOrdersIndividualResponse.reduced_by` are no longer present in the OpenAPI 3.20.0
+  schema. Both fields are modeled as `Option<i64>` so existing responses that still include the
+  field continue to parse. Use `reduced_by_fp` (always required) for cancellation quantities.
+
+- The `PostOnlyCrossCancel` cancel reason (added 2026-06-04) is a string value reported in
+  exchange notifications for post-only orders that would have crossed the book. It is not a
+  separate schema field in the OpenAPI Order object and requires no struct change; it appears
+  as a string in any cancel-reason context.
+
+- The `write::transfer` scope (added 2026-06-03) is a new `ApiKeyScope` enum value in the
+  OpenAPI spec. The crate stores API key scopes as `Vec<String>`, which already accepts this
+  value without change.
+
 - `event_fee_update` is an AsyncAPI message delivered on the `market_lifecycle_v2` channel (it is
   not a separately-subscribable channel). It is modeled by `WsEventFeeUpdate`. `fee_type_override`
   is kept as `Option<String>` rather than reusing the `FeeType` enum, because the spec includes a

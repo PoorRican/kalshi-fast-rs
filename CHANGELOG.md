@@ -8,6 +8,66 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-04
+
+### Compatibility
+
+- Docs snapshot: 2026-06-04
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-04
+
+### Changelog entries since previous watermark (2026-06-04) — disposition map
+
+| Date | Entry | Disposition |
+|------|-------|-------------|
+| 2026-06-04 | Post Only Cross Cancel update reason added | No schema change — `PostOnlyCrossCancel` is a string value in cancel notifications; not a new struct field. Documented in `docs/spec-parity.md`. |
+| 2026-06-03 | Margin fee-tier endpoint returns active rates | Behavior fix (endpoint now returns real data instead of zeros). No struct change. |
+| 2026-06-03 | Tick size added to GET Margin Markets | `Market.tick_size: Option<i64>` was already present in the crate. No change needed. |
+| 2026-06-03 | Transfer-scoped API key permissions (`write::transfer`) | New `ApiKeyScope` enum value. Crate stores scopes as `Vec<String>`; no change needed. Documented in `docs/spec-parity.md`. |
+| 2026-06-01 | Block trade indicators and filters | `Trade.is_block_trade: bool` added; `GetTradesParams.is_block_trade: Option<bool>` filter added. **This release.** |
+| 2026-06-01 | Legacy order mutation rate-limit costs increase to 5x V2 | Operational rate-limit cost change. No schema change. |
+| 2026-05-26 | Fractional quantities for RFQs (rollout 2026-06-11) | Uses existing `count_fp` fields. No change needed. |
+| 2026-05-24 | Fixed-point dollars added to balance endpoint | Already implemented in v0.5.0 as `balance_dollars: Option<FixedPointDollars>`. |
+
+### Added
+
+- [Rust API] Added `is_block_trade: bool` to `Trade` (REST). Required per OpenAPI 3.20.0 since
+  2026-06-01. `true` for off-book block trades (RFQ/negotiated); `false` for standard order-book
+  fills. This field is NOT present on WebSocket `WsTrade` messages (not in AsyncAPI 2.0.0).
+- [Rust API] Added `is_block_trade: Option<bool>` to `GetTradesParams`. Pass `true` to return
+  only block trades, `false` for non-block only, or omit to return all trades.
+
+### Changed
+
+- [Rust API] `CancelOrderResponse.reduced_by` changed from `i64` to `Option<i64>`. The
+  integer `reduced_by` field is not present in the OpenAPI 3.20.0 `CancelOrderResponse` schema;
+  making it optional prevents parse failures if the exchange stops returning it. Use
+  `reduced_by_fp` (always required) for cancellation quantities.
+- [Rust API] `BatchCancelOrdersIndividualResponse.reduced_by` changed from `i64` to
+  `Option<i64>` for the same reason.
+- [Upstream] OpenAPI spec version advanced from 3.13.0 (v0.4.0) to 3.20.0. The Trade schema
+  now marks `is_block_trade`, `taker_outcome_side`, and `taker_book_side` as required; the
+  GetBalanceResponse marks `balance_dollars` as required. See `docs/spec-parity.md` for the
+  fields kept as `Option` due to practical exchange behavior.
+
+### Breaking
+
+- [Rust API] `CancelOrderResponse.reduced_by` is now `Option<i64>`. Downstream code accessing
+  `.reduced_by` as `i64` must unwrap or handle `None`. Prefer `reduced_by_fp`.
+- [Rust API] `BatchCancelOrdersIndividualResponse.reduced_by` is now `Option<i64>`.
+  Downstream code must handle `None`. Prefer `reduced_by_fp`.
+- [Rust API] `Trade.is_block_trade: bool` is a new non-optional field. Code constructing
+  `Trade` literals must add this field.
+
+### Version bump
+
+Minor bump (`0.5.0 → 0.6.0`): breaking Rust API changes to `CancelOrderResponse.reduced_by`,
+`BatchCancelOrdersIndividualResponse.reduced_by`, and additive but struct-literal-breaking
+`Trade.is_block_trade`. Rule: pre-1.0, any breaking Rust API change is a minor bump
+(VERSIONING.md).
+
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility

@@ -289,7 +289,10 @@ pub struct CancelOrderParams {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CancelOrderResponse {
     pub order: Order,
-    pub reduced_by: i64,
+    /// Not present in OpenAPI 3.20.0 schema; kept as `Option` to avoid parse failures.
+    /// Use `reduced_by_fp` instead.
+    #[serde(default)]
+    pub reduced_by: Option<i64>,
     pub reduced_by_fp: FixedPointCount,
 }
 
@@ -492,7 +495,10 @@ pub struct BatchCancelOrdersIndividualResponse {
     pub order_id: String,
     #[serde(default)]
     pub order: Option<Order>,
-    pub reduced_by: i64,
+    /// Not present in OpenAPI 3.20.0 schema; kept as `Option` to avoid parse failures.
+    /// Use `reduced_by_fp` instead.
+    #[serde(default)]
+    pub reduced_by: Option<i64>,
     pub reduced_by_fp: FixedPointCount,
     #[serde(default)]
     pub error: Option<ErrorResponse>,

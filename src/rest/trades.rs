@@ -30,12 +30,17 @@ pub struct Trade {
     #[serde(default)]
     pub taker_side: Option<TradeTakerSide>,
     /// Normalized taker outcome side (yes | no). Added 2026-05-07.
+    /// AsyncAPI example omits this field; kept as `Option` despite spec marking it required.
     #[serde(default)]
     pub taker_outcome_side: Option<TradeTakerSide>,
     /// Normalized taker book side (bid | ask). Added 2026-05-07.
+    /// AsyncAPI example omits this field; kept as `Option` despite spec marking it required.
     #[serde(default)]
     pub taker_book_side: Option<BookSide>,
     pub created_time: String,
+    /// True for block trades matched off-book (e.g. via RFQ); false for standard order-book fills.
+    /// Required per OpenAPI 3.20.0, added 2026-06-01.
+    pub is_block_trade: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -54,6 +59,10 @@ pub struct GetTradesParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Filter by block-trade status. `true` = block trades only; `false` = non-block only;
+    /// `None` = all trades. Added 2026-06-01.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_block_trade: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

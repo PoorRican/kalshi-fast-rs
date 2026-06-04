@@ -117,7 +117,10 @@ async fn test_order_lifecycle() {
     .expect("timeout")
     .expect("cancel_order failed");
 
-    assert!(cancel_resp.reduced_by > 0 || cancel_resp.order.order_id == result);
+    assert!(
+        cancel_resp.reduced_by.map(|v| v > 0).unwrap_or(true)
+            || cancel_resp.order.order_id == result
+    );
 
     // 7. Verify order is cancelled via get_orders
     let orders_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
