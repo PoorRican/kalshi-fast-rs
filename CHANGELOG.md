@@ -8,6 +8,65 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-05
+
+### Compatibility
+
+- Docs snapshot: 2026-06-05
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-05
+
+### Added
+
+- [Rust API] Added `FeeType::QuadraticWithMakerFees` variant for the `quadratic_with_maker_fees`
+  value present in the OpenAPI `FeeType` enum. Previously this value deserialized as
+  `FeeType::Unknown`; it now maps to the specific variant.
+- [Rust API] Added `is_block_trade: bool` to `Trade` (REST). Required per OpenAPI spec;
+  `true` when the trade was matched off-book (e.g. via RFQ), `false` for on-book fills.
+- [Rust API] Added `is_block_trade: Option<bool>` to `GetTradesParams`. Applies to both
+  `GET /markets/trades` and `GET /historical/trades`; omit to return all trades.
+- [Rust API] Added `IndexedBalance` struct (`exchange_index: i64`, `balance: FixedPointDollars`)
+  and `balance_breakdown: Option<Vec<IndexedBalance>>` to `GetBalanceResponse`, exposing the
+  per-exchange-shard balance array from the OpenAPI spec.
+- [Tests] Added `get_trades_block_trade_field_parses` test covering `is_block_trade: true`.
+- [Tests] Added `fee_type_quadratic_with_maker_fees_deserializes` test for the new `FeeType`
+  variant.
+- [Tests] Added `get_balance_response_with_breakdown_deserializes` test covering
+  `balance_dollars` and `balance_breakdown` together.
+- [Docs] Updated `docs/spec-parity.md`: documented `is_block_trade` shape rationale,
+  `balance_dollars`/`balance_breakdown` Option treatment, `PostOnlyCrossCancel` deferral
+  (field absent from published YAML), and margin/perps endpoints deferral (endpoints absent
+  from published YAML).
+
+### Breaking
+
+- [Rust API] `FeeType::QuadraticWithMakerFees` is a new enum variant. Exhaustive `match`
+  statements on `FeeType` that previously handled `quadratic_with_maker_fees` via the
+  `Unknown` arm must now handle `QuadraticWithMakerFees` explicitly.
+  Per `VERSIONING.md` pre-1.0 rule: adding a variant to a non-`#[non_exhaustive]` public
+  enum is a breaking Rust API change → minor bump.
+
+### Changelog entry mapping (since watermark 2026-06-04)
+
+- **2026-06-04 — Post Only Cross Cancel update reason**: `last_update_reason` field not in
+  published OpenAPI/AsyncAPI YAML → no change; documented in `docs/spec-parity.md`.
+- **2026-06-05 — Tick size on margin markets**: `GET /trade-api/v2/margin/markets` not in
+  published OpenAPI → no change; documented in `docs/spec-parity.md`.
+- **2026-06-05 — Perps notional fields**: `margin_ticker` WebSocket not in published AsyncAPI →
+  no change; documented in `docs/spec-parity.md`.
+- **2026-06-05 — Margin fee-tier returns active rates**: behavioral bug fix; no struct change.
+
+### Changelog entry mapping (pre-watermark gaps addressed)
+
+- **2026-05-29 — Block trade indicators**: `is_block_trade` field and filter were in the
+  OpenAPI spec but missing from the crate. Added in this release.
+- **OpenAPI `FeeType` gap**: `quadratic_with_maker_fees` was in the published OpenAPI enum
+  but absent from `FeeType`. Added in this release.
+- **OpenAPI `GetBalanceResponse` gap**: `balance_breakdown` array was in the published OpenAPI
+  schema but not modeled. Added in this release.
+
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility

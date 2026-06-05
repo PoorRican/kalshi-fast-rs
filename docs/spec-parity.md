@@ -41,18 +41,39 @@ examples are ambiguous.
   `taker_side` (deprecated) plus `taker_outcome_side` / `taker_book_side`. These follow the same
   `Option` treatment for the same reasons.
 
+- `Trade.is_block_trade` is marked required in the OpenAPI spec (added 2026-05-29). It is modeled
+  as `bool` (non-optional) following the spec. The companion `GetTradesParams.is_block_trade: Option<bool>`
+  filter applies to both `GET /markets/trades` and `GET /historical/trades`.
+
+- The OpenAPI spec marks `GetBalanceResponse.balance_dollars` as required, but this field is only
+  populated for direct exchange members (broker-routed accounts may not receive it). It is modeled
+  as `Option<FixedPointDollars>` so non-direct-member responses parse without error.
+  `GetBalanceResponse.balance_breakdown` (per-exchange-shard balances) is optional per spec and
+  modeled as `Option<Vec<IndexedBalance>>`.
+
 - The `/margin/fee_tiers` response was restructured on 2026-05-11. The previous tier-name maps
   (`maker_fee_tiers`, `taker_fee_tiers`) were replaced by per-ticker decimal-rate maps
   (`maker_fee_rates`, `taker_fee_rates`). Fee is computed as `notional * rate`.
+  This endpoint is documented in the Kalshi changelog but is not present in the published OpenAPI
+  spec; see `exchange.rs::GetMarginFeeTiersResponse`.
 
 - `event_fee_update` is an AsyncAPI message delivered on the `market_lifecycle_v2` channel (it is
   not a separately-subscribable channel). It is modeled by `WsEventFeeUpdate`. `fee_type_override`
-  is kept as `Option<String>` rather than reusing the `FeeType` enum, because the spec includes a
-  `quadratic_with_maker_fees` variant not present in `FeeType` and the field must stay lossless for
-  fee math. Both override fields are nullable (`None` when the override is cleared).
+  uses `Option<String>` rather than `FeeType` for lossless encoding (the field can carry any
+  string override value). Both override fields are nullable (`None` when the override is cleared).
 - The AsyncAPI marks several timestamp/required fields that the exchange may omit in practice
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
+
+- The changelog (2026-06-04) introduces `PostOnlyCrossCancel` as a new `last_update_reason` value
+  for post-only orders that cross the book. `last_update_reason` is not present in the published
+  OpenAPI or AsyncAPI YAML as of 2026-06-05. Per the reconciliation policy the YAML is
+  authoritative for shape; this field is not modeled until it appears in the published spec.
+
+- The changelog (2026-06-05) adds `tick_size` to margin market responses and notional dollar fields
+  to perps market data and `margin_ticker` WebSocket messages. These endpoints
+  (`GET /trade-api/v2/margin/markets*`, WebSocket `margin_ticker`) are not present in the
+  published OpenAPI or AsyncAPI YAML as of 2026-06-05; no change needed until the spec is updated.
 
 ## Test Strategy
 

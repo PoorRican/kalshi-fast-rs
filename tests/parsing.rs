@@ -1032,7 +1032,8 @@ fn get_trades_response_deserializes() {
             "taker_side": "yes",
             "taker_outcome_side": "yes",
             "taker_book_side": "bid",
-            "created_time": "2026-04-16T12:00:00Z"
+            "created_time": "2026-04-16T12:00:00Z",
+            "is_block_trade": false
         }],
         "cursor": "c1"
     }"#;
@@ -1040,6 +1041,7 @@ fn get_trades_response_deserializes() {
     let resp: GetTradesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.trades.len(), 1);
     assert_eq!(resp.trades[0].count_fp, "2.00");
+    assert!(!resp.trades[0].is_block_trade);
     // Normalized direction fields added 2026-05-07.
     assert!(matches!(
         resp.trades[0].taker_outcome_side,
@@ -1050,6 +1052,27 @@ fn get_trades_response_deserializes() {
         Some(BookSide::Bid)
     ));
     assert_eq!(resp.cursor, Some("c1".into()));
+}
+
+#[test]
+fn get_trades_block_trade_field_parses() {
+    let json = r#"{
+        "trades": [{
+            "trade_id": "t2",
+            "ticker": "MKT-2",
+            "count_fp": "5.00",
+            "yes_price_dollars": "0.7000",
+            "no_price_dollars": "0.3000",
+            "taker_outcome_side": "no",
+            "taker_book_side": "ask",
+            "created_time": "2026-06-01T09:00:00Z",
+            "is_block_trade": true
+        }],
+        "cursor": null
+    }"#;
+
+    let resp: GetTradesResponse = serde_json::from_str(json).unwrap();
+    assert!(resp.trades[0].is_block_trade);
 }
 
 #[test]
@@ -1123,6 +1146,33 @@ fn get_series_fee_changes_response_deserializes() {
     let resp: GetSeriesFeeChangesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.series_fee_change_arr.len(), 1);
     assert_eq!(resp.series_fee_change_arr[0].series_ticker, "SERIES-1");
+}
+
+#[test]
+fn fee_type_quadratic_with_maker_fees_deserializes() {
+    let fee: kalshi_fast::FeeType = serde_json::from_str("\"quadratic_with_maker_fees\"").unwrap();
+    assert!(matches!(fee, kalshi_fast::FeeType::QuadraticWithMakerFees));
+}
+
+#[test]
+fn get_balance_response_with_breakdown_deserializes() {
+    let json = r#"{
+        "balance": 50000,
+        "balance_dollars": "500.0000",
+        "portfolio_value": 25000,
+        "updated_ts": 1700000000,
+        "balance_breakdown": [
+            {"exchange_index": 0, "balance": "500.0000"}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.balance, 50000);
+    assert_eq!(resp.balance_dollars.as_deref(), Some("500.0000"));
+    let breakdown = resp.balance_breakdown.unwrap();
+    assert_eq!(breakdown.len(), 1);
+    assert_eq!(breakdown[0].exchange_index, 0);
+    assert_eq!(breakdown[0].balance, "500.0000");
 }
 
 #[test]

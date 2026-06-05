@@ -36,6 +36,8 @@ pub struct Trade {
     #[serde(default)]
     pub taker_book_side: Option<BookSide>,
     pub created_time: String,
+    /// True if matched off-book as a block trade (e.g. via RFQ). Required per OpenAPI.
+    pub is_block_trade: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -54,6 +56,10 @@ pub struct GetTradesParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Filter by block-trade status. `true` = block trades only, `false` = on-book only.
+    /// Omit to return all trades. Added 2026-05-29.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_block_trade: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -136,6 +136,7 @@ pub struct ErrorResponse {
 #[serde(rename_all = "snake_case")]
 pub enum FeeType {
     Quadratic,
+    QuadraticWithMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
