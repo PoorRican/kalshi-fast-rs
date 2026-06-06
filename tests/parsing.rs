@@ -1032,7 +1032,8 @@ fn get_trades_response_deserializes() {
             "taker_side": "yes",
             "taker_outcome_side": "yes",
             "taker_book_side": "bid",
-            "created_time": "2026-04-16T12:00:00Z"
+            "created_time": "2026-04-16T12:00:00Z",
+            "is_block_trade": false
         }],
         "cursor": "c1"
     }"#;
@@ -1040,6 +1041,7 @@ fn get_trades_response_deserializes() {
     let resp: GetTradesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.trades.len(), 1);
     assert_eq!(resp.trades[0].count_fp, "2.00");
+    assert!(!resp.trades[0].is_block_trade);
     // Normalized direction fields added 2026-05-07.
     assert!(matches!(
         resp.trades[0].taker_outcome_side,

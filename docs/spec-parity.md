@@ -54,6 +54,26 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Trade.is_block_trade` (REST) is a required `bool` field added to the OpenAPI
+  `Trade` schema (announced 2026-06-01 as "Upcoming", reflected in YAML at the
+  time of the 0.6.0 refresh). The WebSocket `WsTrade` does NOT carry this field —
+  the AsyncAPI `tradePayload` has no `is_block_trade` property. Block-trade
+  classification is REST-only. `GetTradesParams.is_block_trade` provides the
+  corresponding filter on `/markets/trades` and `/historical/trades`.
+
+- V2 REST order endpoints (`/portfolio/events/orders/*`) use a unified BookSide
+  (bid|ask) + single `price` field contract, distinct from the V1
+  `/portfolio/orders/*` contract that uses YesNo + BuySell + separate yes/no
+  prices. Both families co-exist in the OpenAPI spec. The crate exposes V2 via
+  `create_order_v2`, `amend_order_v2`, `decrease_order_v2`, `cancel_order_v2`,
+  `batch_create_orders_v2`, and `batch_cancel_orders_v2`. V1 endpoints remain
+  available for compatibility.
+
+- Changelog items marked "Upcoming" (June 3–5, 2026: perps notional fields,
+  tick_size on margin markets, Post Only Cross Cancel update reason,
+  transfer-scoped API keys) are not yet reflected in the OpenAPI/AsyncAPI YAML
+  and require no code changes until the specs are updated.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

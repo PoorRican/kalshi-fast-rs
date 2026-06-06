@@ -8,6 +8,70 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-06
+
+### Compatibility
+
+- Docs snapshot: 2026-06-06
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-06
+
+### Added
+
+- [Rust API] Added `is_block_trade: bool` to the REST `Trade` struct. The OpenAPI spec
+  marks this as a required field: `true` for trades matched off-book (via RFQ / negotiated
+  block proposal), `false` for standard on-book trades. Announced in the changelog as
+  "Block trade indicators and filters for public trades" (2026-06-01); confirmed present
+  in the OpenAPI YAML at the time of this refresh.
+- [Rust API] Added `is_block_trade: Option<bool>` to `GetTradesParams`. Both
+  `/markets/trades` and `/historical/trades` accept this query parameter to filter trades
+  by block/non-block status (`None` returns all).
+- [Rust API] Added the full V2 REST order API targeting `/portfolio/events/orders/*`.
+  The V2 contract uses `BookSide` (`bid` | `ask`) and a single unified `price` field
+  instead of the V1 `YesNo`/`BuySell` + separate `yes_price`/`no_price` fields. New types:
+  `CreateOrderV2Request`, `CreateOrderV2Response`, `AmendOrderV2Request`,
+  `AmendOrderV2Response`, `DecreaseOrderV2Request`, `DecreaseOrderV2Response`,
+  `CancelOrderV2Response`, `BatchCreateOrdersV2Request`,
+  `BatchCreateOrdersV2IndividualResponse`, `BatchCreateOrdersV2Response`,
+  `BatchCancelOrdersV2OrderItem`, `BatchCancelOrdersV2Request`,
+  `BatchCancelOrdersV2IndividualResponse`, `BatchCancelOrdersV2Response`.
+  New client methods: `create_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `cancel_order_v2`, `batch_create_orders_v2`, `batch_cancel_orders_v2`.
+
+### Breaking
+
+- [Rust API] `Trade.is_block_trade` is a new required (non-optional) `bool` field.
+  Downstream struct-literal construction of `Trade` must add `is_block_trade: <bool>`.
+  Deserialization of existing `Trade` payloads will fail if the exchange omits this field
+  (the spec marks it required; the exchange has been emitting it since 2026-06-01).
+
+### Changelog coverage since previous watermark (2026-06-04)
+
+Every RSS item is mapped below; items not yet in the YAML are noted.
+
+| Date | Item | Action |
+|------|------|--------|
+| 2026-06-05 | Perps volume and open interest notional fields | No action — marked Upcoming; not yet in AsyncAPI YAML. |
+| 2026-06-04 | Legacy order mutation rate-limit costs increase to 10× V2 | No action — rate-limit policy, no schema change. |
+| 2026-06-04 | Post Only Cross Cancel update reason added | No action — marked Upcoming; `last_update_reason` not yet in AsyncAPI YAML. |
+| 2026-06-03 | Margin fee-tier endpoint returns active rates | No action — bug fix to existing endpoint; no schema change. |
+| 2026-06-03 | Tick size added to GET Margin Markets | No action — marked Upcoming; not yet in OpenAPI YAML. |
+| 2026-06-03 | Transfer-scoped API key permissions | No action — `write::transfer` appears in `ApiKeyScope` OpenAPI enum, but the crate has no `ApiKeyScope` type and no key-management endpoint client. |
+| 2026-06-01 | Block trade indicators and filters for public trades | **Addressed** — `is_block_trade` field on `Trade` and `is_block_trade` filter on `GetTradesParams`. |
+| 2026-06-01 | Legacy order mutation rate-limit costs increase to 5× V2 | No action — rate-limit policy, no schema change. |
+| 2026-05-26 | Fractional quantities for RFQs | Already present — `CreateRFQRequest.contracts_fp` was added in a prior release. |
+| 2026-05-25 | Legacy order mutation rate-limit costs updated (Released) | No action — rate-limit policy, no schema change. |
+| 2026-05-24 | Fixed-point dollars added to GET /portfolio/balance | Already present — `GetBalanceResponse.balance_dollars` added in 0.5.0. |
+| 2026-05-15 | V2 cancel/amend response correctness | No action — server-side bug fix, no schema change. |
+| 2026-05-13 | reduce_by supported on V2 decrease endpoint | **Addressed** — V2 REST order API added in this release (includes `DecreaseOrderV2Request.reduce_by`). |
+
+Items not in the changelog window but found in the YAML:
+
+| Gap | Resolution |
+|-----|-----------|
+| V2 REST order endpoints (`/portfolio/events/orders/*`) present in OpenAPI but not in crate | **Addressed** — full V2 order API added in this release. |
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility
