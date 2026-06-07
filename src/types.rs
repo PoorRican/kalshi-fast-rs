@@ -136,9 +136,41 @@ pub struct ErrorResponse {
 #[serde(rename_all = "snake_case")]
 pub enum FeeType {
     Quadratic,
+    /// Added 2026-06-07 to match the `quadratic_with_maker_fees` variant present
+    /// in the OpenAPI `FeeType` schema since at least OpenAPI 3.20.0.
+    QuadraticWithMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
+}
+
+/// --- Exchange Instance ---
+///
+/// Exchange instance type. `event_contract` is the standard binary-contract
+/// exchange; `margined` is the perps/margin exchange.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+    #[serde(other)]
+    Unknown,
+}
+
+impl ExchangeInstance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExchangeInstance::EventContract => "event_contract",
+            ExchangeInstance::Margined => "margined",
+            ExchangeInstance::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for ExchangeInstance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// --- Event Status ---

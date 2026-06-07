@@ -41,9 +41,26 @@ examples are ambiguous.
   `taker_side` (deprecated) plus `taker_outcome_side` / `taker_book_side`. These follow the same
   `Option` treatment for the same reasons.
 
+- `Trade.is_block_trade` is required in OpenAPI ≥3.20.0 (added 2026-06-01), but is modeled as
+  `Option<bool>` for backward compatibility with any exchange responses that predate that version.
+  `GetTradesParams.is_block_trade` is the corresponding filter parameter.
+
 - The `/margin/fee_tiers` response was restructured on 2026-05-11. The previous tier-name maps
   (`maker_fee_tiers`, `taker_fee_tiers`) were replaced by per-ticker decimal-rate maps
   (`maker_fee_rates`, `taker_fee_rates`). Fee is computed as `notional * rate`.
+
+- `GetBalanceResponse.balance_dollars` is required in OpenAPI ≥3.20.0 but is modeled as
+  `Option<FixedPointDollars>` to tolerate responses from before 2026-05-28 (when the field was
+  introduced for direct members). `balance_breakdown` (per-shard indexed balance array, added
+  2026-06-07) is optional in the spec and modeled as `Option<Vec<IndexedBalance>>`; absent for
+  accounts with a single exchange shard.
+
+- `GetAccountApiLimitsResponse` was restructured in OpenAPI 3.20.0 (2026-06-06): the integer
+  scalars `read_limit` / `write_limit` were replaced by `read` / `write` (`BucketLimit` structs),
+  and the `grants` array (required, may be empty) was added. The `FeeType` enum gained the
+  `quadratic_with_maker_fees` variant (also present in the OpenAPI spec since at least 3.20.0).
+  `fee_type_override` on `WsEventFeeUpdate` is still kept as `Option<String>` to remain lossless
+  if further fee-type variants appear before the enum is updated.
 
 - `event_fee_update` is an AsyncAPI message delivered on the `market_lifecycle_v2` channel (it is
   not a separately-subscribable channel). It is modeled by `WsEventFeeUpdate`. `fee_type_override`

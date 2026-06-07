@@ -493,6 +493,28 @@ fn get_balance_response_deserializes() {
     assert_eq!(resp.balance, 100000);
     assert_eq!(resp.portfolio_value, 50000);
     assert_eq!(resp.updated_ts, 1700000000);
+    assert!(resp.balance_breakdown.is_none());
+}
+
+#[test]
+fn get_balance_response_with_breakdown_deserializes() {
+    // balance_dollars and balance_breakdown added in OpenAPI ≥3.20.0.
+    let json = r#"{
+        "balance": 100000,
+        "balance_dollars": "1000.0000",
+        "portfolio_value": 50000,
+        "updated_ts": 1700000000,
+        "balance_breakdown": [
+            {"exchange_index": 0, "balance": "1000.0000"}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.balance_dollars.as_deref(), Some("1000.0000"));
+    let breakdown = resp.balance_breakdown.unwrap();
+    assert_eq!(breakdown.len(), 1);
+    assert_eq!(breakdown[0].exchange_index, 0);
+    assert_eq!(breakdown[0].balance, "1000.0000");
 }
 
 #[test]
@@ -1032,7 +1054,8 @@ fn get_trades_response_deserializes() {
             "taker_side": "yes",
             "taker_outcome_side": "yes",
             "taker_book_side": "bid",
-            "created_time": "2026-04-16T12:00:00Z"
+            "created_time": "2026-04-16T12:00:00Z",
+            "is_block_trade": false
         }],
         "cursor": "c1"
     }"#;
@@ -1049,7 +1072,41 @@ fn get_trades_response_deserializes() {
         resp.trades[0].taker_book_side,
         Some(BookSide::Bid)
     ));
+    // is_block_trade added 2026-06-01 (OpenAPI ≥3.20.0).
+    assert_eq!(resp.trades[0].is_block_trade, Some(false));
     assert_eq!(resp.cursor, Some("c1".into()));
+}
+
+#[test]
+fn trade_is_block_trade_field_parses() {
+    // Block trade has is_block_trade: true
+    let block_json = r#"{
+        "trade_id": "b1",
+        "ticker": "MKT-2",
+        "count_fp": "5.00",
+        "yes_price_dollars": "0.6000",
+        "no_price_dollars": "0.4000",
+        "taker_outcome_side": "yes",
+        "taker_book_side": "bid",
+        "created_time": "2026-06-01T10:00:00Z",
+        "is_block_trade": true
+    }"#;
+    let t: kalshi_fast::Trade = serde_json::from_str(block_json).unwrap();
+    assert_eq!(t.is_block_trade, Some(true));
+
+    // Absent field (older exchange snapshot) must not fail parse.
+    let legacy_json = r#"{
+        "trade_id": "l1",
+        "ticker": "MKT-3",
+        "count_fp": "1.00",
+        "yes_price_dollars": "0.5000",
+        "no_price_dollars": "0.5000",
+        "taker_outcome_side": "no",
+        "taker_book_side": "ask",
+        "created_time": "2026-01-01T00:00:00Z"
+    }"#;
+    let t2: kalshi_fast::Trade = serde_json::from_str(legacy_json).unwrap();
+    assert_eq!(t2.is_block_trade, None);
 }
 
 #[test]
@@ -1175,12 +1232,43 @@ fn get_settlements_response_deserializes() {
 
 #[test]
 fn get_account_api_limits_response_deserializes() {
-    let json = r#"{"usage_tier":"basic","read_limit":20,"write_limit":10}"#;
+    // OpenAPI ≥3.20.0 shape: BucketLimit objects for read/write + grants array.
+    let json = r#"{
+        "usage_tier": "basic",
+        "read": {"refill_rate": 20, "bucket_capacity": 20},
+        "write": {"refill_rate": 10, "bucket_capacity": 20},
+        "grants": [
+            {
+                "exchange_instance": "event_contract",
+                "level": "premier",
+                "expires_ts": null,
+                "source": "volume"
+            }
+        ]
+    }"#;
 
     let resp: GetAccountApiLimitsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.usage_tier, "basic");
-    assert_eq!(resp.read_limit, 20);
-    assert_eq!(resp.write_limit, 10);
+    assert_eq!(resp.read.refill_rate, 20);
+    assert_eq!(resp.write.refill_rate, 10);
+    assert_eq!(resp.write.bucket_capacity, 20);
+    assert_eq!(resp.grants.len(), 1);
+    assert_eq!(resp.grants[0].level, "premier");
+    assert_eq!(resp.grants[0].source, "volume");
+    assert!(resp.grants[0].expires_ts.is_none());
+}
+
+#[test]
+fn get_account_api_limits_empty_grants_deserializes() {
+    // Server may return grants as empty array for accounts with no elevated grants.
+    let json = r#"{
+        "usage_tier": "basic",
+        "read": {"refill_rate": 5, "bucket_capacity": 5},
+        "write": {"refill_rate": 2, "bucket_capacity": 4},
+        "grants": []
+    }"#;
+    let resp: GetAccountApiLimitsResponse = serde_json::from_str(json).unwrap();
+    assert!(resp.grants.is_empty());
 }
 
 #[test]

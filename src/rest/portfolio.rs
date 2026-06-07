@@ -15,14 +15,30 @@ use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
+/// Per-exchange-shard balance breakdown entry.
+///
+/// `exchange_index` is an integer shard identifier (currently always `0`).
+/// `balance` is the available balance for that shard as a fixed-point dollar string.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i32,
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
     pub portfolio_value: i64,
     pub updated_ts: i64,
     /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
+    /// OpenAPI ≥3.20.0 marks this required; modeled as `Option` for backward
+    /// compatibility with responses predating 2026-05-28 (see spec-parity.md).
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// Balance broken down per exchange shard. Added 2026-06-07 (OpenAPI ≥3.20.0).
+    /// Absent on accounts with a single shard.
+    #[serde(default)]
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
 }
 
 /// GET /portfolio/positions query params

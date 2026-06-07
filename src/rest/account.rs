@@ -8,18 +8,61 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    ExchangeInstance, FixedPointDollars, deserialize_null_as_empty_vec,
+    deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Token-bucket budget for one rate-limit lane. Tokens refill at `refill_rate`
+/// per second up to `bucket_capacity`; a request costs tokens equal to its
+/// endpoint cost and is rejected (HTTP 429) when the bucket runs dry.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BucketLimit {
+    /// Tokens added to the bucket per second.
+    pub refill_rate: i64,
+    /// Maximum tokens the bucket can hold.
+    pub bucket_capacity: i64,
+}
+
+/// An active API-usage-level grant for a specific exchange lane.
+///
+/// Grants can be earned automatically from trailing trading volume or assigned
+/// manually by Kalshi. Multiple grants may exist when the account has access to
+/// more than one exchange instance.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApiUsageLevelGrant {
+    /// The exchange lane this grant applies to.
+    pub exchange_instance: ExchangeInstance,
+    /// API usage level conferred (e.g. `"premier"`, `"paragon"`, `"prime"`).
+    pub level: String,
+    /// Unix timestamp (seconds) when the grant expires. `None` for permanent grants.
+    #[serde(default)]
+    pub expires_ts: Option<i64>,
+    /// How the grant was created: `"volume"` or `"manual"`.
+    pub source: String,
+}
+
+/// Response from `GET /trade-api/v2/account/limits`.
+///
+/// Field names changed in OpenAPI 3.20.0 (2026-06-06):
+/// - `read_limit` / `write_limit` (deprecated integer scalars) →
+///   `read` / `write` ([`BucketLimit`] token-bucket objects)
+/// - `grants` array added (required); lists active tier grants per exchange lane.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetAccountApiLimitsResponse {
+    /// User's API usage tier (e.g. `"basic"`, `"premier"`).
     pub usage_tier: String,
-    pub read_limit: i64,
-    pub write_limit: i64,
+    /// Read-lane token-bucket budget.
+    pub read: BucketLimit,
+    /// Write-lane token-bucket budget.
+    pub write: BucketLimit,
+    /// Active tier grants across exchange lanes. Empty for accounts with no
+    /// elevated grants.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub grants: Vec<ApiUsageLevelGrant>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

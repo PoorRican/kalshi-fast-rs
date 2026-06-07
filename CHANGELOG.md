@@ -8,6 +8,74 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-07
+
+### Compatibility
+
+- Docs snapshot: 2026-06-07
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-06
+
+### Changelog entries since previous watermark (2026-06-04) — mapping to diffs
+
+| Entry | Date | Action |
+|-------|------|--------|
+| Perps volume and open interest notional fields | 2026-06-05 | No change needed — "Upcoming" announcement; fields absent from OpenAPI 3.20.0 YAML |
+| Introducing automated API rate-limit tiers | 2026-06-06 | `GetAccountApiLimitsResponse` restructured (see Breaking) |
+| Post Only Cross Cancel update reason added | 2026-06-04 | No change needed — `last_update_reason` not in OpenAPI/AsyncAPI YAML schema |
+| Legacy order mutation rate-limit costs increase to 10x V2 | 2026-06-04 | No change needed — runtime behavior, not a schema field |
+| Margin fee-tier endpoint returns active rates | 2026-06-03 | No change needed — bug fix on server side, schema unchanged |
+| Tick size added to GET Margin Markets | 2026-06-03 | No change needed — "Upcoming" announcement; `tick_size` absent from Market schema in OpenAPI 3.20.0 |
+| Block trade indicators and filters for public trades | 2026-06-01 | Added `Trade.is_block_trade` and `GetTradesParams.is_block_trade` (see Added) |
+
+Entries predating 2026-06-04 that were already in the OpenAPI 3.20.0 YAML but not yet reflected
+in the crate:
+
+| Entry | Action |
+|-------|--------|
+| `FeeType` missing `quadratic_with_maker_fees` variant | Added variant (see Added) |
+| `GetBalanceResponse` missing `balance_breakdown` | Added field (see Added) |
+
+### Added
+
+- [Rust API] Added `is_block_trade: Option<bool>` to `Trade` (REST). Required in OpenAPI ≥3.20.0
+  (2026-06-01); modeled as `Option` for backward compatibility with older exchange responses.
+- [Rust API] Added `is_block_trade: Option<bool>` to `GetTradesParams`. Filters `GET /markets/trades`
+  and `GET /historical/trades` by block-trade status. `None` returns all; `Some(true)` returns only
+  block trades; `Some(false)` returns only standard order-book trades.
+- [Rust API] Added `BucketLimit` struct (`refill_rate: i64`, `bucket_capacity: i64`) for the new
+  token-bucket rate-limit representation in `GetAccountApiLimitsResponse`.
+- [Rust API] Added `ApiUsageLevelGrant` struct (`exchange_instance`, `level`, `expires_ts`, `source`)
+  for the per-lane tier-grant entries in `GetAccountApiLimitsResponse.grants`.
+- [Rust API] Added `ExchangeInstance` enum (`EventContract` | `Margined` | `Unknown`) to `types.rs`,
+  matching the OpenAPI `ExchangeInstance` schema. Used in `ApiUsageLevelGrant`.
+- [Rust API] Added `FeeType::QuadraticWithMakerFees` variant to align with the
+  `quadratic_with_maker_fees` value present in the OpenAPI `FeeType` schema. `fee_type_override` on
+  `WsEventFeeUpdate` remains `Option<String>` for lossless handling of future variants (see
+  `docs/spec-parity.md`).
+- [Rust API] Added `IndexedBalance` struct (`exchange_index: i32`, `balance: FixedPointDollars`) for
+  per-shard balance entries in `GetBalanceResponse.balance_breakdown`.
+- [Rust API] Added `balance_breakdown: Option<Vec<IndexedBalance>>` to `GetBalanceResponse`. Present
+  when the account spans multiple exchange shards (currently uncommon); absent otherwise.
+- [Tests] Updated `get_trades_response_deserializes` to include `is_block_trade`; added
+  `trade_is_block_trade_field_parses` covering block and legacy (absent field) cases.
+- [Tests] Added `get_account_api_limits_response_deserializes` covering new BucketLimit+grants shape;
+  added `get_account_api_limits_empty_grants_deserializes` for the no-grants case.
+- [Tests] Added `get_balance_response_with_breakdown_deserializes` covering `balance_dollars` +
+  `balance_breakdown`.
+
+### Breaking
+
+- [Rust API] `GetAccountApiLimitsResponse.read_limit: i64` renamed to `read: BucketLimit`. Downstream
+  code must update field access from `resp.read_limit` to `resp.read.refill_rate` (or
+  `.bucket_capacity`).
+- [Rust API] `GetAccountApiLimitsResponse.write_limit: i64` renamed to `write: BucketLimit`.
+  Downstream code must update field access from `resp.write_limit` to `resp.write.refill_rate`.
+- [Rust API] `GetAccountApiLimitsResponse` now contains `grants: Vec<ApiUsageLevelGrant>`. Exhaustive
+  struct construction in downstream code must add this field (use `Vec::new()` for no grants).
+
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility
