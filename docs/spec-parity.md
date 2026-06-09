@@ -54,6 +54,28 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The `PostOnlyCrossCancel` string is a new value for `last_update_reason` on canceled orders,
+  announced 2026-06-04. Neither the OpenAPI `Order` schema nor the AsyncAPI `userOrderPayload`
+  schema currently defines `last_update_reason` as a formal field or enum; the YAML is the source
+  of truth for shape, so no typed field was added. If the exchange begins emitting this as a
+  top-level WS field it will surface in the `extra` flatten map until the YAML is updated.
+
+- Perps REST and WebSocket market data gained dollar notional equivalents for lifetime volume, 24-hour
+  volume, open interest, and candlestick periods on 2026-06-11. As of OpenAPI 3.20.0/AsyncAPI 2.0.0
+  these fields are not present in the public YAML schemas; they may apply to margin-exchange
+  endpoints not yet reflected in the public spec. No Rust types were added. Tracked here for the
+  next refresh.
+
+- Tick size (`tick_size`) was added to margin market responses on 2026-06-11. The field does not
+  appear in the public OpenAPI 3.20.0 `Market` schema; it may be on a private or margin-specific
+  endpoint. No Rust types were added. Tracked here for the next refresh.
+
+- `GetAccountApiLimitsResponse` was restructured to match OpenAPI 3.20.0: `read_limit: i64` and
+  `write_limit: i64` are replaced by `read: BucketLimit` and `write: BucketLimit`, and a new
+  `grants: Vec<ApiUsageLevelGrant>` field holds per-lane usage-level grants introduced 2026-06-11.
+  The `grants` array is returned as required by the spec; empty when the account has no active
+  grants.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

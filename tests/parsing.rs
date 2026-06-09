@@ -1175,12 +1175,41 @@ fn get_settlements_response_deserializes() {
 
 #[test]
 fn get_account_api_limits_response_deserializes() {
-    let json = r#"{"usage_tier":"basic","read_limit":20,"write_limit":10}"#;
+    let json = r#"{
+        "usage_tier": "premier",
+        "read": {"refill_rate": 30, "bucket_capacity": 60},
+        "write": {"refill_rate": 15, "bucket_capacity": 30},
+        "grants": [
+            {"exchange_instance": "event_contract", "level": "premier", "source": "volume"}
+        ]
+    }"#;
+
+    let resp: GetAccountApiLimitsResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.usage_tier, "premier");
+    assert_eq!(resp.read.refill_rate, 30);
+    assert_eq!(resp.read.bucket_capacity, 60);
+    assert_eq!(resp.write.refill_rate, 15);
+    assert_eq!(resp.write.bucket_capacity, 30);
+    assert_eq!(resp.grants.len(), 1);
+    assert_eq!(resp.grants[0].level, "premier");
+    assert_eq!(resp.grants[0].exchange_instance, "event_contract");
+    assert!(resp.grants[0].expires_ts.is_none());
+}
+
+#[test]
+fn get_account_api_limits_empty_grants_deserializes() {
+    let json = r#"{
+        "usage_tier": "basic",
+        "read": {"refill_rate": 20, "bucket_capacity": 20},
+        "write": {"refill_rate": 10, "bucket_capacity": 10},
+        "grants": []
+    }"#;
 
     let resp: GetAccountApiLimitsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.usage_tier, "basic");
-    assert_eq!(resp.read_limit, 20);
-    assert_eq!(resp.write_limit, 10);
+    assert_eq!(resp.read.refill_rate, 20);
+    assert_eq!(resp.write.refill_rate, 10);
+    assert!(resp.grants.is_empty());
 }
 
 #[test]

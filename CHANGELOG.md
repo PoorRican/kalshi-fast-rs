@@ -8,6 +8,58 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-09
+
+### Compatibility
+
+- Docs snapshot: 2026-06-09
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-11
+
+### Changelog entries since previous watermark (2026-06-04)
+
+| Date | Entry | Action |
+|------|-------|--------|
+| 2026-06-11 | Self-serve Advanced API usage tier upgrade | Added `upgrade_account_api_usage_level()` |
+| 2026-06-11 | Margin fee-tier endpoint returns active rates | No schema change; behavior only |
+| 2026-06-11 | Perps volume/OI notional fields | Not in public OpenAPI/AsyncAPI yet; tracked in `docs/spec-parity.md` |
+| 2026-06-11 | Tick size added to GET Margin Markets | Not in public OpenAPI yet; tracked in `docs/spec-parity.md` |
+| 2026-06-05 | Automated API rate-limit tiers (live 2026-06-11) | `GetAccountApiLimitsResponse` restructured; `BucketLimit` + `ApiUsageLevelGrant` added |
+| 2026-06-11 | Fractional quantities for RFQs | `CreateQuoteRequest.post_only` added; `contracts_fp` already present |
+| 2026-06-04 | Legacy order mutation rate-limit costs | Rate-limit policy only; no schema change |
+| 2026-06-04 | Post Only Cross Cancel update reason | `PostOnlyCrossCancel` string value; not in YAML schemas; tracked in `docs/spec-parity.md` |
+| 2026-06-02 | Transfer-scoped API key | `write::transfer` scope; `scopes: Vec<String>` already flexible |
+
+### Added
+
+- [Rust API] Added `BucketLimit` struct (`refill_rate: i64`, `bucket_capacity: i64`) representing
+  the token-bucket budget for one rate-limit bucket, matching the OpenAPI 3.20.0 shape of the
+  `GET /account/limits` read/write fields.
+- [Rust API] Added `ApiUsageLevelGrant` struct (`exchange_instance`, `level`, `source`,
+  `expires_ts: Option<i64>`) for the per-lane grants array introduced on 2026-06-11.
+- [Rust API] Added `upgrade_account_api_usage_level()` method for the new
+  `POST /account/api_usage_level/upgrade` endpoint. Grants a permanent Advanced API usage-level on
+  the Predictions exchange instance when at least one of the caller's last 100 orders was placed via
+  API.
+- [Rust API] Added `post_only: Option<bool>` to `CreateQuoteRequest` (whether the quote creator's
+  resting order is post-only; defaults to false on the exchange).
+- [Rust API] Added `post_only: Option<bool>`, `creator_subaccount: Option<i32>`, and
+  `rfq_creator_subaccount: Option<i32>` to `Quote` response struct.
+- [Tests] Added `get_account_api_limits_empty_grants_deserializes` test for the minimal
+  (`grants: []`) shape.
+
+### Breaking
+
+- [Rust API] `GetAccountApiLimitsResponse.read_limit: i64` removed. Use `read: BucketLimit` →
+  `read.refill_rate` / `read.bucket_capacity`.
+- [Rust API] `GetAccountApiLimitsResponse.write_limit: i64` removed. Use `write: BucketLimit` →
+  `write.refill_rate` / `write.bucket_capacity`.
+
+**Version bump**: minor (0.5.0 → 0.6.0) per VERSIONING.md — removal of `read_limit`/`write_limit`
+and introduction of `BucketLimit` fields requires downstream code changes.
+
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility

@@ -15,11 +15,44 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Token-bucket budget for one rate-limit bucket.
+///
+/// Each request deducts tokens equal to its endpoint cost; the bucket refills
+/// at `refill_rate` tokens per second up to `bucket_capacity`. A request is
+/// allowed when the bucket holds enough tokens; otherwise HTTP 429 is returned.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BucketLimit {
+    /// Tokens added to the bucket per second.
+    pub refill_rate: i64,
+    /// Maximum tokens the bucket can hold (burst headroom above `refill_rate`
+    /// is available to idle clients).
+    pub bucket_capacity: i64,
+}
+
+/// An active API usage-level grant for one exchange lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApiUsageLevelGrant {
+    /// Exchange instance this grant applies to (`event_contract` or `margined`).
+    pub exchange_instance: String,
+    /// API usage level conferred by this grant (e.g. `premier`, `paragon`, `prime`).
+    pub level: String,
+    /// How the grant was created: `"volume"` (earned) or `"manual"` (assigned).
+    pub source: String,
+    /// Unix timestamp (seconds) when the grant expires; `None` for permanent grants.
+    #[serde(default)]
+    pub expires_ts: Option<i64>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetAccountApiLimitsResponse {
     pub usage_tier: String,
-    pub read_limit: i64,
-    pub write_limit: i64,
+    /// Read rate-limit bucket for this account.
+    pub read: BucketLimit,
+    /// Write rate-limit bucket for this account.
+    pub write: BucketLimit,
+    /// Active API usage-level grants across exchange lanes. Added 2026-06-11.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub grants: Vec<ApiUsageLevelGrant>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -169,6 +202,25 @@ impl KalshiRestClient {
         let path = Self::full_path("/account/limits");
         self.send(
             Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant a permanent Advanced API usage-level for the Predictions exchange instance.
+    ///
+    /// Criteria: at least one of the caller's last 100 Predictions orders was created via API.
+    /// Call [`get_account_api_limits`](Self::get_account_api_limits) afterward to inspect the
+    /// resulting tier and grants. Added 2026-06-11.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
             &path,
             Option::<&()>::None,
             Option::<&()>::None,

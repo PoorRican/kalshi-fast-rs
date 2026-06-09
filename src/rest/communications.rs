@@ -61,6 +61,16 @@ pub struct Quote {
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_contracts_fp: Option<FixedPointCount>,
+    /// Subaccount of the quote creator (visible when the caller is the quote creator).
+    #[serde(default)]
+    pub creator_subaccount: Option<i32>,
+    /// Subaccount of the RFQ creator (visible when the caller is the RFQ creator).
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<i32>,
+    /// Whether the quote creator's resting order is post-only (visible when the caller
+    /// is the quote creator). Added to CreateQuoteRequest 2026-06-11.
+    #[serde(default)]
+    pub post_only: Option<bool>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -138,6 +148,10 @@ pub struct CreateQuoteRequest {
     pub yes_bid: String,
     pub no_bid: String,
     pub rest_remainder: bool,
+    /// If true, the quote creator's resting order is cancelled rather than crossed
+    /// if it would take liquidity. Defaults to false. Added 2026-06-11.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
 }
