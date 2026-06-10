@@ -8,6 +8,30 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-10
+
+### Compatibility
+
+- Docs snapshot: 2026-06-08
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-08
+
+### Added
+
+- [Rust API] Added `ping_interval: Option<Duration>` and `pong_timeout: Duration` to
+  `WsReconnectConfig` for transport keepalive (#47). When `ping_interval` is set, the managed
+  reader sends a `Ping` frame on that cadence and treats the connection as dead — routing into the
+  existing reconnect path — if no inbound frame arrives within `pong_timeout` of a ping. Defaults
+  (`None` / 10 s) preserve the previous behavior; downstream struct-literal construction of
+  `WsReconnectConfig` should add `..Default::default()`.
+
+### Fixed
+
+- [Rust API] The reader loop now exits when the event receiver is dropped instead of misreading
+  the failed send as a transport error and reconnecting forever with no consumer.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

@@ -103,6 +103,13 @@ impl KalshiWsLowLevelClient {
         Ok(())
     }
 
+    /// Read the next raw frame.
+    ///
+    /// Blocks until a frame arrives — there is no read deadline at this
+    /// layer. Wrap in [`tokio::time::timeout`] if you need one, or use
+    /// [`KalshiWsClient`] with
+    /// [`WsReconnectConfig::ping_interval`](crate::WsReconnectConfig::ping_interval)
+    /// for transport keepalive.
     pub async fn next_frame(&mut self) -> Result<Message, KalshiError> {
         match self.read.next().await {
             Some(Ok(msg)) => Ok(msg),
