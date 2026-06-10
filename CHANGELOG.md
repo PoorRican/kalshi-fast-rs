@@ -8,6 +8,60 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.0] - 2026-06-10
+
+### Compatibility
+
+- Docs snapshot: 2026-06-10
+- OpenAPI: 3.21.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-09
+
+### Added
+
+- [Rust API] Added `BucketLimit` struct (`refill_rate: i64`, `bucket_capacity: i64`) to represent
+  the token-bucket rate-limit budget added to `GET /account/limits` on 2026-06-09 (live 2026-06-11).
+- [Rust API] Added `ExchangeInstance` enum (`EventContract` | `Margined` | `Unknown`) for the
+  exchange-lane discriminator used on `ApiUsageLevelGrant`.
+- [Rust API] Added `ApiUsageLevelGrant` struct (`exchange_instance`, `level`, `expires_ts`, `source`)
+  for the grants array added to `GET /account/limits` on 2026-06-09.
+- [Rust API] Added `upgrade_api_usage_level()` method for `POST /account/api_usage_level/upgrade`
+  (2026-06-08). Self-promotes to Advanced API usage tier when API-order criteria are met.
+- [Rust API] Added `AccountApiUsageLevelVolumeGoal`, `AccountApiUsageLevelVolumeProgress`, and
+  `GetAccountApiUsageLevelVolumeProgressResponse` structs for the new
+  `GET /account/api_usage_level/volume_progress` endpoint (2026-06-09). Reports trailing 30d volume
+  progress toward volume-based API usage tiers.
+- [Rust API] Added `get_api_usage_level_volume_progress()` method for the endpoint above.
+- [Rust API] Added `Trade.is_block_trade: bool` (OpenAPI marks required, added 2026-06-01 — missed
+  in 0.5.0). Annotates whether a trade was matched off-book as a block trade (RFQ / negotiated block).
+  Uses `#[serde(default)]` so pre-cutoff historical records without the field parse as `false`.
+- [Rust API] Added `GetTradesParams.is_block_trade: Option<bool>` filter parameter. `None` = all
+  trades; `Some(true)` = block only; `Some(false)` = non-block only.
+
+### Changed
+
+- [Rust API] `GetAccountApiLimitsResponse` restructured to match the 2026-06-09 OpenAPI shape:
+  replaced `read_limit: i64` and `write_limit: i64` with `read: BucketLimit`, `write: BucketLimit`,
+  and added `grants: Vec<ApiUsageLevelGrant>`. The old integer fields are no longer returned by the
+  spec.
+
+### Breaking
+
+- [Rust API] `GetAccountApiLimitsResponse.read_limit` and `.write_limit` are removed. Downstream
+  code must read `resp.read.refill_rate` / `resp.write.refill_rate` (sustained RPS) or
+  `.bucket_capacity` (burst headroom) instead.
+
+### Notes on changelog entries not yet in OpenAPI
+
+- [Upstream] `GET /trade-api/v2/account/limits/perps` is referenced in the 2026-06-09 changelog
+  but absent from the OpenAPI. Not added to the crate; see `docs/spec-parity.md`.
+- [Upstream] `last_update_reason = PostOnlyCrossCancel` (2026-06-04) is not in the OpenAPI or
+  AsyncAPI. Not modeled; see `docs/spec-parity.md`.
+- [Upstream] Perps volume/OI notional fields (2026-06-05) apply to margin market endpoints and the
+  `margin_ticker` WebSocket channel. No margin market structs exist in the crate yet.
+
+---
+
 ## [0.5.0] - 2026-05-29
 
 ### Compatibility

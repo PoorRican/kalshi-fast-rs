@@ -8,18 +8,80 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec,
+    deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Exchange instance lane (event-contract binary markets vs margin/perps).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Token-bucket budget for one rate-limit bucket.
+///
+/// `refill_rate` tokens are added per second; `bucket_capacity` is the
+/// maximum the bucket can hold (burst headroom).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BucketLimit {
+    /// Tokens added to the bucket per second (equals the sustained RPS budget).
+    pub refill_rate: i64,
+    /// Maximum tokens the bucket can hold (burst headroom above one second of budget).
+    pub bucket_capacity: i64,
+}
+
+/// A single API usage level grant for one exchange lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApiUsageLevelGrant {
+    pub exchange_instance: ExchangeInstance,
+    /// API usage level this grant confers (e.g. `"premier"`, `"paragon"`, `"prime"`).
+    pub level: String,
+    /// Unix timestamp (seconds) when the grant expires; `None` for permanent grants.
+    #[serde(default)]
+    pub expires_ts: Option<i64>,
+    /// How the grant was created: `"volume"` (earned) or `"manual"` (assigned by Kalshi).
+    pub source: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetAccountApiLimitsResponse {
     pub usage_tier: String,
-    pub read_limit: i64,
-    pub write_limit: i64,
+    pub read: BucketLimit,
+    pub write: BucketLimit,
+    pub grants: Vec<ApiUsageLevelGrant>,
+}
+
+/// Volume progress toward a single API usage tier level.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal applies to (e.g. `"premier"`).
+    pub level: String,
+    /// Trailing 30d volume required to *earn* this tier.
+    pub earn_volume_goal_fp: FixedPointCount,
+    /// Trailing 30d volume required to *keep* this tier once earned.
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Latest cron-computed trading volume progress for one exchange lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when progress was computed; volume covers trailing 30d ending here.
+    pub computed_ts: i64,
+    pub trailing_30d_volume_fp: FixedPointCount,
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -164,9 +226,48 @@ pub struct GetSubaccountNettingResponse {
 impl KalshiRestClient {
     /// Get API rate-limit and position limits for the account.
     ///
+    /// Returns token-bucket budgets (`read`, `write`) and the active `grants` list.
+    ///
     /// **Requires auth.**
     pub async fn get_account_api_limits(&self) -> Result<GetAccountApiLimitsResponse, KalshiError> {
         let path = Self::full_path("/account/limits");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-promote to the Advanced API usage tier (Predictions lane only).
+    ///
+    /// Grants a permanent Advanced grant if the authenticated user has at least
+    /// one API-created order in their last 100 Predictions orders.
+    ///
+    /// Returns HTTP 201 on success. Returns HTTP 403 if the criteria are not met.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get trailing 30d volume progress toward volume-based API usage tiers (Predictions lane).
+    ///
+    /// **Requires auth.**
+    pub async fn get_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
         self.send(
             Method::GET,
             &path,
