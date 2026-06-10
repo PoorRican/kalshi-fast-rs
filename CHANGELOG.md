@@ -145,8 +145,19 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
   `external-api-ws.kalshi.com`. The old hosts (`demo-api.kalshi.co`, `api.elections.kalshi.com`)
   are no longer used.
 
+### Fixed
+
+- [Rust API] Preserved WebSocket control-frame stream position by carrying `sid`/`seq` on
+  `WsMessageV2::Ok` and `seq` on `WsMessageV2::Unsubscribed`.
+- [WebSocket] Deferred subscription tracker mutations from `update_subscription_v2` and
+  `unsubscribe_v2` until matching server acknowledgements are received, with pending command
+  cleanup on send failures.
+
 ### Breaking
 
+- [Rust API] `WsMessageV2::Ok`, `WsMessageRef::Ok`, `WsMessageV2::Unsubscribed`, and
+  `WsMessageRef::Unsubscribed` gained additional struct-variant fields; exhaustive downstream
+  matches must use the new fields or `..`.
 - [Rust API] `Order.side` changed from `YesNo` to `Option<YesNo>`. The `side` field was deprecated
   by Kalshi on 2026-05-07 and removed ~2026-05-28. Downstream code must use `outcome_side` (or
   handle `None`).

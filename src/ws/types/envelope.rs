@@ -112,14 +112,14 @@ impl WsEnvelope {
                 });
                 Ok(WsMessageV2::Subscribed { id, sid })
             }
-            WsMsgType::Unsubscribed => Ok(WsMessageV2::Unsubscribed { id, sid }),
+            WsMsgType::Unsubscribed => Ok(WsMessageV2::Unsubscribed { id, sid, seq }),
             WsMsgType::Ok => {
                 if msg.is_some()
                     && let Ok(subscriptions) = parse_msg::<Vec<WsSubscriptionInfo>>(&msg)
                 {
                     return Ok(WsMessageV2::ListSubscriptions { id, subscriptions });
                 }
-                Ok(WsMessageV2::Ok { id })
+                Ok(WsMessageV2::Ok { id, sid, seq })
             }
             WsMsgType::ListSubscriptions => {
                 let subs = if msg.is_some() {
@@ -321,7 +321,7 @@ impl<'a> WsEnvelopeRef<'a> {
                 });
                 Ok(WsMessageRef::Subscribed { id, sid })
             }
-            WsMsgType::Unsubscribed => Ok(WsMessageRef::Unsubscribed { id, sid }),
+            WsMsgType::Unsubscribed => Ok(WsMessageRef::Unsubscribed { id, sid, seq }),
             WsMsgType::Ok => {
                 if msg.is_some()
                     && let Ok(subscriptions) =
@@ -329,7 +329,7 @@ impl<'a> WsEnvelopeRef<'a> {
                 {
                     return Ok(WsMessageRef::ListSubscriptions { id, subscriptions });
                 }
-                Ok(WsMessageRef::Ok { id })
+                Ok(WsMessageRef::Ok { id, sid, seq })
             }
             WsMsgType::ListSubscriptions => {
                 let subs = if msg.is_some() {
@@ -489,6 +489,7 @@ pub enum WsMessageV2 {
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
     },
     ListSubscriptions {
         id: Option<u64>,
@@ -496,6 +497,8 @@ pub enum WsMessageV2 {
     },
     Ok {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
     },
     Error {
         id: Option<u64>,
@@ -786,6 +789,7 @@ pub enum WsMessageRef<'a> {
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
     },
     ListSubscriptions {
         id: Option<u64>,
@@ -793,6 +797,8 @@ pub enum WsMessageRef<'a> {
     },
     Ok {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
     },
     Error {
         id: Option<u64>,
@@ -809,7 +815,9 @@ impl<'a> WsMessageRef<'a> {
     pub fn into_owned(self) -> Result<WsMessageV2, KalshiError> {
         let owned = match self {
             WsMessageRef::Subscribed { id, sid } => WsMessageV2::Subscribed { id, sid },
-            WsMessageRef::Unsubscribed { id, sid } => WsMessageV2::Unsubscribed { id, sid },
+            WsMessageRef::Unsubscribed { id, sid, seq } => {
+                WsMessageV2::Unsubscribed { id, sid, seq }
+            }
             WsMessageRef::ListSubscriptions { id, subscriptions } => {
                 WsMessageV2::ListSubscriptions {
                     id,
@@ -819,7 +827,7 @@ impl<'a> WsMessageRef<'a> {
                         .collect(),
                 }
             }
-            WsMessageRef::Ok { id } => WsMessageV2::Ok { id },
+            WsMessageRef::Ok { id, sid, seq } => WsMessageV2::Ok { id, sid, seq },
             WsMessageRef::Error { id, error } => WsMessageV2::Error {
                 id,
                 error: error.into_owned(),
@@ -1065,6 +1073,40 @@ mod tests {
                 assert!(raw.is_some());
             }
             _ => panic!("expected unknown message"),
+        }
+    }
+
+    #[test]
+    fn ws_message_from_bytes_ok_preserves_control_position() {
+        let json = r#"{
+            "type":"ok",
+            "id":123,
+            "sid":456,
+            "seq":222,
+            "msg":{"market_tickers":["MARKET-1"]}
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Ok { id, sid, seq } => {
+                assert_eq!(id, Some(123));
+                assert_eq!(sid, Some(456));
+                assert_eq!(seq, Some(222));
+            }
+            other => panic!("expected ok message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ws_message_from_bytes_unsubscribed_preserves_control_position() {
+        let json = r#"{"type":"unsubscribed","id":102,"sid":2,"seq":7}"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Unsubscribed { id, sid, seq } => {
+                assert_eq!(id, Some(102));
+                assert_eq!(sid, Some(2));
+                assert_eq!(seq, Some(7));
+            }
+            other => panic!("expected unsubscribed message, got {other:?}"),
         }
     }
 
