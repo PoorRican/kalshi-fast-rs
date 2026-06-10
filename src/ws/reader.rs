@@ -11,7 +11,7 @@ use bytes::Bytes;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, watch};
-use tokio::time::sleep;
+use tokio::time::{Duration, Instant, MissedTickBehavior, interval_at, sleep, sleep_until};
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +51,15 @@ pub(crate) async fn reader_loop(
 ) {
     let mut outgoing_closed = false;
 
+    // Keepalive: ping every `ping_interval`; any inbound frame proves the read
+    // path and clears the pong deadline. Both arms are gated off when disabled,
+    // so the placeholder period never fires.
+    let ping_enabled = config.ping_interval.is_some();
+    let ping_interval = config.ping_interval.unwrap_or(Duration::from_secs(3600));
+    let mut keepalive = interval_at(Instant::now() + ping_interval, ping_interval);
+    keepalive.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let mut pong_deadline: Option<Instant> = None;
+
     loop {
         if *shutdown_rx.borrow() || event_tx.is_closed() {
             return;
@@ -63,9 +72,21 @@ pub(crate) async fn reader_loop(
             }
             frame = client.next_frame() => {
                 match frame {
-                    Ok(msg) => handle_incoming_message(msg, &mut client, &tracker, &event_tx, mode).await,
+                    Ok(msg) => {
+                        pong_deadline = None;
+                        handle_incoming_message(msg, &mut client, &tracker, &event_tx, mode).await
+                    }
                     Err(err) => Err(err),
                 }
+            }
+            _ = keepalive.tick(), if ping_enabled => {
+                if pong_deadline.is_none() {
+                    pong_deadline = Some(Instant::now() + config.pong_timeout);
+                }
+                client.send_raw(Message::Ping(Vec::new())).await
+            }
+            _ = sleep_until(pong_deadline.unwrap_or_else(Instant::now)), if pong_deadline.is_some() => {
+                Err(KalshiError::Ws("websocket keepalive timed out".to_string()))
             }
             maybe_out = outgoing_rx.recv(), if !outgoing_closed => {
                 match maybe_out {
@@ -98,6 +119,8 @@ pub(crate) async fn reader_loop(
                     if event_tx.is_closed() {
                         return;
                     }
+                    keepalive.reset();
+                    pong_deadline = None;
                 }
                 Err(err) => {
                     if *shutdown_rx.borrow() {
@@ -283,7 +306,7 @@ mod tests {
     use crate::auth::tests::load_test_auth;
     use crate::ws::event::{WsReaderConfig, WsReaderMode};
     use crate::ws::{KalshiWsClient, WsReconnectConfig};
-    use futures::SinkExt;
+    use futures::{SinkExt, StreamExt};
     use serde_json::json;
     use tokio::net::TcpListener;
     use tokio::time::{Duration, timeout};
@@ -398,6 +421,7 @@ mod tests {
             max_delay: Duration::from_millis(1),
             jitter: 0.0,
             resubscribe: false,
+            ..Default::default()
         };
         let client = KalshiWsLowLevelClient::connect_authenticated(env.clone(), auth.clone())
             .await
@@ -464,6 +488,7 @@ mod tests {
             max_delay: Duration::from_millis(50),
             jitter: 0.0,
             resubscribe: false,
+            ..Default::default()
         };
         let mut client = KalshiWsClient::connect_authenticated(env, auth, config)
             .await
@@ -494,6 +519,146 @@ mod tests {
             .expect("timeout 2")
             .expect("event 2");
         assert!(matches!(second, WsEvent::Message(_)));
+
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn reader_keepalive_sends_pings() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            loop {
+                let frame = timeout(Duration::from_secs(2), ws.next())
+                    .await
+                    .expect("ping within window")
+                    .expect("frame")
+                    .expect("ok frame");
+                if matches!(frame, Message::Ping(_)) {
+                    return;
+                }
+            }
+        });
+
+        let auth = load_test_auth();
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{}", addr),
+        };
+        let config = WsReconnectConfig {
+            ping_interval: Some(Duration::from_millis(25)),
+            pong_timeout: Duration::from_secs(1),
+            ..Default::default()
+        };
+        let mut client = KalshiWsClient::connect_authenticated(env, auth, config)
+            .await
+            .expect("connect");
+        let _receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn reader_keepalive_timeout_triggers_reconnect() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept 1");
+            // Handshake, then never poll: pings are swallowed, no pong or
+            // data ever goes out, but the TCP connection stays open.
+            let ws = accept_async(stream).await.expect("accept ws 1");
+
+            let (stream, _) = timeout(Duration::from_secs(2), listener.accept())
+                .await
+                .expect("reconnect within window")
+                .expect("accept 2");
+            let _ws2 = accept_async(stream).await.expect("accept ws 2");
+            drop(ws);
+        });
+
+        let auth = load_test_auth();
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{}", addr),
+        };
+        let config = WsReconnectConfig {
+            max_retries: Some(3),
+            base_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(10),
+            jitter: 0.0,
+            resubscribe: false,
+            ping_interval: Some(Duration::from_millis(25)),
+            pong_timeout: Duration::from_millis(50),
+        };
+        let mut client = KalshiWsClient::connect_authenticated(env, auth, config)
+            .await
+            .expect("connect");
+        let receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+
+        let reconnect = timeout(Duration::from_secs(2), receiver.next())
+            .await
+            .expect("timeout reconnect")
+            .expect("event reconnect");
+        assert!(matches!(reconnect, WsEvent::Reconnected { .. }));
+
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn reader_default_config_sends_no_pings() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            loop {
+                match timeout(Duration::from_millis(300), ws.next()).await {
+                    Ok(frame) => {
+                        let frame = frame.expect("frame").expect("ok frame");
+                        assert!(
+                            !matches!(frame, Message::Ping(_)),
+                            "ping sent with keepalive disabled"
+                        );
+                    }
+                    // Quiet window elapsed without a ping.
+                    Err(_) => return,
+                }
+            }
+        });
+
+        let auth = load_test_auth();
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{}", addr),
+        };
+        let mut client =
+            KalshiWsClient::connect_authenticated(env, auth, WsReconnectConfig::default())
+                .await
+                .expect("connect");
+        let _receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
 
         server.await.expect("server");
     }

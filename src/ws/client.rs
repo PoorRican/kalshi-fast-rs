@@ -486,6 +486,7 @@ mod tests {
             max_delay: Duration::from_secs(5),
             jitter: 0.0,
             resubscribe: false,
+            ..Default::default()
         };
         let mut client = KalshiWsClient::connect_authenticated(env, auth, config)
             .await
