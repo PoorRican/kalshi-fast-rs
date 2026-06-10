@@ -2,17 +2,17 @@
 
 pub(crate) use cargo_husky as _;
 use kalshi_fast::{
-    ApplySubaccountTransferResponse, BuySell, CreateOrderRequest, CreateSubaccountResponse,
-    ErrorResponse, EventData, EventMetadata, EventStatus, GetAccountApiLimitsResponse,
-    GetEventsParams, GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse,
-    GetExchangeStatusResponse, GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse,
-    GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams,
-    GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse, GetSettlementsParams,
-    GetSettlementsResponse, GetSubaccountBalancesResponse, GetSubaccountTransfersParams,
-    GetSubaccountTransfersResponse, GetTradesParams, GetTradesResponse,
-    GetUserDataTimestampResponse, MarketMetadata, MarketStatus, MarketStatusConversionError,
-    MarketStatusQuery, MveFilter, OrderStatus, OrderType, PositionCountFilter, PriceRange,
-    SelfTradePreventionType, TimeInForce, YesNo,
+    ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
+    CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
+    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
+    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
+    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
+    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
+    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
+    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
+    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
+    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
 
 // ============================================================================
@@ -1030,6 +1030,8 @@ fn get_trades_response_deserializes() {
             "yes_price_dollars": "0.5500",
             "no_price_dollars": "0.4500",
             "taker_side": "yes",
+            "taker_outcome_side": "yes",
+            "taker_book_side": "bid",
             "created_time": "2026-04-16T12:00:00Z"
         }],
         "cursor": "c1"
@@ -1038,6 +1040,15 @@ fn get_trades_response_deserializes() {
     let resp: GetTradesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.trades.len(), 1);
     assert_eq!(resp.trades[0].count_fp, "2.00");
+    // Normalized direction fields added 2026-05-07.
+    assert!(matches!(
+        resp.trades[0].taker_outcome_side,
+        Some(TradeTakerSide::Yes)
+    ));
+    assert!(matches!(
+        resp.trades[0].taker_book_side,
+        Some(BookSide::Bid)
+    ));
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
@@ -1164,12 +1175,61 @@ fn get_settlements_response_deserializes() {
 
 #[test]
 fn get_account_api_limits_response_deserializes() {
-    let json = r#"{"usage_tier":"basic","read_limit":20,"write_limit":10}"#;
+    let json = r#"{
+        "usage_tier": "basic",
+        "read":  {"refill_rate": 20, "bucket_capacity": 200},
+        "write": {"refill_rate": 10, "bucket_capacity": 20},
+        "grants": [
+            {"exchange_instance":"event_contract","level":"premier","source":"volume"},
+            {"exchange_instance":"margined","level":"paragon","expires_ts":9999999999,"source":"manual"}
+        ]
+    }"#;
 
     let resp: GetAccountApiLimitsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.usage_tier, "basic");
-    assert_eq!(resp.read_limit, 20);
-    assert_eq!(resp.write_limit, 10);
+    assert_eq!(resp.read.refill_rate, 20);
+    assert_eq!(resp.read.bucket_capacity, 200);
+    assert_eq!(resp.write.refill_rate, 10);
+    assert_eq!(resp.grants.len(), 2);
+    assert_eq!(resp.grants[0].level, "premier");
+    assert_eq!(resp.grants[0].source, "volume");
+    assert!(resp.grants[0].expires_ts.is_none());
+    assert_eq!(resp.grants[1].expires_ts, Some(9999999999));
+}
+
+#[test]
+fn get_account_api_limits_response_tolerates_missing_grants() {
+    // Defensive: a payload without `grants` should still parse (empty vec).
+    let json = r#"{
+        "usage_tier": "basic",
+        "read":  {"refill_rate": 20, "bucket_capacity": 200},
+        "write": {"refill_rate": 10, "bucket_capacity": 20}
+    }"#;
+    let resp: GetAccountApiLimitsResponse = serde_json::from_str(json).unwrap();
+    assert!(resp.grants.is_empty());
+}
+
+#[test]
+fn get_account_endpoint_costs_response_deserializes() {
+    let json = r#"{
+        "default_cost": 10,
+        "endpoint_costs": [
+            {"method":"POST","path":"/portfolio/orders","cost":100},
+            {"method":"DELETE","path":"/portfolio/orders/batched","cost":50}
+        ]
+    }"#;
+
+    let resp: GetAccountEndpointCostsResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.default_cost, 10);
+    assert_eq!(resp.endpoint_costs.len(), 2);
+    assert_eq!(resp.endpoint_costs[0].method, "POST");
+    assert_eq!(resp.endpoint_costs[0].path, "/portfolio/orders");
+    assert_eq!(resp.endpoint_costs[0].cost, 100);
+
+    // Tolerates missing/null endpoint_costs.
+    let resp: GetAccountEndpointCostsResponse =
+        serde_json::from_str(r#"{"default_cost": 10}"#).unwrap();
+    assert!(resp.endpoint_costs.is_empty());
 }
 
 #[test]

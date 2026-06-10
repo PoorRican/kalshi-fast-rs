@@ -25,6 +25,10 @@ pub struct WsSubscriptionParamsV2 {
     pub shard_factor: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard_key: Option<u32>,
+    /// CF Benchmarks index IDs for `cfbenchmarks_value` subscriptions.
+    /// Use `["all"]` to receive every available index.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_ids: Option<Vec<String>>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -146,6 +150,11 @@ pub struct WsUpdateSubscriptionParamsV2 {
     pub send_initial_snapshot: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_ticker_ack: Option<bool>,
+    /// CF Benchmarks index IDs to add or remove. Required for the
+    /// `subscribe_indices` / `unsubscribe_indices` actions; use `["all"]` to
+    /// track every available index.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_ids: Option<Vec<String>>,
 }
 
 impl WsUpdateSubscriptionParamsV2 {
@@ -164,6 +173,26 @@ pub enum WsUpdateAction {
     AddMarkets,
     DeleteMarkets,
     GetSnapshot,
+    /// Add the supplied `index_ids` to a `cfbenchmarks_value` subscription.
+    SubscribeIndices,
+    /// Remove the supplied `index_ids` from a `cfbenchmarks_value` subscription.
+    UnsubscribeIndices,
+    /// Request the available CF Benchmarks index IDs without modifying the
+    /// subscription (server replies with a `cfbenchmarks_value_indexlist`).
+    Indexlist,
+}
+
+impl WsUpdateAction {
+    /// Whether this action operates on CF Benchmarks index IDs rather than
+    /// market targets.
+    pub fn is_index_action(self) -> bool {
+        matches!(
+            self,
+            WsUpdateAction::SubscribeIndices
+                | WsUpdateAction::UnsubscribeIndices
+                | WsUpdateAction::Indexlist
+        )
+    }
 }
 
 pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(), KalshiError> {
@@ -196,6 +225,38 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         .unwrap_or(false);
     let has_any_market_tickers = has_market_ticker || has_market_tickers;
     let has_any_market_ids = has_market_id || has_market_ids;
+    let has_index_ids = params
+        .index_ids
+        .as_ref()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+
+    // CF Benchmarks index actions are mutually exclusive with market targets and
+    // have their own `index_ids` requirements.
+    if params.action.is_index_action() {
+        if has_any_market_tickers || has_any_market_ids {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: index actions do not support market_ticker(s) or market_id(s)"
+                    .to_string(),
+            ));
+        }
+        if matches!(
+            params.action,
+            WsUpdateAction::SubscribeIndices | WsUpdateAction::UnsubscribeIndices
+        ) && !has_index_ids
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: subscribe_indices/unsubscribe_indices require index_ids"
+                    .to_string(),
+            ));
+        }
+    } else if params.index_ids.is_some() {
+        return Err(KalshiError::InvalidParams(
+            "update_subscription: index_ids is only valid for subscribe_indices, \
+             unsubscribe_indices, or indexlist actions"
+                .to_string(),
+        ));
+    }
 
     if has_market_ticker && has_market_tickers {
         return Err(KalshiError::InvalidParams(
@@ -414,6 +475,7 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
             skip_ticker_ack: None,
+            index_ids: None,
         };
         assert!(validate_update(&both).is_err());
 
@@ -427,6 +489,7 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
             skip_ticker_ack: None,
+            index_ids: None,
         };
         assert!(validate_update(&multi).is_err());
 
@@ -440,6 +503,7 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
             skip_ticker_ack: None,
+            index_ids: None,
         };
         assert!(validate_update(&valid).is_ok());
     }
@@ -456,6 +520,7 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
             skip_ticker_ack: None,
+            index_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -472,6 +537,7 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
             skip_ticker_ack: None,
+            index_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -488,8 +554,91 @@ mod tests {
             market_ids: None,
             send_initial_snapshot: None,
             skip_ticker_ack: None,
+            index_ids: None,
         };
         assert!(validate_update(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_update_subscribe_indices_requires_index_ids() {
+        let missing = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeIndices,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+        };
+        assert!(validate_update(&missing).is_err());
+
+        let ok = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeIndices,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: Some(vec!["BRTI".to_string()]),
+        };
+        assert!(validate_update(&ok).is_ok());
+    }
+
+    #[test]
+    fn validate_update_indexlist_allows_empty_index_ids() {
+        let params = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::Indexlist,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+        };
+        assert!(validate_update(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_update_index_actions_reject_market_targets() {
+        let params = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeIndices,
+            sid: Some(1),
+            sids: None,
+            market_ticker: Some("TICKER".to_string()),
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: Some(vec!["BRTI".to_string()]),
+        };
+        assert!(validate_update(&params).is_err());
+    }
+
+    #[test]
+    fn validate_update_index_ids_rejected_for_market_actions() {
+        let params = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::AddMarkets,
+            sid: Some(1),
+            sids: None,
+            market_ticker: Some("TICKER".to_string()),
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: Some(vec!["BRTI".to_string()]),
+        };
+        assert!(validate_update(&params).is_err());
     }
 
     #[test]

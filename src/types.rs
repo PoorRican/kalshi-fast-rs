@@ -136,6 +136,7 @@ pub struct ErrorResponse {
 #[serde(rename_all = "snake_case")]
 pub enum FeeType {
     Quadratic,
+    QuadraticWithMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
@@ -468,6 +469,41 @@ impl fmt::Display for SelfTradePreventionType {
 }
 
 impl Serialize for SelfTradePreventionType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+/// --- Book Side (bid | ask) ---
+///
+/// Normalized direction field added 2026-05-07. `bid` is equivalent to `yes`,
+/// `ask` to `no` in Kalshi's binary contract model.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BookSide {
+    Bid,
+    Ask,
+    #[serde(other)]
+    Unknown,
+}
+
+impl BookSide {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BookSide::Bid => "bid",
+            BookSide::Ask => "ask",
+            BookSide::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for BookSide {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for BookSide {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())
     }

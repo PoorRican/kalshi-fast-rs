@@ -183,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kalshi_fast::parse_f64;
     use serde_json::json;
 
     fn market_from_value(value: serde_json::Value) -> Market {

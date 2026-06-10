@@ -1,4 +1,4 @@
-use crate::types::TradeTakerSide;
+use crate::types::{BookSide, TradeTakerSide};
 use serde::Deserialize;
 use std::borrow::Cow;
 
@@ -11,7 +11,16 @@ pub struct WsTrade {
     pub count_fp: String,
     pub yes_price_dollars: String,
     pub no_price_dollars: String,
-    pub taker_side: TradeTakerSide,
+    /// Deprecated 2026-05-07. Use `taker_outcome_side` / `taker_book_side`.
+    /// Optional to tolerate eventual removal by the exchange.
+    #[serde(default)]
+    pub taker_side: Option<TradeTakerSide>,
+    /// Normalized taker outcome side (yes | no). Added 2026-05-07.
+    #[serde(default)]
+    pub taker_outcome_side: Option<TradeTakerSide>,
+    /// Normalized taker book side (bid | ask). Added 2026-05-07.
+    #[serde(default)]
+    pub taker_book_side: Option<BookSide>,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
@@ -34,7 +43,16 @@ pub struct WsTradeRef<'a> {
     pub yes_price_dollars: Cow<'a, str>,
     #[serde(borrow)]
     pub no_price_dollars: Cow<'a, str>,
-    pub taker_side: TradeTakerSide,
+    /// Deprecated 2026-05-07. Use `taker_outcome_side` / `taker_book_side`.
+    /// Optional to tolerate eventual removal by the exchange.
+    #[serde(default)]
+    pub taker_side: Option<TradeTakerSide>,
+    /// Normalized taker outcome side (yes | no). Added 2026-05-07.
+    #[serde(default)]
+    pub taker_outcome_side: Option<TradeTakerSide>,
+    /// Normalized taker book side (bid | ask). Added 2026-05-07.
+    #[serde(default)]
+    pub taker_book_side: Option<BookSide>,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
@@ -53,6 +71,8 @@ impl<'a> WsTradeRef<'a> {
             yes_price_dollars: self.yes_price_dollars.into_owned(),
             no_price_dollars: self.no_price_dollars.into_owned(),
             taker_side: self.taker_side,
+            taker_outcome_side: self.taker_outcome_side,
+            taker_book_side: self.taker_book_side,
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),

@@ -9,6 +9,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::types::{FeeType, deserialize_null_as_empty_vec};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetExchangeStatusResponse {
@@ -126,6 +127,27 @@ pub struct GetSeriesFeeChangesResponse {
     pub series_fee_change_arr: Vec<SeriesFeeChange>,
 }
 
+/// Response for `GET /margin/fee_tiers`.
+///
+/// Response was restructured 2026-05-11: the previous `maker_fee_tiers` /
+/// `taker_fee_tiers` tier-name maps were replaced by `maker_fee_rates` /
+/// `taker_fee_rates`, which map market ticker → decimal fee rate.
+/// Fee = `notional * rate` (e.g. `0.0008` = 8 bps).
+///
+/// Note: this endpoint is documented in the Kalshi changelog but is not present
+/// in the published OpenAPI spec, so the rate values are kept as untyped JSON
+/// (`serde_json::Value`) to tolerate either numeric or string encodings. Any
+/// fields beyond the two rate maps are ignored.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginFeeTiersResponse {
+    /// Market ticker → maker fee rate (decimal fraction of notional).
+    #[serde(default)]
+    pub maker_fee_rates: Map<String, Value>,
+    /// Market ticker → taker fee rate (decimal fraction of notional).
+    #[serde(default)]
+    pub taker_fee_rates: Map<String, Value>,
+}
+
 impl KalshiRestClient {
     /// Get the current exchange status (open, closed, etc.).
     pub async fn get_exchange_status(&self) -> Result<GetExchangeStatusResponse, KalshiError> {
@@ -179,6 +201,24 @@ impl KalshiRestClient {
             Option::<&()>::None,
             Option::<&()>::None,
             false,
+        )
+        .await
+    }
+
+    /// Get per-market margin fee rates.
+    ///
+    /// Returns `maker_fee_rates` and `taker_fee_rates` as market-ticker → decimal maps.
+    /// Fee = `notional * rate` (e.g. `0.0008` = 8 bps).
+    ///
+    /// **Requires auth.**
+    pub async fn get_margin_fee_tiers(&self) -> Result<GetMarginFeeTiersResponse, KalshiError> {
+        let path = Self::full_path("/margin/fee_tiers");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
         )
         .await
     }

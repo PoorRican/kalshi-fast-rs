@@ -10,7 +10,8 @@ use crate::rest::orders::GetOrdersResponse;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::portfolio::GetFillsResponse;
 use crate::types::{
-    FixedPointCount, FixedPointDollars, MveFilter, TradeTakerSide, deserialize_null_as_empty_vec,
+    BookSide, FixedPointCount, FixedPointDollars, MveFilter, TradeTakerSide,
+    deserialize_null_as_empty_vec,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -24,8 +25,21 @@ pub struct Trade {
     pub count_fp: FixedPointCount,
     pub yes_price_dollars: FixedPointDollars,
     pub no_price_dollars: FixedPointDollars,
-    pub taker_side: TradeTakerSide,
+    /// Deprecated 2026-05-07. Use `taker_outcome_side` / `taker_book_side`.
+    /// Optional to tolerate eventual removal by the exchange.
+    #[serde(default)]
+    pub taker_side: Option<TradeTakerSide>,
+    /// Normalized taker outcome side (yes | no). Added 2026-05-07.
+    #[serde(default)]
+    pub taker_outcome_side: Option<TradeTakerSide>,
+    /// Normalized taker book side (bid | ask). Added 2026-05-07.
+    #[serde(default)]
+    pub taker_book_side: Option<BookSide>,
     pub created_time: String,
+    /// True for block trades matched off-book (e.g. via RFQ). Added 2026-05-29.
+    /// Defaults to `false` for payloads predating this field.
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -44,6 +58,9 @@ pub struct GetTradesParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Filter by block trade status. Omit to return all trades.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_block_trade: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

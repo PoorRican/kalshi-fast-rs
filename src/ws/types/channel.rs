@@ -15,6 +15,8 @@ pub enum WsChannelV2 {
     Communications,
     OrderGroupUpdates,
     UserOrders,
+    /// CF Benchmarks reference index value feed. Added 2026-06-08 (AsyncAPI 2.0.0).
+    CfbenchmarksValue,
 }
 
 impl WsChannelV2 {
@@ -31,6 +33,7 @@ impl WsChannelV2 {
             WsChannelV2::Communications => "communications",
             WsChannelV2::OrderGroupUpdates => "order_group_updates",
             WsChannelV2::UserOrders => "user_orders",
+            WsChannelV2::CfbenchmarksValue => "cfbenchmarks_value",
         }
     }
 

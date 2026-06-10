@@ -101,6 +101,12 @@ pub(super) enum WsWireMessage {
         seq: Option<u64>,
         msg: WsEventLifecycle,
     },
+    #[serde(rename = "event_fee_update")]
+    EventFeeUpdate {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsEventFeeUpdate,
+    },
     #[serde(rename = "multivariate")]
     Multivariate {
         sid: Option<u64>,
@@ -154,6 +160,18 @@ pub(super) enum WsWireMessage {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsUserOrder,
+    },
+    #[serde(rename = "cfbenchmarks_value")]
+    CfbenchmarksValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksValue,
+    },
+    #[serde(rename = "cfbenchmarks_value_indexlist")]
+    CfbenchmarksValueIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksIndexList,
     },
 }
 
@@ -230,6 +248,9 @@ impl WsWireMessage {
             WsWireMessage::EventLifecycle { sid, seq, msg } => {
                 WsMessageV2::Data(WsDataMessageV2::EventLifecycle { sid, seq, msg })
             }
+            WsWireMessage::EventFeeUpdate { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::EventFeeUpdate { sid, seq, msg })
+            }
             WsWireMessage::Multivariate { sid, seq, msg }
             | WsWireMessage::MultivariateLookup { sid, seq, msg } => {
                 WsMessageV2::Data(WsDataMessageV2::Multivariate { sid, seq, msg })
@@ -274,6 +295,12 @@ impl WsWireMessage {
             }
             WsWireMessage::UserOrder { sid, seq, msg } => {
                 WsMessageV2::Data(WsDataMessageV2::UserOrder { sid, seq, msg })
+            }
+            WsWireMessage::CfbenchmarksValue { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue { sid, seq, msg })
+            }
+            WsWireMessage::CfbenchmarksValueIndexlist { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValueIndexlist { sid, seq, msg })
             }
         }
     }
@@ -380,6 +407,13 @@ pub(super) enum WsWireMessageRef<'a> {
         #[serde(borrow)]
         msg: WsEventLifecycleRef<'a>,
     },
+    #[serde(rename = "event_fee_update")]
+    EventFeeUpdate {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        #[serde(borrow)]
+        msg: WsEventFeeUpdateRef<'a>,
+    },
     #[serde(rename = "multivariate")]
     Multivariate {
         sid: Option<u64>,
@@ -441,6 +475,20 @@ pub(super) enum WsWireMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsUserOrder,
+    },
+    #[serde(rename = "cfbenchmarks_value")]
+    CfbenchmarksValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        #[serde(borrow)]
+        msg: WsCfBenchmarksValueRef<'a>,
+    },
+    #[serde(rename = "cfbenchmarks_value_indexlist")]
+    CfbenchmarksValueIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        #[serde(borrow)]
+        msg: WsCfBenchmarksIndexListRef<'a>,
     },
 }
 
@@ -518,6 +566,9 @@ impl<'a> WsWireMessageRef<'a> {
             WsWireMessageRef::EventLifecycle { sid, seq, msg } => {
                 WsMessageRef::Data(WsDataMessageRef::EventLifecycle { sid, seq, msg })
             }
+            WsWireMessageRef::EventFeeUpdate { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::EventFeeUpdate { sid, seq, msg })
+            }
             WsWireMessageRef::Multivariate { sid, seq, msg }
             | WsWireMessageRef::MultivariateLookup { sid, seq, msg } => {
                 WsMessageRef::Data(WsDataMessageRef::Multivariate { sid, seq, msg })
@@ -562,6 +613,12 @@ impl<'a> WsWireMessageRef<'a> {
             }
             WsWireMessageRef::UserOrder { sid, seq, msg } => {
                 WsMessageRef::Data(WsDataMessageRef::UserOrder { sid, seq, msg })
+            }
+            WsWireMessageRef::CfbenchmarksValue { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValue { sid, seq, msg })
+            }
+            WsWireMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg })
             }
         }
     }

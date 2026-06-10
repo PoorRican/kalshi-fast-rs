@@ -18,6 +18,7 @@ pub enum WsMsgType {
     MarketLifecycleV2,
     MultivariateMarketLifecycle,
     EventLifecycle,
+    EventFeeUpdate,
     Multivariate,
     MultivariateLookup,
     Communications,
@@ -28,6 +29,8 @@ pub enum WsMsgType {
     QuoteExecuted,
     OrderGroupUpdates,
     UserOrder,
+    CfbenchmarksValue,
+    CfbenchmarksValueIndexlist,
     Unknown(String),
 }
 
@@ -48,6 +51,7 @@ impl WsMsgType {
             WsMsgType::MarketLifecycleV2 => "market_lifecycle_v2",
             WsMsgType::MultivariateMarketLifecycle => "multivariate_market_lifecycle",
             WsMsgType::EventLifecycle => "event_lifecycle",
+            WsMsgType::EventFeeUpdate => "event_fee_update",
             WsMsgType::Multivariate => "multivariate",
             WsMsgType::MultivariateLookup => "multivariate_lookup",
             WsMsgType::Communications => "communications",
@@ -58,6 +62,8 @@ impl WsMsgType {
             WsMsgType::QuoteExecuted => "quote_executed",
             WsMsgType::OrderGroupUpdates => "order_group_updates",
             WsMsgType::UserOrder => "user_order",
+            WsMsgType::CfbenchmarksValue => "cfbenchmarks_value",
+            WsMsgType::CfbenchmarksValueIndexlist => "cfbenchmarks_value_indexlist",
             WsMsgType::Unknown(value) => value.as_str(),
         }
     }
@@ -78,6 +84,7 @@ impl WsMsgType {
             "market_lifecycle_v2" => WsMsgType::MarketLifecycleV2,
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
+            "event_fee_update" => WsMsgType::EventFeeUpdate,
             "multivariate" => WsMsgType::Multivariate,
             "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
@@ -88,6 +95,8 @@ impl WsMsgType {
             "quote_executed" => WsMsgType::QuoteExecuted,
             "order_group_updates" => WsMsgType::OrderGroupUpdates,
             "user_order" => WsMsgType::UserOrder,
+            "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
+            "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
             _ => return None,
         })
     }
@@ -108,6 +117,7 @@ impl WsMsgType {
             "market_lifecycle_v2" => WsMsgType::MarketLifecycleV2,
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
+            "event_fee_update" => WsMsgType::EventFeeUpdate,
             "multivariate" => WsMsgType::Multivariate,
             "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
@@ -118,6 +128,8 @@ impl WsMsgType {
             "quote_executed" => WsMsgType::QuoteExecuted,
             "order_group_updates" => WsMsgType::OrderGroupUpdates,
             "user_order" => WsMsgType::UserOrder,
+            "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
+            "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
             _ => WsMsgType::Unknown(value),
         }
     }

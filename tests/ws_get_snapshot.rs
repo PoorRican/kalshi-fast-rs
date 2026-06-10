@@ -60,6 +60,7 @@ async fn ws_demo_orderbook_get_snapshot_returns_snapshot_without_mutating_subscr
             market_ids: None,
             send_initial_snapshot: None,
             skip_ticker_ack: None,
+            index_ids: None,
         })
         .await
         .expect("get_snapshot update failed");

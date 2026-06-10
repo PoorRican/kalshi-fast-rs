@@ -7,16 +7,176 @@ Kalshi docs snapshot tracked by that release.
 
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
-## [0.5.0] - 2026-04-29
 
-### Fixed
+## [0.6.0] - 2026-06-08
 
-- [Rust API] Preserved WebSocket control-frame stream position by carrying `sid`/`seq` on `WsMessageV2::Ok` and `seq` on `WsMessageV2::Unsubscribed`.
-- [WebSocket] Deferred subscription tracker mutations from `update_subscription_v2` and `unsubscribe_v2` until matching server acknowledgements are received, with pending command cleanup on send failures.
+### Compatibility
+
+- Docs snapshot: 2026-06-08
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-08
+
+**Changelog entries since 0.5.0 watermark (2026-06-04) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Margin fee-tier returns active rates (2026-06-03/11) | No code change — exchange bug fix only |
+| Perps volume/OI notional fields on margin markets (2026-06-05/11) | No code change — margin market types not in crate |
+| Tick size on `GET /margin/markets` (2026-06-03/11) | No code change — margin market types not in crate |
+| Automated API rate-limit tiers / grants (2026-06-06) | **Breaking** — replaced `GetAccountApiLimitsResponse`; added `BucketLimit`, `ApiUsageLevelGrant`; added `GET /account/endpoint_costs` (`get_account_endpoint_costs`, `GetAccountEndpointCostsResponse`, `EndpointTokenCost`) |
+| Fractional contract quantities for RFQs (2026-05-26/2026-06-11) | No code change — `contracts_fp` already present in `CreateRfqRequest` |
+| Legacy order endpoints cost 10× rate-limit tokens (2026-06-04) | No code change — operational rate-limit change only |
+| Post Only Cross Cancel `last_update_reason` value (2026-06-04) | No code change — `last_update_reason` not modeled in `Order`; tolerated by existing `extra` flatten if present |
+| Transfer-scoped API key permissions (2026-06-03) | No code change — scopes stored as `Vec<String>` already |
+| Block trade indicators on public trade endpoints (2026-05-29/2026-06-01) | Added `is_block_trade` to `Trade` and `GetTradesParams` |
+| V2 event-order endpoints (`/portfolio/events/orders/*`) | Added all V2 types and six new `KalshiRestClient` methods |
+| `cfbenchmarks_value` AsyncAPI channel | Added full channel, subscription, and message support |
+| `FeeType::quadratic_with_maker_fees` | Added `QuadraticWithMakerFees` variant to `FeeType` enum |
+
+### Added
+
+- [Rust API] Added `is_block_trade: bool` (with `#[serde(default)]`) to the public REST `Trade`
+  struct (2026-05-29). Defaults to `false` for payloads predating the flag.
+- [Rust API] Added `is_block_trade: Option<bool>` filter to `GetTradesParams` so callers can filter
+  by block-trade status on `GET /markets/trades` and `GET /historical/trades`.
+- [Rust API] Added all V2 event-order types and six new `KalshiRestClient` methods for the lower-cost
+  `/portfolio/events/orders/*` endpoints: `create_order_v2`, `cancel_order_v2`, `amend_order_v2`,
+  `decrease_order_v2`, `batch_create_orders_v2`, `batch_cancel_orders_v2`. These endpoints use a
+  single price + `BookSide` instead of separate yes/no prices.
+  New request/response types: `CreateOrderV2Request`, `CreateOrderV2Response`,
+  `CancelOrderV2Params`, `CancelOrderV2Response`, `AmendOrderV2Request`, `AmendOrderV2Response`,
+  `DecreaseOrderV2Request`, `DecreaseOrderV2Response`, `BatchCreateOrdersV2Request`,
+  `BatchCreateOrderV2OrderResponse`, `BatchCreateOrdersV2Response`,
+  `BatchCancelOrderV2RequestOrder`, `BatchCancelOrdersV2Request`,
+  `BatchCancelOrderV2OrderResponse`, `BatchCancelOrdersV2Response`.
+- [Rust API] Added `BucketLimit` and `ApiUsageLevelGrant` structs (2026-06-06). `BucketLimit` holds
+  `refill_rate: i64` and `bucket_capacity: i64`. `ApiUsageLevelGrant` holds `exchange_instance`,
+  `level`, `source: String`, and `expires_ts: Option<i64>` (absent for non-expiring grants).
+- [Rust API] Added `get_account_endpoint_costs()` method and `GetAccountEndpointCostsResponse` /
+  `EndpointTokenCost` structs for the new public `GET /account/endpoint_costs` endpoint, which lists
+  API v2 endpoints whose token cost differs from the default cost.
+- [Rust API] Added CF Benchmarks subscription-update support so the documented post-subscribe
+  workflow is reachable: `WsUpdateAction::SubscribeIndices` / `UnsubscribeIndices` / `Indexlist`
+  variants and an `index_ids: Option<Vec<String>>` field on `WsUpdateSubscriptionParamsV2`. The
+  subscription tracker now folds index add/remove updates into the resubscribe state, and
+  `validate_update` enforces that index actions carry no market targets and that
+  `subscribe_indices` / `unsubscribe_indices` include `index_ids`.
+- [Rust API] Added `FeeType::QuadraticWithMakerFees` variant (serialized
+  `quadratic_with_maker_fees`). `FeeType` now also carries an `#[serde(other)] Unknown` catch-all
+  so unknown future variants never panic.
+- [Rust API] Added full `cfbenchmarks_value` channel support:
+  - `WsChannelV2::CfbenchmarksValue` variant
+  - `index_ids: Option<Vec<String>>` parameter on `WsSubscriptionParamsV2` (use `["all"]` for all
+    indices)
+  - `WsMsgType::CfbenchmarksValue` and `WsMsgType::CfbenchmarksValueIndexlist` variants
+  - New types `WsCfBenchmarksValue`, `WsCfBenchmarksValueRef`, `WsCfBenchmarksAvgData`,
+    `WsCfBenchmarksIndexList`, `WsCfBenchmarksIndexListRef` in `ws::types::messages::cfbenchmarks`
+  - `WsDataMessageV2::CfbenchmarksValue` and `WsDataMessageV2::CfbenchmarksValueIndexlist` variants
+    routed through both the wire and envelope parse paths
+
+### Changed
+
+- [Rust API] `GetAccountApiLimitsResponse` now reflects the current OpenAPI shape: nested
+  `read: BucketLimit` and `write: BucketLimit` objects plus `grants: Vec<ApiUsageLevelGrant>`.
+  The old flat `read_limit: i64` / `write_limit: i64` fields are removed.
 
 ### Breaking
 
-- [Rust API] `WsMessageV2::Ok`, `WsMessageRef::Ok`, `WsMessageV2::Unsubscribed`, and `WsMessageRef::Unsubscribed` gained additional struct-variant fields; exhaustive downstream matches must use the new fields or `..`.
+- [Rust API] `GetAccountApiLimitsResponse` field layout changed (automated API rate-limit tiers,
+  2026-06-06). Replace `resp.read_limit` → `resp.read.refill_rate` (or `.bucket_capacity`) and
+  `resp.write_limit` → `resp.write.refill_rate`. The `grants` field is new; downstream exhaustive
+  struct destructuring must add it.
+- [Rust API] `WsUpdateAction` gained `SubscribeIndices`, `UnsubscribeIndices`, and `Indexlist`
+  variants, and `WsUpdateSubscriptionParamsV2` gained an `index_ids` field. Downstream code with
+  exhaustive matches over `WsUpdateAction` or struct-literal construction of
+  `WsUpdateSubscriptionParamsV2` must be updated.
+
+
+## [0.5.0] - 2026-05-29
+
+### Compatibility
+
+- Docs snapshot: 2026-05-29
+- Validated through changelog: 2026-06-04
+
+### Added
+
+- [Rust API] Added `BookSide` enum (`Bid` | `Ask` | `Unknown`) to `types.rs` for the normalized
+  `book_side` field added to order/fill responses on 2026-05-07.
+- [Rust API] Added `outcome_side: Option<YesNo>` and `book_side: Option<BookSide>` fields to
+  `Order`, `Fill`, `WsFill`, `WsFillRef`, and `WsUserOrder`. These are the normalized direction
+  fields Kalshi added on 2026-05-07 (`bid` ≡ `yes`, `ask` ≡ `no`).
+- [Rust API] Added `taker_outcome_side: Option<TradeTakerSide>` and `taker_book_side:
+  Option<BookSide>` to the public `Trade` (REST) and `WsTrade` / `WsTradeRef` (WebSocket) objects,
+  matching the normalized taker-direction fields added to trade responses on 2026-05-07.
+- [Rust API] Added `balance_dollars: Option<FixedPointDollars>` to `GetBalanceResponse` for the
+  centi-cent precision balance field added on 2026-05-28 (direct members only).
+- [Rust API] Added `subaccount: Option<u32>` to `CreateOrderGroupResponse` for the field added on
+  2026-05-07 (0 = primary, 1–32 = subaccount).
+- [Rust API] Added `rfq_user_filter: Option<String>` to `GetQuotesParams` for the filter parameter
+  added on 2026-05-07. Pass `"self"` to restrict to quotes on the authenticated user's RFQs.
+- [Rust API] Added `WsMarketLifecycleEventType::MetadataUpdated` variant for the new lifecycle event
+  type added on 2026-05-11, fired when market metadata (name, title, subtitles) changes.
+- [Rust API] Surfaced the top-level `metadata_updated` payload values on `WsMarketLifecycleV2` /
+  `WsMarketLifecycleV2Ref`: added `floor_strike: Option<f64>` and `yes_sub_title: Option<String>`
+  (per AsyncAPI these appear at the top level only on `metadata_updated`, distinct from the
+  `additional_metadata.*` copies emitted on creation), plus a top-level flatten `extra` map so other
+  conditional lifecycle keys are no longer silently discarded.
+- [Rust API] Added the `event_fee_update` WebSocket message: new `WsEventFeeUpdate` /
+  `WsEventFeeUpdateRef` types, a `WsMsgType::EventFeeUpdate` variant, and
+  `WsDataMessageV2::EventFeeUpdate` / `WsDataMessageRef::EventFeeUpdate` variants. This message is
+  delivered on the existing `market_lifecycle_v2` channel and carries `event_ticker`,
+  `fee_type_override`, and `fee_multiplier_override` (both overrides `null` when cleared).
+  Previously these messages surfaced as `WsMessageV2::Unknown`.
+- [Rust API] Added the spec-required `ts_ms` (matching-engine timestamp, ms) to `WsOrderGroupUpdate`
+  and `WsOrderGroupUpdateRef`, which were previously dropping the field.
+- [Rust API] Added `get_margin_fee_tiers()` method and `GetMarginFeeTiersResponse` struct for the
+  `GET /margin/fee_tiers` endpoint. The response uses `maker_fee_rates` / `taker_fee_rates` (market
+  ticker → decimal fee rate maps, fee = `notional * rate`).
+- [Tests] Added `ws_fill_normalized_fields_parse` test covering the new `outcome_side` / `book_side`
+  fields on `WsFill`.
+
+### Changed
+
+- [Rust API] Updated `KalshiEnvironment::demo()` and `KalshiEnvironment::production()` to use the
+  dedicated external API hosts introduced on 2026-05-07. REST hosts: `external-api.demo.kalshi.co` /
+  `external-api.kalshi.com`. WS hosts: `external-api-ws.demo.kalshi.co` /
+  `external-api-ws.kalshi.com`. The old hosts (`demo-api.kalshi.co`, `api.elections.kalshi.com`)
+  are no longer used.
+
+### Fixed
+
+- [Rust API] Preserved WebSocket control-frame stream position by carrying `sid`/`seq` on
+  `WsMessageV2::Ok` and `seq` on `WsMessageV2::Unsubscribed`.
+- [WebSocket] Deferred subscription tracker mutations from `update_subscription_v2` and
+  `unsubscribe_v2` until matching server acknowledgements are received, with pending command
+  cleanup on send failures.
+
+### Breaking
+
+- [Rust API] `WsMessageV2::Ok`, `WsMessageRef::Ok`, `WsMessageV2::Unsubscribed`, and
+  `WsMessageRef::Unsubscribed` gained additional struct-variant fields; exhaustive downstream
+  matches must use the new fields or `..`.
+- [Rust API] `Order.side` changed from `YesNo` to `Option<YesNo>`. The `side` field was deprecated
+  by Kalshi on 2026-05-07 and removed ~2026-05-28. Downstream code must use `outcome_side` (or
+  handle `None`).
+- [Rust API] `Order.action` changed from `BuySell` to `Option<BuySell>`. Same deprecation/removal
+  timeline as `Order.side`. Use `book_side` instead.
+- [Rust API] `Fill.side` changed from `YesNo` to `Option<YesNo>` for the same reason.
+- [Rust API] `Fill.action` changed from `BuySell` to `Option<BuySell>` for the same reason.
+- [Rust API] `WsFill.side` changed from `YesNo` to `Option<YesNo>` for the same reason.
+- [Rust API] `WsFill.action` changed from `BuySell` to `Option<BuySell>` for the same reason.
+- [Rust API] `Trade.taker_side` and `WsTrade.taker_side` changed from `TradeTakerSide` to
+  `Option<TradeTakerSide>`. The `taker_side` field was deprecated on 2026-05-07 in favor of
+  `taker_outcome_side` / `taker_book_side`. Downstream code must handle `None`.
+- [Rust API] `KalshiEnvironment::demo()` and `KalshiEnvironment::production()` now point to the new
+  dedicated external API hostnames. Code that hard-coded the old host strings must update.
+- [Upstream] `GET /margin/fee_tiers` response no longer returns `maker_fee_tiers` /
+  `taker_fee_tiers` tier-name maps; it now returns `maker_fee_rates` / `taker_fee_rates` decimal
+  maps. `GetMarginFeeTiersResponse` was added with the new shape (no old shape existed in this
+  crate).
+
 
 ## [0.4.0] - 2026-04-18
 

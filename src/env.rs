@@ -7,8 +7,10 @@ pub const REST_PREFIX: &str = "/trade-api/v2";
 /// timestamp + "GET" + "/trade-api/ws/v2"
 pub const WS_PATH: &str = "/trade-api/ws/v2";
 
-const DEMO_HOST: &str = "demo-api.kalshi.co";
-const LIVE_HOST: &str = "api.elections.kalshi.com";
+const DEMO_REST_HOST: &str = "external-api.demo.kalshi.co";
+const DEMO_WS_HOST: &str = "external-api-ws.demo.kalshi.co";
+const LIVE_REST_HOST: &str = "external-api.kalshi.com";
+const LIVE_WS_HOST: &str = "external-api-ws.kalshi.com";
 
 #[derive(Debug, Clone)]
 pub struct KalshiEnvironment {
@@ -19,25 +21,25 @@ pub struct KalshiEnvironment {
 }
 
 impl KalshiEnvironment {
-    /// Demo environment.
-    /// REST origin: <https://demo-api.kalshi.co>
-    /// WS URL: `wss://demo-api.kalshi.co/trade-api/ws/v2`
+    /// Demo environment (dedicated external API hosts, active since 2026-05-07).
+    /// REST origin: <https://external-api.demo.kalshi.co>
+    /// WS URL: `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2`
     pub fn demo() -> Self {
         Self {
-            rest_origin: Url::parse(&format!("https://{DEMO_HOST}/"))
+            rest_origin: Url::parse(&format!("https://{DEMO_REST_HOST}/"))
                 .expect("valid demo REST origin"),
-            ws_url: format!("wss://{DEMO_HOST}{WS_PATH}"),
+            ws_url: format!("wss://{DEMO_WS_HOST}{WS_PATH}"),
         }
     }
 
-    /// Production environment.
-    /// REST base in docs uses <https://api.elections.kalshi.com/trade-api/v2/>
-    /// WS URL: `wss://api.elections.kalshi.com/trade-api/ws/v2`
+    /// Production environment (dedicated external API hosts, active since 2026-05-07).
+    /// REST origin: <https://external-api.kalshi.com>
+    /// WS URL: `wss://external-api-ws.kalshi.com/trade-api/ws/v2`
     pub fn production() -> Self {
         Self {
-            rest_origin: Url::parse(&format!("https://{LIVE_HOST}/"))
+            rest_origin: Url::parse(&format!("https://{LIVE_REST_HOST}/"))
                 .expect("valid prod REST origin"),
-            ws_url: format!("wss://{LIVE_HOST}{WS_PATH}"),
+            ws_url: format!("wss://{LIVE_WS_HOST}{WS_PATH}"),
         }
     }
 }

@@ -9,8 +9,12 @@ This applies to WebSockets.
 
 ## Multiple URLs Exist
 
-- Live REST root: `https://api.elections.kalshi.com/trade-api/v2`
-- Live WebSocket root: `wss://api.elections.kalshi.com/trade-api/ws/v2`
-- Demo REST root: `https://demo-api.kalshi.co/trade-api/v2`
-- Demo WebSocket root: `wss://demo-api.kalshi.co/trade-api/ws/v2`
+The external API hosts were introduced on 2026-05-07. Use these:
+
+- Live REST root: `https://external-api.kalshi.com/trade-api/v2`
+- Live WebSocket root: `wss://external-api-ws.kalshi.com/trade-api/ws/v2`
+- Demo REST root: `https://external-api.demo.kalshi.co/trade-api/v2`
+- Demo WebSocket root: `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2`
 - Demo credentials are separate from live credentials.
+
+The old hosts (`api.elections.kalshi.com`, `demo-api.kalshi.co`) are no longer used as of 0.5.0.

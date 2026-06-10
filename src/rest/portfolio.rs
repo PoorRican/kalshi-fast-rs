@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
+    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
     deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
@@ -20,6 +20,9 @@ pub struct GetBalanceResponse {
     pub balance: i64,
     pub portfolio_value: i64,
     pub updated_ts: i64,
+    /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
+    #[serde(default)]
+    pub balance_dollars: Option<FixedPointDollars>,
 }
 
 /// GET /portfolio/positions query params
@@ -177,8 +180,18 @@ pub struct Fill {
     pub trade_id: String,
     pub ticker: String,
     pub market_ticker: String,
-    pub side: YesNo,
-    pub action: BuySell,
+    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
+    #[serde(default)]
+    pub side: Option<YesNo>,
+    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `book_side`.
+    #[serde(default)]
+    pub action: Option<BuySell>,
+    /// Normalized outcome side (yes | no). Added 2026-05-07.
+    #[serde(default)]
+    pub outcome_side: Option<YesNo>,
+    /// Normalized book side (bid | ask). Added 2026-05-07.
+    #[serde(default)]
+    pub book_side: Option<BookSide>,
     pub count_fp: FixedPointCount,
     pub yes_price_dollars: FixedPointDollars,
     pub no_price_dollars: FixedPointDollars,

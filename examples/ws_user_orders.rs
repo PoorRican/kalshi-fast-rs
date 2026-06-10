@@ -44,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
                         market_ids: None,
                         send_initial_snapshot: None,
                         skip_ticker_ack: None,
+                        index_ids: None,
                     })
                     .await;
             }

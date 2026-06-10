@@ -15,11 +15,60 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Token-bucket rate-limit configuration for one endpoint group.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BucketLimit {
+    /// Tokens added to the bucket per second.
+    pub refill_rate: i64,
+    /// Maximum tokens the bucket can hold.
+    pub bucket_capacity: i64,
+}
+
+/// An active API usage-level grant (earned via volume or granted manually).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApiUsageLevelGrant {
+    /// Exchange instance this grant applies to (`"event_contract"` or `"margined"`).
+    pub exchange_instance: String,
+    /// Usage level this grant confers (e.g. `"premier"`, `"paragon"`, `"prime"`).
+    pub level: String,
+    /// Unix timestamp (seconds) when the grant expires; `None` for permanent grants.
+    #[serde(default)]
+    pub expires_ts: Option<i64>,
+    /// How the grant was created: `"volume"` or `"manual"`.
+    pub source: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetAccountApiLimitsResponse {
     pub usage_tier: String,
-    pub read_limit: i64,
-    pub write_limit: i64,
+    pub read: BucketLimit,
+    pub write: BucketLimit,
+    /// Active usage-level grants across exchange lanes. Added 2026-06-06
+    /// (automated API rate-limit tiers). Tolerates a missing/`null` array.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub grants: Vec<ApiUsageLevelGrant>,
+}
+
+/// Token cost for one API v2 endpoint whose cost differs from the default.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EndpointTokenCost {
+    /// HTTP method for the endpoint.
+    pub method: String,
+    /// API route path for the endpoint.
+    pub path: String,
+    /// Configured token cost for this endpoint.
+    pub cost: i64,
+}
+
+/// Response for `GET /account/endpoint_costs`. Lists only endpoints whose
+/// configured token cost differs from `default_cost`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountEndpointCostsResponse {
+    /// Default token cost applied to endpoints not listed in `endpoint_costs`.
+    pub default_cost: i64,
+    /// Endpoints whose cost differs from the default.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub endpoint_costs: Vec<EndpointTokenCost>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -173,6 +222,23 @@ impl KalshiRestClient {
             Option::<&()>::None,
             Option::<&()>::None,
             true,
+        )
+        .await
+    }
+
+    /// List API v2 endpoints whose token cost differs from the default cost.
+    ///
+    /// Public endpoint (no auth required per the OpenAPI spec).
+    pub async fn get_account_endpoint_costs(
+        &self,
+    ) -> Result<GetAccountEndpointCostsResponse, KalshiError> {
+        let path = Self::full_path("/account/endpoint_costs");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
         )
         .await
     }
