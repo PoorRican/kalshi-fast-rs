@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -69,6 +69,35 @@ pub struct GetAccountEndpointCostsResponse {
     /// Endpoints whose cost differs from the default.
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub endpoint_costs: Vec<EndpointTokenCost>,
+}
+
+/// One volume goal entry for an API usage level tier.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal applies to.
+    pub level: String,
+    /// Trailing-30d volume required to earn this tier.
+    pub earn_volume_goal_fp: FixedPointCount,
+    /// Trailing-30d volume required to keep this tier.
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Volume progress snapshot for one API usage level lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed.
+    pub computed_ts: i64,
+    /// Trailing 30-day contract volume ending at `computed_ts`.
+    pub trailing_30d_volume_fp: FixedPointCount,
+    /// Earn/keep goals for each volume-based tier.
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    /// Latest cron-computed volume progress for the predictions lane.
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -239,6 +268,41 @@ impl KalshiRestClient {
             Option::<&()>::None,
             Option::<&()>::None,
             false,
+        )
+        .await
+    }
+
+    /// Get trailing-30d volume progress toward volume-based API usage tiers.
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-promote to the Advanced API usage level (Predictions lane).
+    ///
+    /// Criteria: at least one of the user's last 100 Predictions orders was
+    /// created via API. Returns `403` if the criterion is not met.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
         )
         .await
     }

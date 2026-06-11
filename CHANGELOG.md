@@ -8,6 +8,35 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-11
+
+### Compatibility
+
+- Docs snapshot: 2026-06-11
+- OpenAPI: 3.21.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-11
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| API usage volume progress endpoint (2026-06-11) | **Added** — new `GET /account/api_usage_level/volume_progress` endpoint; added `GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`, `AccountApiUsageLevelVolumeGoal` types and `get_account_api_usage_level_volume_progress()` method |
+| Self-serve Advanced API usage tier upgrade (2026-06-08/11) | **Added** — new `POST /account/api_usage_level/upgrade` endpoint; added `upgrade_account_api_usage_level()` method |
+| Perps mark prices on margin markets (2026-06-10/11) | No code change — margin market types not in crate scope |
+
+### Added
+
+- [Rust API] Added `GET /account/api_usage_level/volume_progress` support:
+  new `GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`,
+  and `AccountApiUsageLevelVolumeGoal` structs, plus `get_account_api_usage_level_volume_progress()`
+  method on `KalshiRestClient`. Returns cron-computed trailing-30d volume and per-tier earn/keep
+  goals for the Predictions lane. Requires auth.
+- [Rust API] Added `POST /account/api_usage_level/upgrade` support via
+  `upgrade_account_api_usage_level()` method. Self-promotes the account to the Advanced API
+  usage level when the last-100-orders criterion is met (returns `403` otherwise). Requires auth.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
