@@ -87,6 +87,18 @@ examples are ambiguous.
   `ApiUsageLevelGrant.exchange_instance` is kept as `String` rather than an `ExchangeInstance` enum
   (`event_contract` | `margined`); the raw string round-trips losslessly and tolerates any future
   exchange-instance values without a crate update.
+
+- `POST /account/api_usage_level/upgrade` (`upgrade_account_api_usage_level`) returns HTTP 201 with
+  no body on success. Modeled as `EmptyResponse`. Per the OpenAPI spec, HTTP 403 indicates the
+  criteria were not met (no API-created order in the user's last 100 Predictions orders); callers
+  should handle `KalshiError::Http(403, ...)` for this case.
+
+- `GET /account/api_usage_level/volume_progress` (`get_account_api_usage_level_volume_progress`)
+  returns a `volume_progress` array of `AccountApiUsageLevelVolumeProgress`. The OpenAPI spec marks
+  `goals` as a required array field, but the crate tolerates a missing or `null` value via
+  `#[serde(default)]` for resilience. All count fields (`trailing_30d_volume_fp`,
+  `earn_volume_goal_fp`, `keep_volume_goal_fp`) are `FixedPointCount` (fixed-point string
+  representation, same as other count fields in the crate).
 - The AsyncAPI marks several timestamp/required fields that the exchange may omit in practice
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.

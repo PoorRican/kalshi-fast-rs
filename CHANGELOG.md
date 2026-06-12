@@ -8,6 +8,43 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-12
+
+### Compatibility
+
+- Docs snapshot: 2026-06-12
+- OpenAPI: 3.21.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-12
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Self-serve Advanced API usage tier upgrade (2026-06-08) | **Added** — `upgrade_account_api_usage_level()` method (`POST /account/api_usage_level/upgrade`) |
+| API usage volume progress endpoint (2026-06-09) | **Added** — `get_account_api_usage_level_volume_progress()` method and `GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`, `AccountApiUsageLevelVolumeGoal` types |
+| Perps mark prices on margin markets (2026-06-10) | No code change — margin market types not in crate |
+| Subaccount on margin positions (2026-06-11) | No code change — margin position types not in crate |
+| Block-trade accept API key permissions (2026-06-11) | No code change — scopes stored as `Vec<String>` already |
+| Sanity limits enforced on orderbook subscriptions (2026-06-12) | No code change — server-side enforcement; errors surface through existing WebSocket error handling |
+
+**Version bump:** patch (0.6.0 → 0.6.1) — additive alignment only, no breaking Rust API changes (VERSIONING.md: "Bump patch if the work is limited to upstream additive alignment").
+
+### Added
+
+- [Rust API] Added `upgrade_account_api_usage_level()` method for the new
+  `POST /account/api_usage_level/upgrade` endpoint (2026-06-08). Grants a permanent
+  Advanced API usage-level grant when the user has at least one API-created order in
+  their last 100 Predictions orders. Returns `EmptyResponse` on HTTP 201.
+- [Rust API] Added `get_account_api_usage_level_volume_progress()` method and three
+  supporting types for the new `GET /account/api_usage_level/volume_progress` endpoint
+  (2026-06-09): `GetAccountApiUsageLevelVolumeProgressResponse` (wraps the
+  `volume_progress` array), `AccountApiUsageLevelVolumeProgress` (`computed_ts`,
+  `trailing_30d_volume_fp`, `goals`), and `AccountApiUsageLevelVolumeGoal` (`level`,
+  `earn_volume_goal_fp`, `keep_volume_goal_fp`). All required fields are non-`Option`;
+  the `goals` array tolerates a missing/`null` value via `#[serde(default)]`.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
