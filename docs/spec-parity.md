@@ -91,6 +91,27 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /communications/quotes` has two deprecated parameters: `quote_creator_user_id` and
+  `rfq_creator_user_id` (both marked `deprecated: true` in OpenAPI 3.21.0). They remain in
+  `GetQuotesParams` as `Option<String>` for backwards compatibility and to allow callers still
+  relying on them, but consumers should prefer `user_filter` and `rfq_user_filter` respectively.
+  Rust's `#[deprecated]` cannot be applied to struct fields; the deprecation is noted here and in
+  field-level doc comments only.
+
+- `POST /account/api_usage_level/upgrade` returns HTTP 201 with no response body on success and
+  HTTP 403 when the eligibility criterion (at least one API-placed order in the last 100 Predictions
+  orders) is not met. The crate models this as `EmptyResponse`; callers must handle the 403 path via
+  `KalshiError` rather than inspecting the response body.
+
+- `GET /account/api_usage_level/volume_progress` `AccountApiUsageLevelVolumeProgress.goals` is
+  marked required in the OpenAPI schema but uses `#[serde(default, deserialize_with =
+  "deserialize_null_as_empty_vec")]` because cron-lag or new exchange instances could theoretically
+  yield a null or missing array before the first computation.
+
+- The AsyncAPI file uses format version `asyncapi: 3.0.0`; the `Compatibility` block in this repo
+  records `AsyncAPI: 2.0.0` which refers to `info.version` (the API version), not the asyncapi
+  specification format version. The two numbers are independent.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -8,6 +8,55 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-13
+
+### Compatibility
+
+- Docs snapshot: 2026-06-13
+- OpenAPI: 3.21.0
+- AsyncAPI: 3.0.0 (asyncapi format) / 2.0.0 (API version)
+- Validated through changelog: 2026-06-12
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Self-serve Advanced API usage tier upgrade (2026-06-08) | Added `upgrade_account_api_usage_level()` and `POST /account/api_usage_level/upgrade` |
+| API usage volume progress endpoint (2026-06-09) | Added `get_account_api_usage_level_volume_progress()`, `GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`, `AccountApiUsageLevelVolumeGoal` |
+| Perps mark prices on margin markets (2026-06-10) | No code change — margin market types not in crate |
+| Block-trade accept API key permissions (2026-06-11) | No code change — scopes stored as `Vec<String>` already |
+| Subaccount on margin positions (2026-06-11) | No code change — margin types not in crate |
+| Sanity limits enforced on orderbook subscriptions (2026-06-12) | No code change — server-side enforcement only |
+| Quote time filters and pagination fix (2026-06-12) | Added `min_ts` and `max_ts` to `GetQuotesParams` |
+| Event tickers filter on GET /events (2026-06-12) | Added `tickers` to `GetEventsParams` |
+| `user_filter` on GET /communications/quotes (OpenAPI 3.21.0) | Added `user_filter` to `GetQuotesParams` |
+| `min_updated_ts` on GET /events (OpenAPI 3.21.0) | Added `min_updated_ts` to `GetEventsParams` |
+
+### Added
+
+- [Rust API] Added `upgrade_account_api_usage_level()` method for `POST /account/api_usage_level/upgrade`.
+  Self-promotes the authenticated user to the Advanced API usage tier for the Predictions exchange
+  instance, provided at least one of their last 100 Predictions orders was placed via API.
+  Returns `EmptyResponse` on success (201); the server returns 403 if the criterion is not met.
+  Added 2026-06-08 (OpenAPI 3.21.0). **Requires auth.**
+- [Rust API] Added `get_account_api_usage_level_volume_progress()` method and
+  `GetAccountApiUsageLevelVolumeProgressResponse` / `AccountApiUsageLevelVolumeProgress` /
+  `AccountApiUsageLevelVolumeGoal` types for `GET /account/api_usage_level/volume_progress`.
+  Returns cron-computed trailing-30d contract volume and per-tier earn/keep goals for the
+  predictions lane. Added 2026-06-09 (OpenAPI 3.21.0). **Requires auth.**
+- [Rust API] Added `min_ts: Option<i64>` and `max_ts: Option<i64>` to `GetQuotesParams` for the
+  `GET /communications/quotes` timestamp filters added 2026-06-12. Both filter on the quote's last
+  update time (Unix seconds).
+- [Rust API] Added `user_filter: Option<String>` to `GetQuotesParams`. Pass `"self"` to restrict
+  results to quotes created by the authenticated user (distinct from `rfq_user_filter` which
+  filters by RFQ creator). Added in OpenAPI 3.21.0.
+- [Rust API] Added `tickers: Option<String>` to `GetEventsParams` for the comma-separated event
+  tickers filter (maximum 10) added to `GET /events` on 2026-06-12 (OpenAPI 3.21.0).
+- [Rust API] Added `min_updated_ts: Option<i64>` to `GetEventsParams` for the
+  `GET /events` filter that restricts to events with metadata updated after a given Unix timestamp.
+  Useful for efficient polling. Added in OpenAPI 3.21.0.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

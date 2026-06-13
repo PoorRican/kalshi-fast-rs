@@ -29,8 +29,16 @@ pub struct GetEventsParams {
     pub status: Option<EventStatus>, // open|closed|settled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+    /// Filter by specific event tickers. Comma-separated list, maximum 10.
+    /// Added 2026-06-12 (OpenAPI 3.21.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events updated after this Unix timestamp (seconds). Use to
+    /// efficiently poll for metadata changes. Added in OpenAPI 3.21.0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
