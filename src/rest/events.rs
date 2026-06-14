@@ -29,8 +29,14 @@ pub struct GetEventsParams {
     pub status: Option<EventStatus>, // open|closed|settled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+    /// Filter by specific event tickers. Comma-separated list of event tickers to retrieve.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
