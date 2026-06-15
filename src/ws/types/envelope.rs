@@ -991,6 +991,44 @@ mod tests {
     }
 
     #[test]
+    fn ws_message_from_bytes_list_subscriptions_accepts_numeric_shard_key() {
+        let json = r#"{
+            "id":3,
+            "type":"ok",
+            "msg":[
+                {
+                    "channel":"communications",
+                    "sid":11,
+                    "shard_factor":4,
+                    "shard_key":2
+                }
+            ]
+        }"#;
+
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::ListSubscriptions { id, subscriptions } => {
+                assert_eq!(id, Some(3));
+                assert_eq!(subscriptions.len(), 1);
+                assert_eq!(subscriptions[0].shard_factor, Some(4));
+                assert_eq!(subscriptions[0].shard_key, Some(2));
+            }
+            other => panic!("expected list_subscriptions response, got {other:?}"),
+        }
+
+        let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match msg_ref {
+            WsMessageRef::ListSubscriptions { id, subscriptions } => {
+                assert_eq!(id, Some(3));
+                assert_eq!(subscriptions.len(), 1);
+                assert_eq!(subscriptions[0].shard_factor, Some(4));
+                assert_eq!(subscriptions[0].shard_key, Some(2));
+            }
+            other => panic!("expected borrowed list_subscriptions response, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn ws_message_from_bytes_unknown_type() {
         let json = r#"{"type":"mystery","msg":{"foo":1}}"#;
         let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
