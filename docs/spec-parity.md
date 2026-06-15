@@ -91,6 +91,31 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /events` gained a `tickers` query parameter (2026-06-12) that accepts a comma-separated list
+  of event tickers (max 10). Added as `GetEventsParams::tickers: Option<String>`. The endpoint also
+  accepts `min_updated_ts: Option<i64>` (present in the OpenAPI spec but previously absent from the
+  crate) to poll for events whose metadata changed after a given Unix timestamp.
+
+- `GET /communications/quotes` gained `min_ts` and `max_ts` query parameters (2026-06-12) to
+  restrict results to quotes last updated within a time window (Unix timestamps). Added as
+  `GetQuotesParams::min_ts: Option<i64>` and `GetQuotesParams::max_ts: Option<i64>`.
+
+- `POST /account/api_usage_level/upgrade` (2026-06-08) self-promotes an account to the Advanced API
+  tier. The endpoint returns HTTP 201 with no body; the crate returns `EmptyResponse` (the `send`
+  helper substitutes `{}` for empty bodies). Returns 403 if no API-created order exists among the
+  latest 100 Predictions orders.
+
+- `GET /account/api_usage_level/volume_progress` (2026-06-09) returns trailing-30d contract volume
+  and per-tier earn/keep volume goals. `AccountApiUsageLevelVolumeProgress.goals` is deserialized
+  as `Vec` (with `deserialize_null_as_empty_vec`) even though the OpenAPI marks `goals` as required,
+  to guard against accidental null from the exchange.
+
+- Orderbook subscription sanity limits (2026-06-12): the exchange enforces a maximum of 500k market
+  subscriptions per WebSocket session and 10k commands per second. Subscribing to an unknown market
+  ticker on `orderbook_delta` now returns an error message. These are server-side enforcement
+  changes; no crate struct changes are needed. Callers should handle subscription error messages
+  returned in the standard `WsMessageV2` error envelope.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
