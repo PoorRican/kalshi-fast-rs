@@ -101,12 +101,21 @@ pub struct GetQuotesParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub market_ticker: Option<String>,
+    /// Unix timestamp (seconds). Restricts to quotes last updated after this time. Added 2026-06-12.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    /// Unix timestamp (seconds). Restricts to quotes last updated before this time. Added 2026-06-12.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote_creator_user_id: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_creator_user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

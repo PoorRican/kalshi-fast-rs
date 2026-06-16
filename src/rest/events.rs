@@ -21,16 +21,22 @@ pub struct GetEventsParams {
     pub cursor: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub with_nested_markets: Option<bool>, // default false
+    pub with_nested_markets: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub with_milestones: Option<bool>, // default false
+    pub with_milestones: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<EventStatus>, // open|closed|settled
+    pub status: Option<EventStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+    /// Comma-separated list of event tickers to filter by (max 10). Added 2026-06-12.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub min_close_ts: Option<i64>, // seconds since epoch
+    pub tickers: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_close_ts: Option<i64>,
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {

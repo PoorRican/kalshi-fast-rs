@@ -8,6 +8,53 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-16
+
+### Compatibility
+
+- Docs snapshot: 2026-06-16
+- OpenAPI: 3.21.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-16
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| RFQ quote identity on FIX (2026-06-15) | No change — FIX protocol, not REST/WebSocket crate |
+| Trade entries in FIX market data (2026-06-15) | No change — FIX protocol, not REST/WebSocket crate |
+| Event tickers filter on `GET /events` (2026-06-12) | **Added** `tickers` to `GetEventsParams`; also added previously-missing `with_milestones` and `min_updated_ts` |
+| Subaccount on margin positions (2026-06-11) | No change — margin market types not in crate |
+| Block-trade accept API key permissions (2026-06-11) | No change — scopes stored as `Vec<String>` already |
+| Sanity limits enforced on orderbook subscriptions (2026-06-12) | No change — operational server-side limit |
+| Quote time filters and pagination fix (2026-06-12) | **Added** `min_ts` / `max_ts` to `GetQuotesParams`; also added previously-missing `user_filter` |
+| API usage volume progress endpoint (2026-06-09) | **Added** `get_account_api_usage_level_volume_progress()` and new types |
+| Perps mark prices on margin markets (2026-06-10) | No change — margin market types not in crate |
+| Self-serve Advanced API usage tier upgrade (2026-06-08) | **Added** `upgrade_account_api_usage_level()` method |
+
+**Version bump:** patch (0.6.0 → 0.6.1). All changes are additive: new fields on existing params structs, new methods. No downstream code changes required. Cite: VERSIONING.md — "Bump `patch` if the work is limited to upstream additive alignment … and the public Rust API remains source compatible."
+
+### Added
+
+- [Rust API] Added `tickers: Option<String>` to `GetEventsParams` for the comma-separated event
+  ticker filter added to `GET /events` on 2026-06-12 (max 10 tickers per request).
+- [Rust API] Added `with_milestones: Option<bool>` and `min_updated_ts: Option<i64>` to
+  `GetEventsParams`. Both fields were already present in the OpenAPI spec but were missing from the
+  Rust struct.
+- [Rust API] Added `min_ts: Option<i64>` and `max_ts: Option<i64>` to `GetQuotesParams` for the
+  last-update-time filters added to `GET /communications/quotes` on 2026-06-12.
+- [Rust API] Added `user_filter: Option<String>` to `GetQuotesParams`. The field was already in the
+  OpenAPI spec (`"self"` filters to the authenticated user's quotes) but was missing from the Rust
+  struct.
+- [Rust API] Added `get_account_api_usage_level_volume_progress()` method and three new types:
+  `GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`, and
+  `AccountApiUsageLevelVolumeGoal`. These model the new `GET /account/api_usage_level/volume_progress`
+  endpoint (added 2026-06-09) that reports trailing 30-day volume and earn/keep tier goals.
+- [Rust API] Added `upgrade_account_api_usage_level()` method for the new
+  `POST /account/api_usage_level/upgrade` endpoint (added 2026-06-08). Returns `EmptyResponse`
+  on HTTP 201 success (idempotent; 403 if no qualifying Predictions orders found).
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

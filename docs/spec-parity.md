@@ -91,6 +91,22 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /account/api_usage_level/volume_progress` (`get_account_api_usage_level_volume_progress`,
+  added 2026-06-09) returns trailing 30-day volume progress toward volume-based API usage tiers.
+  Response fields `trailing_30d_volume_fp`, `earn_volume_goal_fp`, and `keep_volume_goal_fp` are
+  typed as `FixedPointCount` (string). `AccountApiUsageLevelVolumeGoal.level` is kept as `String`
+  rather than reusing an enum so future tier names survive without a crate update.
+- `POST /account/api_usage_level/upgrade` (`upgrade_account_api_usage_level`, added 2026-06-08)
+  returns HTTP 201 with an empty body on success. The crate uses `EmptyResponse`. The endpoint
+  requires at least one Predictions order in the user's latest 100 orders (HTTP 403 otherwise).
+- `GetEventsParams.tickers` (added 2026-06-12) accepts a comma-separated string of event tickers
+  (maximum 10). Modeled as `Option<String>` matching the OpenAPI `EventTickersQuery` parameter type.
+- `GetEventsParams.with_milestones` and `GetEventsParams.min_updated_ts` were present in the
+  OpenAPI spec but missing from the Rust struct. Both are now included.
+- `GetQuotesParams.min_ts` / `GetQuotesParams.max_ts` (added 2026-06-12) filter by last-update
+  time (Unix seconds). `GetQuotesParams.user_filter` was in the OpenAPI spec but missing from the
+  Rust struct; it accepts `"self"` to filter to the authenticated user's own quotes.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
