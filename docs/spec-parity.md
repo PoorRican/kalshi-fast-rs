@@ -91,6 +91,28 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /events` gained `tickers` (comma-separated event-ticker filter, `EventTickersQuery`)
+  and `min_updated_ts` (filter by metadata update timestamp) query parameters; both are now on
+  `GetEventsParams`. The `cursor` field in `GetEventsResponse` is marked `required` by the OpenAPI
+  spec but is kept `Option<String>` in the crate so parsing succeeds even if the exchange omits it
+  on the last page.
+
+- `GET /communications/quotes` gained `min_ts` / `max_ts` (last-update timestamp range filters,
+  2026-06-12) and a `user_filter` parameter (filter by authenticated user's own quotes). All three
+  are now on `GetQuotesParams`. The `quote_creator_user_id` and `rfq_creator_user_id` fields are
+  marked deprecated in the OpenAPI (superseded by `user_filter` / `rfq_user_filter`) but are kept
+  in the struct so existing callers do not break.
+
+- `POST /account/api_usage_level/upgrade` self-promotes the caller to the Advanced API tier; no
+  request or response body (returns 201 on success). Modeled via `upgrade_account_api_usage_level()`
+  returning `EmptyResponse`. 403 if the last-100-orders criterion is not met.
+
+- `GET /account/api_usage_level/volume_progress` returns trailing 30-day trading volume and per-tier
+  goals. All fields (`computed_ts`, `trailing_30d_volume_fp`, `goals`, `level`,
+  `earn_volume_goal_fp`, `keep_volume_goal_fp`) are `required` in the spec with no conditional
+  variants, so no `Option` wrapping is needed. Margin-market lanes are absent from the response
+  (predictions / `event_contract` lane only).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

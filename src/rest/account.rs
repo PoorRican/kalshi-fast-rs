@@ -49,6 +49,34 @@ pub struct GetAccountApiLimitsResponse {
     pub grants: Vec<ApiUsageLevelGrant>,
 }
 
+/// Response for `GET /account/api_usage_level/volume_progress`. Added 2026-06-09.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
+/// Per-lane volume progress toward volume-based API usage tiers.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed.
+    pub computed_ts: i64,
+    /// Trailing 30-day trading volume ending at `computed_ts`.
+    pub trailing_30d_volume_fp: crate::types::FixedPointCount,
+    /// Volume goals for each achievable tier.
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Volume goal for one API usage tier.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level (e.g. `"expert"`, `"premier"`, `"paragon"`).
+    pub level: String,
+    /// Volume required to earn this tier.
+    pub earn_volume_goal_fp: crate::types::FixedPointCount,
+    /// Volume required to keep this tier after earning it.
+    pub keep_volume_goal_fp: crate::types::FixedPointCount,
+}
+
 /// Token cost for one API v2 endpoint whose cost differs from the default.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EndpointTokenCost {
@@ -216,6 +244,45 @@ impl KalshiRestClient {
     /// **Requires auth.**
     pub async fn get_account_api_limits(&self) -> Result<GetAccountApiLimitsResponse, KalshiError> {
         let path = Self::full_path("/account/limits");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-promote to the Advanced API usage tier.
+    ///
+    /// Requires that at least one of the user's last 100 Predictions orders was
+    /// placed via the API. Returns 201 on success (no body), 403 if the
+    /// criteria are not met. Costs 30 rate-limit tokens on the Write bucket.
+    ///
+    /// **Requires auth.** Added 2026-06-08.
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get trailing 30-day volume progress toward volume-based API usage tiers.
+    ///
+    /// Returns progress for the predictions (`event_contract`) lane only.
+    /// Volume figures are fixed-point contract counts.
+    ///
+    /// **Requires auth.** Added 2026-06-09.
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
         self.send(
             Method::GET,
             &path,
