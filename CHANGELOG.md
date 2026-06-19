@@ -8,6 +8,73 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-19
+
+### Compatibility
+
+- Docs snapshot: 2026-06-19
+- OpenAPI: 3.21.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-18
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| `settlement_sources` added to events API (2026-06-18) | Added `settlement_sources: Vec<SettlementSource>` to `EventData`; also added missing `fee_type_override`/`fee_multiplier_override` fields |
+| `strike_type` and `cap_strike` on `market_lifecycle_v2` `metadata_updated` (2026-06-17) | Added `strike_type`, `cap_strike`, `custom_strike` to top-level `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` |
+| FIX RFQ quote identity (2026-06-15) | No code change — FIX protocol only |
+| FIX market data trade entries (2026-06-15) | No code change — FIX protocol only |
+| Legacy `/portfolio/orders` mutation endpoints deprecated (2026-06-18) | Marked `create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders` as `#[deprecated(since = "0.6.1")]` |
+| `tickers` filter on `GET /events` (2026-06-12) | Added `tickers: Option<Vec<String>>` to `GetEventsParams` |
+| `subaccount` on margin positions (2026-06-11) | No code change — margin types not in crate |
+| Block-trade accept API key permissions (2026-06-11) | No code change — scopes stored as `Vec<String>` already |
+| Orderbook subscription sanity limits (2026-06-12) | No code change — operational limit only |
+| `min_ts`/`max_ts` on `GET /communications/quotes` (2026-06-12) | Added `min_ts`, `max_ts`, `user_filter` to `GetQuotesParams` |
+| API usage volume progress endpoint (2026-06-09) | Added `get_account_api_usage_level_volume_progress()` + response types |
+| Perps mark prices on margin markets (2026-06-10) | No code change — margin types not in crate |
+| Self-serve Advanced API usage tier upgrade (2026-06-08) | Added `upgrade_account_api_usage_level()` method |
+| Margin fee-tier returns active rates (2026-06-03/11) | No code change — exchange bug fix only |
+| Perps volume/OI notional fields (2026-06-05/11) | No code change — margin types not in crate |
+
+**Version bump: 0.6.0 → 0.6.1 (patch).**
+All changes are additive: new optional fields, new methods, and `#[deprecated]` annotations.
+`#[deprecated]` is a warning, not a break — downstream code compiles unchanged.
+Rule: _patch_ for "upstream additive alignment that should not require downstream code changes."
+
+### Added
+
+- [Rust API] Added `settlement_sources: Vec<SettlementSource>` to `EventData` (required-but-nullable
+  in OpenAPI 3.21.0; null is deserialized as empty vec). Added `fee_type_override: Option<String>`
+  and `fee_multiplier_override: Option<f64>` to `EventData`, completing the OpenAPI field set.
+- [Rust API] Added `tickers: Option<Vec<String>>` to `GetEventsParams` for the new comma-separated
+  event ticker filter on `GET /events` (2026-06-12).
+- [Rust API] Added `min_updated_ts: Option<i64>` to `GetEventsParams` (present in OpenAPI 3.21.0
+  spec, previously absent from params struct).
+- [Rust API] Added `min_ts: Option<i64>`, `max_ts: Option<i64>`, and `user_filter: Option<String>`
+  to `GetQuotesParams`. `min_ts`/`max_ts` filter by quote `updated_ts` (2026-06-12). `user_filter`
+  accepts `"self"` to restrict to quotes created by the authenticated user.
+- [Rust API] Added `upgrade_account_api_usage_level()` method for `POST /account/api_usage_level/upgrade`.
+  Grants a permanent Advanced API usage-level grant. Added to OpenAPI 3.21.0 (2026-06-08).
+- [Rust API] Added `get_account_api_usage_level_volume_progress()` method and supporting types
+  (`GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`,
+  `AccountApiUsageLevelVolumeGoal`) for `GET /account/api_usage_level/volume_progress` (2026-06-09).
+  Returns trailing 30-day volume progress toward volume-based API usage tiers.
+- [Rust API] Added `strike_type: Option<String>`, `cap_strike: Option<f64>`, and
+  `custom_strike: Option<BTreeMap<String, String>>` to the top-level `WsMarketLifecycleV2` and
+  `WsMarketLifecycleV2Ref` structs (2026-06-17). These fields are present only on `metadata_updated`
+  events; previously they fell through to the `extra` flatten map.
+
+### Deprecated
+
+- [Rust API] `create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`,
+  `batch_cancel_orders` are marked `#[deprecated(since = "0.6.1")]`. Kalshi deprecated the underlying
+  `POST/DELETE /portfolio/orders` endpoints between 2026-06-18 and 2026-06-25 (deprecated calls will
+  return an error response directing users to the V2 endpoints). Use the corresponding `*_v2` methods
+  (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`) targeting `/portfolio/events/orders`.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

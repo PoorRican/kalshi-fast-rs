@@ -36,11 +36,19 @@ pub struct WsMarketLifecycleV2 {
     /// on `metadata_updated` events.
     #[serde(default)]
     pub yes_sub_title: Option<String>,
+    /// Top-level strike type; present only on `metadata_updated` events. Added 2026-06-17.
+    /// Determines how floor_strike / cap_strike are interpreted.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Top-level cap (upper-bound) strike; present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level custom strike object; present only on `metadata_updated` events
+    /// for markets with a custom or structured strike type. Added 2026-06-17.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     #[serde(default)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadata>,
-    /// Catches any other top-level keys the exchange attaches to a lifecycle
-    /// event (e.g. future `metadata_updated` fields beyond floor_strike /
-    /// yes_sub_title).
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -153,9 +161,17 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
+    /// Top-level strike type; present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
+    /// Top-level cap strike; present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level custom strike; present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     #[serde(default, borrow)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadataRef<'a>>,
-    /// Catches any other top-level lifecycle keys not modeled above.
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -176,6 +192,9 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
             floor_strike: self.floor_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
+            strike_type: self.strike_type.map(Cow::into_owned),
+            cap_strike: self.cap_strike,
+            custom_strike: self.custom_strike,
             additional_metadata: self
                 .additional_metadata
                 .map(WsMarketLifecycleAdditionalMetadataRef::into_owned),

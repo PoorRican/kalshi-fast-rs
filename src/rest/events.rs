@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, SettlementSource};
+use crate::types::{EventStatus, deserialize_null_as_empty_vec, serialize_csv_opt};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,15 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events with metadata updated after this Unix timestamp (seconds). Added to OpenAPI 3.21.0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
+    /// Filter by comma-separated event tickers. Added 2026-06-12 (OpenAPI 3.21.0).
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub tickers: Option<Vec<String>>,
 }
 
 impl GetEventsParams {
@@ -146,6 +155,16 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Settlement sources for this event. Added to EventData required list 2026-06-18 (OpenAPI 3.21.0).
+    /// The field is required-but-nullable in the spec; null is treated as an empty list.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    /// Fee type override for this event (takes precedence over series-level fee when present).
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Fee multiplier override for this event. Paired with fee_type_override.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

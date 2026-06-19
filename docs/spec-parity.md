@@ -91,6 +91,50 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `settlement_sources` on `EventData` is listed as both `required` and `nullable: true` in the OpenAPI
+  `EventData` schema (added to required list 2026-06-18, OpenAPI 3.21.0). Modeled as
+  `Vec<SettlementSource>` with `#[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]`
+  so a `null` value or absent key both deserialize as an empty vector. The same `SettlementSource`
+  struct already used by `Series` is reused here.
+
+- `fee_type_override: Option<String>` and `fee_multiplier_override: Option<f64>` were already
+  present in the OpenAPI `EventData` schema but were absent from the Rust struct. Added in 0.6.1
+  to complete the field set. Both are nullable optional overrides (present only when the event
+  overrides its series-level fee configuration).
+
+- `tickers` query param on `GET /events` (added 2026-06-12, OpenAPI 3.21.0) maps to
+  `GetEventsParams::tickers: Option<Vec<String>>` serialized as a comma-separated string via
+  `serialize_csv_opt`, matching the pattern used by `GetMarketsParams::tickers`.
+
+- `min_updated_ts` was present in the OpenAPI spec for `GET /events` (present in 3.21.0) but absent
+  from `GetEventsParams`. Added in 0.6.1 as `Option<i64>`.
+
+- `min_ts`/`max_ts` on `GET /communications/quotes` (added 2026-06-12) are modeled as `Option<i64>`
+  on `GetQuotesParams`. These filter by quote `updated_ts`.
+
+- `user_filter` on `GET /communications/quotes` (present in OpenAPI 3.21.0) was absent from
+  `GetQuotesParams`. Added in 0.6.1 alongside the existing `rfq_user_filter`. Both accept `"self"`
+  to restrict to the authenticated user's quotes/RFQs.
+
+- `strike_type`, `cap_strike`, and `custom_strike` were already modeled inside
+  `WsMarketLifecycleAdditionalMetadata` (present on created events) but were missing from the
+  top-level `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` structs. The AsyncAPI spec places them
+  at the top level on `metadata_updated` events (2026-06-17 changelog). Added in 0.6.1; previously
+  they fell through to the `extra` flatten map.
+
+- Legacy `POST /portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were deprecated by Kalshi between
+  2026-06-18 and 2026-06-25. The corresponding Rust methods are marked `#[deprecated(since = "0.6.1")]`
+  pointing to the V2 equivalents (`create_order_v2`, etc.). The endpoints are not yet removed from the
+  OpenAPI spec as of 3.21.0.
+
+- `GET /account/api_usage_level/volume_progress` and `POST /account/api_usage_level/upgrade` are two
+  new authenticated endpoints added 2026-06-09 and 2026-06-08 respectively (OpenAPI 3.21.0). Modeled
+  as `get_account_api_usage_level_volume_progress()` and `upgrade_account_api_usage_level()`.
+  Response types: `GetAccountApiUsageLevelVolumeProgressResponse` → `Vec<AccountApiUsageLevelVolumeProgress>`
+  → `Vec<AccountApiUsageLevelVolumeGoal>`. The `volume_progress` array is required in the spec but
+  guarded with `deserialize_null_as_empty_vec` for defensive parsing.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
