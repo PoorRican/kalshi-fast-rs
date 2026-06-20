@@ -8,6 +8,69 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-20
+
+### Compatibility
+
+- Docs snapshot: 2026-06-20
+- OpenAPI: 3.21.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-20
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| RFQ quote market and event filters removed (2026-06-20) | **Deprecated** `market_ticker` and `event_ticker` on `GetQuotesParams` with `#[deprecated]`; server no longer accepts them |
+| `settlement_sources` added to events API (2026-06-18) | Added `settlement_sources: Vec<SettlementSource>` to `EventData` |
+| Strike type and cap_strike on `market_lifecycle_v2` `metadata_updated` (2026-06-17) | Added `strike_type`, `cap_strike`, `custom_strike` as top-level optional fields on `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` |
+| RFQ quote identity on FIX (2026-06-15) | No code change — FIX protocol only |
+| Trade entries in FIX market data (2026-06-15) | No code change — FIX protocol only |
+| Legacy order mutation endpoints deprecated (2026-06-18) | No code change — planned deprecation not yet reflected in OpenAPI operations; noted in `docs/spec-parity.md` |
+| Event tickers filter on GET /events (2026-06-12) | Added `tickers: Option<String>` to `GetEventsParams` |
+| Subaccount on margin positions (2026-06-11) | No code change — margin position types not in crate |
+| Block-trade accept API key permissions (2026-06-11) | No code change — scopes stored as `Vec<String>` |
+| Sanity limits on orderbook subscriptions (2026-06-12) | No code change — server-side enforcement only |
+| Quote time filters (2026-06-12) | Added `min_ts` and `max_ts` to `GetQuotesParams` |
+| API usage volume progress endpoint (2026-06-09) | Added `get_account_api_usage_level_volume_progress()` and response types |
+| Perps mark prices on margin markets (2026-06-10) | No code change — margin market types not in crate |
+| Self-serve Advanced API usage tier upgrade (2026-06-08) | Added `upgrade_account_api_usage_level()` method |
+
+**Version bump: patch (0.6.0 → 0.6.1).** All changes are additive or deprecations; no public Rust type
+is removed or structurally changed. Per VERSIONING.md, breaking Rust API changes require a minor bump.
+`#[deprecated]` on still-present `Option` fields is source-compatible.
+
+### Added
+
+- [Rust API] Added `settlement_sources: Vec<SettlementSource>` to `EventData` (2026-06-18). Nullable
+  per the OpenAPI; `null` deserializes to an empty vec via `deserialize_null_as_empty_vec`.
+- [Rust API] Added `tickers: Option<String>` (comma-separated event tickers) and
+  `min_updated_ts: Option<i64>` (poll-for-changes filter) to `GetEventsParams`, aligning with the
+  `EventTickersQuery` parameter added to `GET /events` in OpenAPI 3.21.0.
+- [Rust API] Added top-level `cap_strike: Option<f64>`, `strike_type: Option<String>`, and
+  `custom_strike: Option<Map<String, Value>>` to `WsMarketLifecycleV2` and `WsMarketLifecycleV2Ref`
+  (2026-06-17). These fields appear only on `metadata_updated` events alongside the existing
+  `floor_strike` and `yes_sub_title`.
+- [Rust API] Added `min_ts: Option<i64>`, `max_ts: Option<i64>`, and `user_filter: Option<String>` to
+  `GetQuotesParams`, aligning with the new time-window filters on `GET /communications/quotes`
+  (2026-06-12). `user_filter = "self"` restricts to the authenticated user's own quotes.
+- [Rust API] Added `upgrade_account_api_usage_level()` method for the new
+  `POST /account/api_usage_level/upgrade` endpoint (2026-06-08). Returns `EmptyResponse`; rate cost
+  is 30 tokens.
+- [Rust API] Added `get_account_api_usage_level_volume_progress()` method and associated response
+  types `GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`, and
+  `AccountApiUsageLevelVolumeGoal` for `GET /account/api_usage_level/volume_progress` (2026-06-09).
+  Reports trailing-30-day fixed-point volume against tier goals for the predictions lane.
+
+### Deprecated
+
+- [Rust API] `GetQuotesParams::market_ticker` and `GetQuotesParams::event_ticker` are now marked
+  `#[deprecated(since = "0.6.1")]`. Kalshi removed these filter parameters from
+  `GET /communications/quotes` on 2026-06-20 (changelog: "RFQ quote market and event filters
+  removed"). The fields remain in the struct as `Option<String>` to avoid a breaking change, but the
+  server ignores any value sent. Callers should remove these from any `GetQuotesParams` construction.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

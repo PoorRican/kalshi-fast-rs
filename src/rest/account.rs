@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -210,6 +210,35 @@ pub struct GetSubaccountNettingResponse {
     pub netting_configs: Vec<SubaccountNettingConfig>,
 }
 
+/// One volume-based tier goal within a `AccountApiUsageLevelVolumeProgress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level name (e.g. `"expert"`, `"premier"`, `"paragon"`).
+    pub level: String,
+    /// Volume (fixed-point contract count) required to *earn* this tier.
+    pub earn_volume_goal_fp: FixedPointCount,
+    /// Volume required to *keep* this tier once earned.
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Trailing-30-day volume progress toward one volume-based API usage lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this snapshot was computed.
+    pub computed_ts: i64,
+    /// Trailing 30-day trading volume (fixed-point contract count).
+    pub trailing_30d_volume_fp: FixedPointCount,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 impl KalshiRestClient {
     /// Get API rate-limit and position limits for the account.
     ///
@@ -362,6 +391,46 @@ impl KalshiRestClient {
         let path = Self::full_path(&format!("/api_keys/{api_key}"));
         self.send(
             Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant the authenticated user the Advanced API usage tier (Predictions exchange).
+    ///
+    /// Criteria: at least 1 of the user's last 100 Predictions orders was created via API.
+    /// Returns `201` on success; `403` if the criterion is not met.
+    /// **Rate limit cost: 30 tokens (write bucket). Requires auth.**
+    ///
+    /// Added to OpenAPI 2026-06-08.
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get trailing-30-day volume progress toward volume-based API usage tiers.
+    ///
+    /// Reports cron-computed volume for the predictions (`event_contract`) lane.
+    /// Volume-based public tiers include Expert, Premier, Paragon, Prime, and Prestige.
+    /// **Requires auth.**
+    ///
+    /// Added to OpenAPI 2026-06-09.
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
             &path,
             Option::<&()>::None,
             Option::<&()>::None,

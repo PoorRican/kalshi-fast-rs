@@ -91,6 +91,36 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `EventData.settlement_sources` is `required` in the OpenAPI `EventData` schema (added 2026-06-18)
+  but is also `nullable: true`. The crate uses `#[serde(default, deserialize_with =
+  "deserialize_null_as_empty_vec")]` with type `Vec<SettlementSource>` so both `null` and absent
+  deserialize to an empty vec. `SettlementSource` is shared with `Series` and `EventMetadata`.
+
+- The top-level `strike_type`, `cap_strike`, and `custom_strike` fields on `WsMarketLifecycleV2`
+  are present **only** on `metadata_updated` events (added to the AsyncAPI 2026-06-17). They are
+  distinct from the same-named fields inside `additional_metadata`, which are emitted on `created`
+  events. `custom_strike` is `Map<String, Value>` at the top level (the spec says `type: object`
+  with no further constraint) and `BTreeMap<String, String>` inside `additional_metadata` (a tighter
+  historical interpretation preserved for back-compat).
+
+- `GetQuotesParams::market_ticker` and `GetQuotesParams::event_ticker` were removed from
+  `GET /communications/quotes` by Kalshi on 2026-06-20 ("RFQ quote market and event filters
+  removed"). They remain in the Rust struct as `#[deprecated] Option<String>` fields to avoid a
+  breaking change; the server silently ignores them. `user_filter: Option<String>` (pass `"self"`)
+  and time-window params `min_ts`/`max_ts` replaced them as the primary quote filters.
+
+- The legacy `/portfolio/orders` mutation endpoints (`POST`, `DELETE`, `PATCH`) are expected to be
+  deprecated by Kalshi "sometime between June 18 and June 25, 2026" (changelog 2026-06-18). The
+  corresponding crate methods (`create_order`, `cancel_order`, `amend_order`, etc.) are **not** yet
+  marked deprecated because the OpenAPI operations carry no `deprecated` flag as of OpenAPI 3.21.0.
+  The V2 equivalents (`create_order_v2`, etc.) on `/portfolio/events/orders` are the preferred path.
+
+- `AccountApiUsageLevelVolumeProgress.trailing_30d_volume_fp` and the `*_volume_goal_fp` fields on
+  `AccountApiUsageLevelVolumeGoal` use `FixedPointCount` (a `String` alias) because the OpenAPI
+  schema references `FixedPointCount` (2-decimal fixed-point contract count). The `goals` array is
+  `#[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]` to tolerate a missing or
+  null array.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
