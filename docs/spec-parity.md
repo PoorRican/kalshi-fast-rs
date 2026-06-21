@@ -91,6 +91,26 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `EventData.settlement_sources` is listed in the OpenAPI `required` array but is also
+  `nullable: true`. It is modeled as `Option<Vec<SettlementSource>>` with `#[serde(default)]` so
+  payloads that omit the field or send `null` still parse without error. `SettlementSource` is
+  defined once in `rest/series.rs` and re-used by both the series and events APIs.
+
+- `WsMarketLifecycleV2` exposes `strike_type`, `floor_strike`, `cap_strike`, and `yes_sub_title`
+  at the **top level** of the payload for `metadata_updated` events (per AsyncAPI 3.21.0). These are
+  distinct from the same-named fields under `additional_metadata`, which are emitted only on market
+  creation. All four top-level fields are `Option` because the AsyncAPI says they exist "ONLY for
+  `metadata_updated` events" and not on other event types.
+
+- `GetQuotesParams::market_ticker` and `event_ticker` were removed from the Kalshi API on
+  2026-06-20. They are kept in the struct but marked `#[deprecated(since = "0.6.1")]` so callers
+  get a compile-time warning; the fields serialize normally if set (the server ignores them).
+
+- Legacy order mutation methods (`create_order`, `cancel_order`, `amend_order`, `decrease_order`,
+  `batch_create_orders`, `batch_cancel_orders`) are marked `#[deprecated(since = "0.6.1")]`.
+  Kalshi deprecated `/portfolio/orders` on 2026-06-18 in favor of `/portfolio/events/orders`.
+  The corresponding `*_v2` methods (already present since 0.6.0) are the preferred replacements.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

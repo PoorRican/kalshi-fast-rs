@@ -8,6 +8,85 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.6.1] - 2026-06-21
+
+### Compatibility
+
+- Docs snapshot: 2026-06-21
+- OpenAPI: 3.21.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-21
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Date | Action |
+|---|---|---|
+| RFQ quote market and event filters removed | 2026-06-20 | Deprecated `GetQuotesParams::market_ticker` and `event_ticker` with `#[deprecated(since = "0.6.1")]` |
+| `settlement_sources` added to events API | 2026-06-18 | Added `settlement_sources: Option<Vec<SettlementSource>>` to `EventData`; field already existed in `SettlementSource` (series.rs); also added `fee_type_override` / `fee_multiplier_override` to `EventData` per full field-set audit |
+| Strike type and cap strike on market_lifecycle_v2 metadata_updated | 2026-06-17 | Added top-level `strike_type: Option<String>` and `cap_strike: Option<f64>` to `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref`; these are required by the AsyncAPI alongside the already-present `floor_strike` |
+| Legacy order mutation endpoints deprecated | 2026-06-18 | Added `#[deprecated(since = "0.6.1")]` to `create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders` |
+| Event tickers filter on GET /trade-api/v2/events | 2026-06-12 | Added `tickers: Option<Vec<String>>` (CSV) to `GetEventsParams` |
+| Quote time filters and pagination fix | 2026-06-12 | Added `min_ts: Option<i64>` and `max_ts: Option<i64>` to `GetQuotesParams` |
+| API usage volume progress endpoint | 2026-06-09 | Added `get_api_usage_level_volume_progress()` method and `GetAccountApiUsageLevelVolumeProgressResponse` / `AccountApiUsageLevelVolumeProgress` / `AccountApiUsageLevelVolumeGoal` types |
+| Self-serve Advanced API usage tier upgrade | 2026-06-08 | Added `upgrade_api_usage_level()` method (POST /account/api_usage_level/upgrade) |
+| Subaccount on margin positions | 2026-06-11 | No code change — `GET /margin/positions` not in crate scope |
+| Block-trade accept API key permissions | 2026-06-11 | No code change — scopes stored as `Vec<String>` already |
+| Sanity limits enforced on orderbook subscriptions | 2026-06-12 | No code change — server-side enforcement only |
+| Perps mark prices on margin markets | 2026-06-10 | No code change — margin market types not in crate |
+| RFQ quote identity on FIX | 2026-06-15 | No code change — FIX protocol only |
+| Trade entries in FIX market data | 2026-06-15 | No code change — FIX protocol only |
+
+**Additional spec-gap fixes discovered during field-set audit:**
+
+| Gap | Action |
+|---|---|
+| `GetEventsParams` missing `min_updated_ts` (present in OpenAPI, no changelog entry) | Added `min_updated_ts: Option<i64>` |
+| `GetQuotesParams` missing `user_filter` (OpenAPI had it since ≥3.20, no changelog entry) | Added `user_filter: Option<String>` |
+| `Quote` missing `post_only`, `creator_subaccount`, `rfq_creator_subaccount` fields | Added all three as `Option` |
+
+### Added
+
+- [Rust API] Added `settlement_sources: Option<Vec<SettlementSource>>` to `EventData`
+  (2026-06-18). Marked required-but-nullable in the OpenAPI; modeled as `Option` to tolerate
+  absent or `null` values from older payloads.
+- [Rust API] Added `fee_type_override: Option<String>` and `fee_multiplier_override: Option<f64>`
+  to `EventData`. These were present in the OpenAPI schema but missing from the crate struct.
+- [Rust API] Added top-level `strike_type: Option<String>` and `cap_strike: Option<f64>` to
+  `WsMarketLifecycleV2` and `WsMarketLifecycleV2Ref` (2026-06-17). These fields appear alongside
+  `floor_strike` and `yes_sub_title` on `metadata_updated` events per the AsyncAPI payload schema.
+  Updated `into_owned()` and the existing `metadata_updated_surfaces_top_level_fields` unit test to
+  cover both new fields.
+- [Rust API] Added `tickers: Option<Vec<String>>` (CSV) to `GetEventsParams` for the new event-ticker
+  filter added to GET /events on 2026-06-12.
+- [Rust API] Added `min_updated_ts: Option<i64>` to `GetEventsParams` (already in OpenAPI, not
+  previously modeled). Useful for polling: only returns events updated after the given Unix timestamp.
+- [Rust API] Added `min_ts: Option<i64>` and `max_ts: Option<i64>` to `GetQuotesParams` for the
+  last-update-time filters added to GET /communications/quotes on 2026-06-12.
+- [Rust API] Added `user_filter: Option<String>` to `GetQuotesParams` (was in OpenAPI ≥3.20 but
+  missing from the crate). Pass `"self"` to restrict to quotes created by the authenticated user.
+- [Rust API] Added `post_only: Option<bool>`, `creator_subaccount: Option<u32>`, and
+  `rfq_creator_subaccount: Option<u32>` to `Quote` to match all optional fields in the OpenAPI schema.
+- [Rust API] Added `upgrade_api_usage_level()` method (POST /account/api_usage_level/upgrade,
+  2026-06-08). Self-promotes to Advanced API tier when the caller has at least one API-placed order
+  in their last 100. Returns `Ok(())` on 201; `KalshiError::Http` with 403 on ineligibility.
+  **Requires auth.** Rate limit: 30 tokens.
+- [Rust API] Added `get_api_usage_level_volume_progress()` method
+  (GET /account/api_usage_level/volume_progress, 2026-06-09) and three new types:
+  `GetAccountApiUsageLevelVolumeProgressResponse`, `AccountApiUsageLevelVolumeProgress`,
+  `AccountApiUsageLevelVolumeGoal`. Reports trailing 30-day volume toward volume-based tiers.
+  **Requires auth.**
+
+### Deprecated
+
+- [Rust API] `KalshiRestClient::create_order`, `cancel_order`, `amend_order`, `decrease_order`,
+  `batch_create_orders`, `batch_cancel_orders`: Kalshi announced deprecation of the legacy
+  `/portfolio/orders` mutation endpoints on 2026-06-18 (effective between June 18–25). Marked
+  `#[deprecated(since = "0.6.1")]` pointing callers to the corresponding `*_v2` methods.
+- [Rust API] `GetQuotesParams::market_ticker` and `event_ticker`: removed from
+  GET /communications/quotes on 2026-06-20. Marked `#[deprecated(since = "0.6.1")]`; the server
+  silently ignores both fields if sent.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

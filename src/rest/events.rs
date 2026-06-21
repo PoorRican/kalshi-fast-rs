@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, SettlementSource};
+use crate::types::{EventStatus, deserialize_null_as_empty_vec, serialize_csv_opt};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -29,8 +29,17 @@ pub struct GetEventsParams {
     pub status: Option<EventStatus>, // open|closed|settled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+    /// Filter by a comma-separated list of event tickers. Added 2026-06-12.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub tickers: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events updated after this Unix timestamp (seconds). Useful for polling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
@@ -146,6 +155,17 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official settlement sources for this event. Marked required in the
+    /// OpenAPI but nullable; modeled as `Option` to tolerate absent/null.
+    /// Added to the OpenAPI spec on 2026-06-18.
+    #[serde(default)]
+    pub settlement_sources: Option<Vec<SettlementSource>>,
+    /// Event-level fee type override; `None` means no override (uses series default).
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Event-level fee multiplier override; `None` means no override.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
