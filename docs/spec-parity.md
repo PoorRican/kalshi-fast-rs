@@ -91,6 +91,43 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `EventData.settlement_sources` is listed in the OpenAPI `required` array but is simultaneously
+  declared `nullable: true`. In the crate it is modeled as `Option<Vec<SettlementSource>>` with
+  `#[serde(default)]` so payloads that omit the field (predating the June 18, 2026 addition) still
+  parse without error. `SettlementSource` is defined in `rest::series` and re-used here.
+
+- `GET /events` gained two new query parameters in 2026-06: `tickers` (comma-separated event
+  ticker filter, max 10) and `min_updated_ts` (Unix seconds; filter events whose metadata was
+  updated after this timestamp). Both are `Option` in `GetEventsParams`.
+
+- `GET /communications/quotes` had its `event_ticker` and `market_ticker` filter parameters
+  **removed** from the live OpenAPI spec on 2026-06-20. The corresponding fields were removed from
+  `GetQuotesParams` (breaking — drove the 0.6.0 → 0.7.0 minor bump). `min_ts`, `max_ts`, and
+  `user_filter` were added to `GetQuotesParams` at the same time. The fields `quote_creator_user_id`
+  and `rfq_creator_user_id` are deprecated in the spec and carry `#[deprecated]` in Rust.
+  `GET /communications/rfqs` gained a `user_filter` parameter; `creator_user_id` is deprecated
+  there too.
+
+- `WsMarketLifecycleV2` (and its `Ref` counterpart) gained explicit top-level fields `strike_type:
+  Option<String>` and `cap_strike: Option<f64>` (2026-06-17). These join `floor_strike` at the
+  top-level payload for `metadata_updated` events and are distinct from the `additional_metadata.*`
+  copies emitted at market creation. Prior payloads had these falling into the `extra` flatten map;
+  they now surface as named fields.
+
+- `POST /account/api_usage_level/upgrade` (`upgrade_account_api_usage_level`) grants a permanent
+  Advanced API tier for the Predictions lane (added 2026-06-08). Requires at least 1 API-created
+  order among the user's last 100 Predictions orders.
+
+- `GET /account/api_usage_level/volume_progress` (`get_account_api_usage_level_volume_progress`)
+  returns trailing-30-day trading volume progress toward volume-based API tiers (added 2026-06-09).
+  Response types: `GetAccountApiUsageLevelVolumeProgressResponse`,
+  `AccountApiUsageLevelVolumeProgress`, `AccountApiUsageLevelVolumeGoal`. Volume figures are
+  fixed-point contract counts serialized as strings (`FixedPointCount`).
+
+- Legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) are deprecated by Kalshi since
+  2026-06-18. They carry `#[deprecated]` in the crate. Prefer the `*_v2` variants.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

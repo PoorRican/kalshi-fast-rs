@@ -1,9 +1,9 @@
 /// Example of using authenticated REST endpoints:
 /// - Gets balance
-/// - Places an order
+/// - Places an order via the V2 order endpoint (lower rate-limit cost)
 use kalshi_fast::{
-    BuySell, CreateOrderRequest, GetMarketsParams, KalshiAuth, KalshiEnvironment, KalshiRestClient,
-    MarketStatusQuery, OrderType, YesNo,
+    BookSide, CreateOrderV2Request, GetMarketsParams, KalshiAuth, KalshiEnvironment,
+    KalshiRestClient, MarketStatusQuery, SelfTradePreventionType, TimeInForce,
 };
 
 #[tokio::main]
@@ -39,17 +39,24 @@ async fn main() -> anyhow::Result<()> {
 
     println!("market: {}", market.ticker);
 
-    let order = CreateOrderRequest {
+    let order = CreateOrderV2Request {
         ticker: market.ticker,
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Limit),
-        yes_price: Some(1),
-        ..Default::default()
+        side: BookSide::Bid,
+        count: "1".to_string(),
+        price: "0.01".to_string(),
+        time_in_force: TimeInForce::GoodTillCanceled,
+        self_trade_prevention_type: SelfTradePreventionType::Maker,
+        client_order_id: None,
+        expiration_time: None,
+        post_only: None,
+        cancel_order_on_pause: None,
+        reduce_only: None,
+        subaccount: None,
+        order_group_id: None,
+        exchange_index: None,
     };
 
-    let created = client.create_order(order).await?;
-    println!("order_id: {}", created.order.order_id);
+    let created = client.create_order_v2(order).await?;
+    println!("order_id: {}", created.order_id);
     Ok(())
 }

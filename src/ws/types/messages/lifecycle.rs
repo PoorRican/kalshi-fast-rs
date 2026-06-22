@@ -32,6 +32,14 @@ pub struct WsMarketLifecycleV2 {
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level updated cap strike. Per the AsyncAPI this key exists **only**
+    /// on `metadata_updated` events. Added to spec 2026-06-17.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Determines how `floor_strike`/`cap_strike` are interpreted (e.g. `"between"`,
+    /// `"greater"`, `"less"`). Present **only** on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub strike_type: Option<String>,
     /// Top-level updated yes subtitle. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events.
     #[serde(default)]
@@ -150,6 +158,12 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level updated cap strike; present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Strike type interpretation; present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
@@ -175,6 +189,8 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
             floor_strike: self.floor_strike,
+            cap_strike: self.cap_strike,
+            strike_type: self.strike_type.map(Cow::into_owned),
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata

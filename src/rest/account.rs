@@ -71,6 +71,36 @@ pub struct GetAccountEndpointCostsResponse {
     pub endpoint_costs: Vec<EndpointTokenCost>,
 }
 
+/// Per-tier volume goal returned by `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal applies to (e.g. `"expert"`, `"premier"`).
+    pub level: String,
+    /// Volume (fixed-point contract count) required to earn this tier.
+    pub earn_volume_goal_fp: String,
+    /// Volume (fixed-point contract count) required to keep this tier.
+    pub keep_volume_goal_fp: String,
+}
+
+/// Trailing-30-day volume progress toward one volume-based API usage tier.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this snapshot was computed.
+    pub computed_ts: i64,
+    /// Fixed-point contract count volume over the trailing 30 days.
+    pub trailing_30d_volume_fp: String,
+    /// Per-tier earn/keep goals for this lane.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateSubaccountResponse {
     pub subaccount_number: u32,
@@ -216,6 +246,39 @@ impl KalshiRestClient {
     /// **Requires auth.**
     pub async fn get_account_api_limits(&self) -> Result<GetAccountApiLimitsResponse, KalshiError> {
         let path = Self::full_path("/account/limits");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant a permanent Advanced API usage-level grant (self-serve upgrade).
+    ///
+    /// Criteria: at least 1 of the user's last 100 Predictions orders was created via API.
+    /// **Requires auth.** Added 2026-06-08.
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Some(&EmptyResponse::default()),
+            true,
+        )
+        .await
+    }
+
+    /// Get trailing-30-day volume progress toward volume-based API usage tiers.
+    ///
+    /// **Requires auth.** Added 2026-06-09.
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
         self.send(
             Method::GET,
             &path,
