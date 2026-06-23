@@ -91,6 +91,32 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `EventData.settlement_sources` is marked `required` in the OpenAPI schema but also `nullable:
+  true`. It is modeled with `#[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]`
+  so both absent and `null` payloads (from events predating the 2026-06-18 addition) normalize to an
+  empty `Vec`.
+
+- `WsMarketLifecycleV2.strike_type` and `WsMarketLifecycleV2.cap_strike` are top-level fields added
+  by the AsyncAPI on 2026-06-17 for `metadata_updated` events. They are distinct from the same-named
+  fields inside `additional_metadata` (which are emitted only on market creation). Both are `Option`
+  because they are only present on `metadata_updated` events.
+
+- `GetQuotesParams.market_ticker` and `GetQuotesParams.event_ticker` were removed from the
+  `GET /communications/quotes` endpoint on 2026-06-20. Passing them no longer filters results
+  server-side. The fields were removed from the crate struct (0.7.0 minor bump). Callers that relied
+  on these filters must switch to alternative parameters (`rfq_id`, `status`, `user_filter`, etc.).
+
+- The legacy `/portfolio/orders` mutation endpoints (create, cancel, amend, decrease) are deprecated
+  as of 2026-06-18 and redirect to the V2 event-order endpoints (`/portfolio/events/orders/*`).
+  They remain present in the OpenAPI spec and the corresponding crate methods are retained. Callers
+  should migrate to `create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`.
+
+- `GET /account/api_usage_level/volume_progress` and `POST /account/api_usage_level/upgrade` were
+  added to the OpenAPI on 2026-06-08/09. The volume-progress response uses fixed-point contract
+  count strings (`AccountApiUsageLevelVolumeProgress.trailing_30d_volume_fp`,
+  `AccountApiUsageLevelVolumeGoal.earn_volume_goal_fp`, `keep_volume_goal_fp`). These are kept as
+  `String` rather than a newtype so callers choose their own decimal handling.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

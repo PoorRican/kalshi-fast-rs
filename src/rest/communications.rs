@@ -97,26 +97,35 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restricts results to quotes last updated after this Unix timestamp (seconds).
+    /// Added 2026-06-12.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
+    pub min_ts: Option<i64>,
+    /// Restricts results to quotes last updated before this Unix timestamp (seconds).
+    /// Added 2026-06-12.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Deprecated by Kalshi. Prefer `user_filter = "self"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote_creator_user_id: Option<String>,
+    /// Filter for quotes created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
+    /// Filter to quotes responding to RFQs created by the authenticated user.
+    /// Pass `"self"` to enable. Added 2026-05-07.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rfq_user_filter: Option<String>,
+    /// Deprecated by Kalshi. Prefer `rfq_user_filter = "self"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_creator_user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_creator_subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_id: Option<String>,
-    /// Filter to quotes responding to RFQs created by the authenticated user.
-    /// Pass `"self"` to enable. Added 2026-05-07.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rfq_user_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -166,8 +175,12 @@ pub struct GetRFQsParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Deprecated by Kalshi. Prefer `user_filter = "self"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub creator_user_id: Option<String>,
+    /// Filter for RFQs created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

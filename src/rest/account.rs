@@ -60,6 +60,39 @@ pub struct EndpointTokenCost {
     pub cost: i64,
 }
 
+/// Response for `GET /account/api_usage_level/volume_progress`. Added 2026-06-09.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    /// Cron-computed trading-volume progress entries toward volume-based API tiers
+    /// for the predictions (`event_contract`) lane.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
+/// One computed progress snapshot toward volume-based API usage tiers.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed; trailing 30-day
+    /// volume covers the period ending at this time.
+    pub computed_ts: i64,
+    /// Trailing 30-day trading volume as a fixed-point contract count string.
+    pub trailing_30d_volume_fp: String,
+    /// Per-tier volume goals for the predictions lane.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Volume goal for one API usage tier.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal applies to (e.g. `"expert"`, `"premier"`).
+    pub level: String,
+    /// Fixed-point contract count required to earn this tier.
+    pub earn_volume_goal_fp: String,
+    /// Fixed-point contract count required to keep this tier.
+    pub keep_volume_goal_fp: String,
+}
+
 /// Response for `GET /account/endpoint_costs`. Lists only endpoints whose
 /// configured token cost differs from `default_cost`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -216,6 +249,44 @@ impl KalshiRestClient {
     /// **Requires auth.**
     pub async fn get_account_api_limits(&self) -> Result<GetAccountApiLimitsResponse, KalshiError> {
         let path = Self::full_path("/account/limits");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant a permanent Advanced API usage-level for the Predictions exchange instance.
+    ///
+    /// Criteria: at least one of the user's last 100 Predictions orders was placed via API.
+    /// Returns 403 if the criterion is not met. Added 2026-06-08.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get trailing 30-day trading volume progress toward volume-based API usage tiers.
+    ///
+    /// Returns cron-computed progress for the predictions (`event_contract`) lane.
+    /// Added 2026-06-09.
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
         self.send(
             Method::GET,
             &path,
