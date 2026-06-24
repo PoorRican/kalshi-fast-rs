@@ -8,6 +8,78 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-06-24
+
+### Compatibility
+
+- Docs snapshot: 2026-06-24
+- OpenAPI: (from live https://docs.kalshi.com/openapi.yaml, verified 2026-06-24)
+- AsyncAPI: (from live https://docs.kalshi.com/asyncapi.yaml, verified 2026-06-24)
+- Validated through changelog: 2026-06-24
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| API usage tier qualification requirements halved (2026-06-23/25) | No code change — operational qualification change only |
+| RFQ quotes support post-only on FIX (2026-06-24) | No code change — FIX protocol only, not REST/WS |
+| Get Quote rate-limit cost reduced to 2 tokens (2026-06-23) | No code change — rate-limit operational change only |
+| RFQ quote market and event filters removed (2026-06-20) | **Breaking** — removed `event_ticker` and `market_ticker` from `GetQuotesParams`; added `min_ts`, `max_ts`, `user_filter` |
+| Communications RFQ and quote retention window reduced (2026-06-19) | No code change — operational retention window change |
+| `settlement_sources` added to events API (2026-06-18) | Added `settlement_sources: Option<Vec<SettlementSource>>` to `EventData`; `SettlementSource` reused from `series` module |
+| Strike type and cap strike on `market_lifecycle_v2` `metadata_updated` (2026-06-18) | Added `strike_type`, `cap_strike`, `custom_strike` at top level of `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` |
+| RFQ quote identity on FIX (2026-06-18) | No code change — FIX protocol only |
+| Trade entries in FIX market data (2026-06-18) | No code change — FIX protocol only |
+| Legacy order mutation endpoints deprecated (2026-06-18) | Added `#[deprecated]` to `create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders` |
+| Event tickers filter on `GET /events` (2026-06-12/18) | Added `tickers: Option<String>` and `min_updated_ts: Option<i64>` to `GetEventsParams` |
+| Subaccount on margin positions (2026-06-11) | No code change — margin market types not in crate |
+| Block-trade accept API key permissions (2026-06-11) | No code change — scopes stored as `Vec<String>` already |
+| Sanity limits enforced on orderbook subscriptions (2026-06-12) | No code change — operational limit |
+| Quote time filters and pagination fix (2026-06-12) | Covered under "RFQ quote market and event filters removed" row above |
+
+### Added
+
+- [Rust API] Added `tickers: Option<String>` to `GetEventsParams` for the new comma-separated
+  event ticker filter on `GET /events` (2026-06-12).
+- [Rust API] Added `min_updated_ts: Option<i64>` to `GetEventsParams` — filters events with
+  metadata updated after the given Unix timestamp. Present in the OpenAPI but previously missing
+  from the struct.
+- [Rust API] Added `settlement_sources: Option<Vec<SettlementSource>>` to `EventData` for the
+  field added to `GET /events` and `GET /events/{event_ticker}` on 2026-06-18. `SettlementSource`
+  (name, url) was already defined in `series.rs` and is reused here. The field is marked
+  `required` + `nullable` in the OpenAPI; modeled as `Option` so `null` responses parse cleanly.
+- [Rust API] Added `cap_strike: Option<f64>`, `strike_type: Option<String>`, and
+  `custom_strike: Option<serde_json::Value>` at the top level of `WsMarketLifecycleV2` and
+  `WsMarketLifecycleV2Ref` (2026-06-18). These companion fields to `floor_strike` are emitted
+  only on `metadata_updated` events. `custom_strike` is an open JSON object (AsyncAPI: `type:
+  object`, no schema) so `Value` is used for lossless round-trip. Updated `into_owned()` and
+  added `metadata_updated_strike_fields` test.
+- [Rust API] Added `min_ts: Option<i64>` and `max_ts: Option<i64>` to `GetQuotesParams` to
+  filter quotes by last-update time (2026-06-12).
+- [Rust API] Added `user_filter: Option<String>` to `GetQuotesParams` — filters quotes created
+  by the authenticated user; pass `"self"` to enable. Was present in the OpenAPI but missing from
+  the struct.
+- [Rust API] Added `post_only: Option<bool>`, `creator_subaccount: Option<u32>`, and
+  `rfq_creator_subaccount: Option<u32>` to the `Quote` response struct to match the full OpenAPI
+  `Quote` schema (previously captured only by the `extra` flatten).
+
+### Changed
+
+- [Rust API] Marked `create_order`, `cancel_order`, `amend_order`, `decrease_order`,
+  `batch_create_orders`, and `batch_cancel_orders` as `#[deprecated(since = "0.7.0")]`. Kalshi
+  announced deprecation of the `/portfolio/orders` mutation endpoints on 2026-06-18 with
+  effective removal between June 18–25. Use the V2 event-order methods (`create_order_v2`, etc.)
+  on `/portfolio/events/orders/*` instead.
+
+### Breaking
+
+- [Rust API] `GetQuotesParams.event_ticker` and `GetQuotesParams.market_ticker` removed.
+  Kalshi removed these filter parameters from `GET /communications/quotes` on 2026-06-20.
+  Downstream code that set either field must be updated; the server would ignore them anyway.
+- [Rust API] `#[deprecated]` on the six legacy order mutation methods. Code compiled with
+  `#[deny(deprecated)]` will fail to build until callers migrate to the V2 methods.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

@@ -91,6 +91,30 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /communications/quotes` no longer supports `market_ticker` or `event_ticker` query parameters
+  (removed 2026-06-20). These fields were removed from `GetQuotesParams`. Callers must filter by
+  `rfq_id`, `status`, `user_filter`, `rfq_user_filter`, `min_ts`, or `max_ts` instead.
+
+- `settlement_sources` was added to `GET /events` and `GET /events/{event_ticker}` responses on
+  2026-06-18. The OpenAPI marks it `required` but also `nullable: true` on `EventData`. Modeled as
+  `Option<Vec<SettlementSource>>` so that `null` payloads parse without error. `SettlementSource`
+  (fields: `name`, `url`, both `Option<String>`) is defined in `series.rs` and imported by
+  `events.rs`.
+
+- `metadata_updated` events on the `market_lifecycle_v2` channel now include `strike_type` (string),
+  `cap_strike` (number), and `custom_strike` (object, unschematized) at the top level alongside
+  `floor_strike` (added 2026-06-18). All three are `Option` on `WsMarketLifecycleV2` and
+  `WsMarketLifecycleV2Ref`. `custom_strike` uses `Option<serde_json::Value>` because the AsyncAPI
+  declares it `type: object` with no further schema — this preserves arbitrary key/value shapes for
+  custom and structured strike markets without a crate update.
+
+- Legacy `/portfolio/orders` mutation endpoints (`POST /portfolio/orders`,
+  `DELETE /portfolio/orders/{order_id}`, and the amend/decrease/batch variants) were deprecated by
+  Kalshi on 2026-06-18 with effective removal between June 18–25. The corresponding crate methods
+  (`create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`,
+  `batch_cancel_orders`) are marked `#[deprecated(since = "0.7.0")]`. Use the V2 methods
+  (`create_order_v2`, etc.) on `/portfolio/events/orders/*` instead.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -32,6 +32,18 @@ pub struct WsMarketLifecycleV2 {
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level cap (upper bound) strike. Present only on `metadata_updated` events.
+    /// Added 2026-06-18. Pairs with `floor_strike` for `between` markets.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// How `floor_strike`/`cap_strike` are interpreted (e.g. `"between"`, `"greater"`,
+    /// `"less"`). Present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Arbitrary strike mapping for custom/structured markets. Present only on
+    /// `metadata_updated` events with a custom or structured strike type. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<Value>,
     /// Top-level updated yes subtitle. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events.
     #[serde(default)]
@@ -150,6 +162,16 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level cap (upper bound) strike; present only on `metadata_updated` events.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Strike interpretation hint; present only on `metadata_updated` events.
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
+    /// Arbitrary strike mapping for custom/structured markets; present only on
+    /// `metadata_updated` events.
+    #[serde(default)]
+    pub custom_strike: Option<Value>,
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
@@ -175,6 +197,9 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
             floor_strike: self.floor_strike,
+            cap_strike: self.cap_strike,
+            strike_type: self.strike_type.map(Cow::into_owned),
+            custom_strike: self.custom_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
@@ -370,5 +395,40 @@ mod tests {
                 .and_then(Value::as_str),
             Some("kept")
         );
+    }
+
+    /// Per AsyncAPI (2026-06-18), `metadata_updated` now also carries `strike_type`,
+    /// `cap_strike`, and `custom_strike` at the top level.
+    #[test]
+    fn metadata_updated_strike_fields() {
+        let json = r#"{
+            "event_type": "metadata_updated",
+            "market_ticker": "KXBTC-25APR30-T0915-B95000",
+            "strike_type": "between",
+            "floor_strike": 95000.0,
+            "cap_strike": 95250.0
+        }"#;
+
+        let owned: WsMarketLifecycleV2 = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.strike_type.as_deref(), Some("between"));
+        assert_eq!(owned.floor_strike, Some(95000.0));
+        assert_eq!(owned.cap_strike, Some(95250.0));
+        assert!(owned.custom_strike.is_none());
+
+        let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
+        let rt = borrowed.into_owned();
+        assert_eq!(rt.strike_type.as_deref(), Some("between"));
+        assert_eq!(rt.cap_strike, Some(95250.0));
+
+        // Custom strike (object) parses without error.
+        let json2 = r#"{
+            "event_type": "metadata_updated",
+            "market_ticker": "KXBTC-25APR30-CUSTOM",
+            "strike_type": "custom",
+            "custom_strike": {"target_a": "100", "target_b": "200"}
+        }"#;
+        let owned2: WsMarketLifecycleV2 = serde_json::from_str(json2).unwrap();
+        assert_eq!(owned2.strike_type.as_deref(), Some("custom"));
+        assert!(owned2.custom_strike.is_some());
     }
 }

@@ -742,6 +742,13 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    ///
+    /// **Deprecated** by Kalshi between 2026-06-18 and 2026-06-25. Use
+    /// [`create_order_v2`] on the `/portfolio/events/orders` path instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Kalshi deprecated this endpoint June 2026. Use create_order_v2 instead."
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +762,13 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    ///
+    /// **Deprecated** by Kalshi between 2026-06-18 and 2026-06-25. Use
+    /// [`cancel_order_v2`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Kalshi deprecated this endpoint June 2026. Use cancel_order_v2 instead."
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +785,12 @@ impl KalshiRestClient {
         .await
     }
 
+    /// **Deprecated** by Kalshi between 2026-06-18 and 2026-06-25. Use
+    /// [`amend_order_v2`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Kalshi deprecated this endpoint June 2026. Use amend_order_v2 instead."
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +801,12 @@ impl KalshiRestClient {
             .await
     }
 
+    /// **Deprecated** by Kalshi between 2026-06-18 and 2026-06-25. Use
+    /// [`decrease_order_v2`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Kalshi deprecated this endpoint June 2026. Use decrease_order_v2 instead."
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +829,12 @@ impl KalshiRestClient {
         .await
     }
 
+    /// **Deprecated** by Kalshi between 2026-06-18 and 2026-06-25. Use
+    /// [`batch_create_orders_v2`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Kalshi deprecated this endpoint June 2026. Use batch_create_orders_v2 instead."
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +844,12 @@ impl KalshiRestClient {
             .await
     }
 
+    /// **Deprecated** by Kalshi between 2026-06-18 and 2026-06-25. Use
+    /// [`batch_cancel_orders_v2`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Kalshi deprecated this endpoint June 2026. Use batch_cancel_orders_v2 instead."
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,

@@ -45,6 +45,9 @@ pub struct Quote {
     pub cancelled_ts: Option<String>,
     #[serde(default)]
     pub rest_remainder: Option<bool>,
+    /// Whether the quote creator's resting order is post-only. Visible only to the quote creator.
+    #[serde(default)]
+    pub post_only: Option<bool>,
     #[serde(default)]
     pub cancellation_reason: Option<String>,
     #[serde(default)]
@@ -57,6 +60,12 @@ pub struct Quote {
     pub rfq_creator_order_id: Option<String>,
     #[serde(default)]
     pub creator_order_id: Option<String>,
+    /// Subaccount of the quote creator. Visible only to the quote creator.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    /// Subaccount of the RFQ creator. Visible only to the RFQ creator.
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
     #[serde(default)]
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
@@ -97,16 +106,25 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restrict to quotes last updated after this Unix timestamp (seconds).
+    /// Added 2026-06-12.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
+    pub min_ts: Option<i64>,
+    /// Restrict to quotes last updated before this Unix timestamp (seconds).
+    /// Added 2026-06-12.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Filter quotes created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
+    /// Deprecated by upstream. Pass `quote_creator_user_id` via `user_filter` instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote_creator_user_id: Option<String>,
+    /// Deprecated by upstream. Use `rfq_user_filter` instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_creator_user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
