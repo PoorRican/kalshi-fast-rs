@@ -36,11 +36,21 @@ pub struct WsMarketLifecycleV2 {
     /// on `metadata_updated` events.
     #[serde(default)]
     pub yes_sub_title: Option<String>,
+    /// How `floor_strike`/`cap_strike` are interpreted (e.g. `"between"`, `"greater"`,
+    /// `"less"`). Present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Upper-bound strike value. Present only on `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Arbitrary strike object for custom/structured strike types. Present only on
+    /// `metadata_updated` events. Added 2026-06-17.
+    #[serde(default)]
+    pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadata>,
     /// Catches any other top-level keys the exchange attaches to a lifecycle
-    /// event (e.g. future `metadata_updated` fields beyond floor_strike /
-    /// yes_sub_title).
+    /// event (e.g. future `metadata_updated` fields).
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -153,6 +163,15 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
+    /// How `floor_strike`/`cap_strike` are interpreted; present only on `metadata_updated` events.
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
+    /// Upper-bound strike value; present only on `metadata_updated` events.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Arbitrary strike object; present only on `metadata_updated` events with custom strike.
+    #[serde(default)]
+    pub custom_strike: Option<Map<String, Value>>,
     #[serde(default, borrow)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadataRef<'a>>,
     /// Catches any other top-level lifecycle keys not modeled above.
@@ -176,6 +195,9 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
             floor_strike: self.floor_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
+            strike_type: self.strike_type.map(Cow::into_owned),
+            cap_strike: self.cap_strike,
+            custom_strike: self.custom_strike,
             additional_metadata: self
                 .additional_metadata
                 .map(WsMarketLifecycleAdditionalMetadataRef::into_owned),
@@ -333,15 +355,18 @@ impl<'a> WsEventFeeUpdateRef<'a> {
 mod tests {
     use super::*;
 
-    /// Per the AsyncAPI, `metadata_updated` carries the updated values
-    /// (`floor_strike`, `yes_sub_title`) at the top level of the payload, not
-    /// nested under `additional_metadata`. They must not be silently dropped.
+    /// Per the AsyncAPI, `metadata_updated` carries the updated values at the top level of the
+    /// payload, not nested under `additional_metadata`. All five optional strike/title fields
+    /// must be surfaced on both the owned and borrowed paths.
     #[test]
     fn metadata_updated_surfaces_top_level_fields() {
         let json = r#"{
             "event_type": "metadata_updated",
             "market_ticker": "KXHIGHNY-24JAN01-T60",
             "floor_strike": 60.5,
+            "cap_strike": 65.0,
+            "strike_type": "between",
+            "custom_strike": {"label": "60-65"},
             "yes_sub_title": "Above 60°F",
             "some_future_key": "kept"
         }"#;
@@ -352,6 +377,16 @@ mod tests {
             Some(WsMarketLifecycleEventType::MetadataUpdated)
         );
         assert_eq!(owned.floor_strike, Some(60.5));
+        assert_eq!(owned.cap_strike, Some(65.0));
+        assert_eq!(owned.strike_type.as_deref(), Some("between"));
+        assert_eq!(
+            owned
+                .custom_strike
+                .as_ref()
+                .and_then(|m| m.get("label"))
+                .and_then(Value::as_str),
+            Some("60-65")
+        );
         assert_eq!(owned.yes_sub_title.as_deref(), Some("Above 60°F"));
         assert_eq!(
             owned.extra.get("some_future_key").and_then(Value::as_str),
@@ -362,6 +397,8 @@ mod tests {
         let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
         let round_tripped = borrowed.into_owned();
         assert_eq!(round_tripped.floor_strike, Some(60.5));
+        assert_eq!(round_tripped.cap_strike, Some(65.0));
+        assert_eq!(round_tripped.strike_type.as_deref(), Some("between"));
         assert_eq!(round_tripped.yes_sub_title.as_deref(), Some("Above 60°F"));
         assert_eq!(
             round_tripped

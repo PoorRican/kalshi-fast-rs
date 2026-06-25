@@ -91,6 +91,43 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **`SubaccountBalance.exchange_index`** (2026-06-24): The OpenAPI now marks `exchange_index:
+  integer` as a required field on `SubaccountBalance`. It is modeled as `i32` (signed, consistent
+  with `ExchangeIndex` usage elsewhere). Adding this required field is a breaking struct change
+  (exhaustive destructuring fails); callers should update patterns to include the new field.
+
+- **`settlement_sources` on `EventData`** (2026-06-18): The OpenAPI marks `settlement_sources` as
+  required on `EventData`, but also marks it `nullable: true`. Modeled as `Option<Vec<SettlementSource>>`
+  so payloads that send `null` or omit the field still parse. `SettlementSource` is re-exported from
+  `series::SettlementSource` (the same struct already used for series and event-metadata responses).
+
+- **`tickers` filter on `GET /events`** (2026-06-12): The parameter is named `tickers` (not
+  `event_tickers`) per the `EventTickersQuery` parameter definition in the OpenAPI. Pass a
+  comma-separated string. This is distinct from `series_ticker` (singular, one series only).
+
+- **Strike fields on `metadata_updated` WS events** (2026-06-17): `strike_type`, `cap_strike`, and
+  `custom_strike` are now emitted as top-level fields on `metadata_updated` lifecycle events (same
+  level as the pre-existing `floor_strike` and `yes_sub_title`). All three are `Option` because
+  the AsyncAPI marks them conditional on `metadata_updated`. `custom_strike` is modeled as
+  `Option<Map<String, Value>>` (open object shape with no defined properties).
+
+- **RFQ-scoped quote endpoints** (2026-06-24): Three new endpoints allow quote actions scoped to
+  their RFQ: `DELETE /communications/rfqs/{rfq_id}/quotes/{quote_id}` (`delete_rfq_quote`),
+  `PUT .../accept` (`accept_rfq_quote`), and `PUT .../confirm` (`confirm_rfq_quote`). The
+  unscoped equivalents (`delete_quote`, `accept_quote`, `confirm_quote`) remain available but the
+  server may eventually require the RFQ-scoped paths.
+
+- **`GetQuotesParams.market_ticker` / `event_ticker` removed** (2026-06-20): The Kalshi API
+  dropped these query parameters from `GET /communications/quotes`. The fields remain in the struct
+  for source compatibility but are documented as deprecated. The server silently ignores them; use
+  `rfq_id` to scope quote queries.
+
+- **Legacy order mutation endpoints deprecated** (2026-06-18): `create_order`, `cancel_order`,
+  `amend_order`, `decrease_order`, `batch_create_orders`, and `batch_cancel_orders` are now
+  `#[deprecated]` in Rust. Use the `*_v2` equivalents (`create_order_v2`, etc.) via
+  `POST /portfolio/events/orders` instead. The server returns an error directing clients to the V2
+  path once the legacy path is shut down.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
