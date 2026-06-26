@@ -91,6 +91,32 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `SubaccountBalance.exchange_index` is marked `required` in OpenAPI 3.22.0 (added 2026-06-24,
+  per-index subaccount balances). However, the field was just introduced, so responses from before
+  the server roll may omit it. Modeled as `Option<i32>` with `#[serde(default)]` to tolerate
+  both old and new payloads.
+
+- `EventData.settlement_sources` is listed as `required` in OpenAPI but carries `nullable: true`.
+  Modeled as `Vec<SettlementSource>` with `#[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]`
+  so a `null` value or absent field both produce an empty vec without a parse error.
+  `fee_type_override` and `fee_multiplier_override` (also on `EventData`) are modeled as `Option`
+  because they are `nullable` and `x-omitempty` in the spec, indicating conditional presence.
+
+- `GET /communications/quotes` removed `market_ticker` and `event_ticker` filter parameters in
+  2026-06-20. These fields have been removed from `GetQuotesParams`. Callers that were using these
+  filters must switch to `rfq_id`, `status`, `user_filter`, or time-range filters (`min_ts`, `max_ts`).
+
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were deprecated by Kalshi on
+  2026-06-18 in favor of the V2 event-order endpoints (`/portfolio/events/orders/*`) which cost
+  10× fewer rate-limit tokens. The legacy methods are still callable but carry `#[deprecated]`
+  attributes. Use the corresponding `*_v2` methods instead.
+
+- RFQ-scoped quote actions (`delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`) were
+  added in 2026-06-25. These route through `rfq_id` in the path for unambiguous quote resolution.
+  The original quote-ID-only endpoints remain available. The changelog notes that `rfq_id` may
+  become required for quote actions in a future migration.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -5,7 +5,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
+use crate::rest::series::{EventMetadata, SettlementSource};
 use crate::types::{EventStatus, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
 use reqwest::Method;
@@ -31,6 +31,13 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    /// Use to efficiently poll for changes. Added 2026-06-12.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
+    /// Comma-separated list of event tickers to filter by. Added 2026-06-12.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
 }
 
 impl GetEventsParams {
@@ -146,6 +153,19 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official settlement sources for this event. Required in OpenAPI but nullable.
+    /// Added to event responses 2026-06-18.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    /// Fee type override for this event; takes precedence over series-level fee.
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Fee multiplier override for this event. Paired with `fee_type_override`.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
+    /// Exchange shard index for this event. Defaults to 0.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

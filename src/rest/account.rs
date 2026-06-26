@@ -79,6 +79,10 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange shard the balance is held on. Required in OpenAPI as of 2026-06-24
+    /// but newly added, so older payloads may omit it. Modeled as Option.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,

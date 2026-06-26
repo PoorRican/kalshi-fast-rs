@@ -1234,13 +1234,21 @@ fn get_account_endpoint_costs_response_deserializes() {
 
 #[test]
 fn get_subaccount_balances_response_deserializes() {
+    // Old shape without exchange_index (pre-2026-06-24 payloads must still parse).
     let json = r#"{
         "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
     }"#;
-
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert!(resp.subaccount_balances[0].exchange_index.is_none());
+
+    // New shape with exchange_index (post-2026-06-24 payloads).
+    let json2 = r#"{
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
+    }"#;
+    let resp2: GetSubaccountBalancesResponse = serde_json::from_str(json2).unwrap();
+    assert_eq!(resp2.subaccount_balances[0].exchange_index, Some(0));
 }
 
 #[test]
@@ -1676,6 +1684,50 @@ fn event_data_deserializes_with_partial_product_metadata() {
         meta.extra.get("new_product_flag").and_then(|v| v.as_bool()),
         Some(true)
     );
+}
+
+#[test]
+fn event_data_deserializes_settlement_sources() {
+    // settlement_sources added to event responses 2026-06-18.
+    let json = r#"{
+        "event_ticker": "EVT-2",
+        "settlement_sources": [
+            {"name": "US Bureau of Labor Statistics", "url": "https://bls.gov"}
+        ]
+    }"#;
+    let event: EventData = serde_json::from_str(json).unwrap();
+    assert_eq!(event.settlement_sources.len(), 1);
+    assert_eq!(
+        event.settlement_sources[0].name.as_deref(),
+        Some("US Bureau of Labor Statistics")
+    );
+    assert_eq!(
+        event.settlement_sources[0].url.as_deref(),
+        Some("https://bls.gov")
+    );
+
+    // null settlement_sources should produce empty vec (nullable in OpenAPI).
+    let json_null = r#"{"event_ticker": "EVT-3", "settlement_sources": null}"#;
+    let event_null: EventData = serde_json::from_str(json_null).unwrap();
+    assert!(event_null.settlement_sources.is_empty());
+
+    // absent settlement_sources should also produce empty vec (default).
+    let json_absent = r#"{"event_ticker": "EVT-4"}"#;
+    let event_absent: EventData = serde_json::from_str(json_absent).unwrap();
+    assert!(event_absent.settlement_sources.is_empty());
+}
+
+#[test]
+fn get_events_params_serializes_new_filters() {
+    // tickers and min_updated_ts added 2026-06-12.
+    let params = GetEventsParams {
+        tickers: Some("EVT-A,EVT-B".to_string()),
+        min_updated_ts: Some(1_700_000_000),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["tickers"], "EVT-A,EVT-B");
+    assert_eq!(json["min_updated_ts"], 1_700_000_000);
 }
 
 #[test]
