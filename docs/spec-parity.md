@@ -91,6 +91,39 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/status` (`get_exchange_status`) now returns two additional fields
+  (added 2026-06-26): `intra_exchange_transfers_active` (bool) at the top level, and
+  `exchange_index_statuses` (array of `ExchangeIndexStatus`). Both are `Option` in the crate
+  because the spec marks them absent when unavailable. `ExchangeIndexStatus` has all four fields
+  required in the OpenAPI schema.
+
+- `GET /portfolio/subaccounts/balances` (`get_subaccount_balances`) now returns one entry per
+  exchange index (added 2026-06-24). The `exchange_index` field is required by the current OpenAPI
+  schema and is modeled as `i32` with `#[serde(default)]` (defaults to `0`, the primary index) so
+  that responses predating the field still parse correctly.
+
+- `GET /events` (`get_events`) — `EventData` now carries three additional fields that were
+  previously silently captured in `extra`: `settlement_sources` (added 2026-06-18, nullable array,
+  empty-vec default), `fee_type_override` (nullable `Option<String>`), and
+  `fee_multiplier_override` (nullable `Option<f64>`). `exchange_index: Option<i32>` is also
+  added. The `SettlementSource` type is defined in `series.rs` and re-exported from the crate root.
+
+- `market_lifecycle_v2` WebSocket `metadata_updated` events now carry `strike_type` and
+  `cap_strike` at the **top level** of the payload alongside `floor_strike` (added 2026-06-17).
+  `strike_type` is a string (`"between"`, `"greater"`, `"less"`) that determines which bound(s) are
+  meaningful. These fields are modeled on `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` as
+  `Option` (present only on `metadata_updated`). The nested copies in
+  `WsMarketLifecycleAdditionalMetadata` (emitted only on market creation) remain unchanged.
+
+- `GET /communications/quotes` — `market_ticker` and `event_ticker` query parameters were removed
+  from the API on 2026-06-20 and from `GetQuotesParams` in this crate (0.7.0 breaking change).
+  Use `rfq_id`, `status`, `user_filter`, or `rfq_user_filter` instead.
+
+- RFQ-scoped quote actions (`DELETE`/`accept`/`confirm` via
+  `/communications/rfqs/{rfq_id}/quotes/{quote_id}[/accept|confirm]`) were added 2026-06-25.
+  The crate exposes `delete_rfq_quote`, `accept_rfq_quote`, and `confirm_rfq_quote` methods
+  that include `rfq_id` in the path for enhanced durability tracking.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

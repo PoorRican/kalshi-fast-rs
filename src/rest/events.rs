@@ -5,7 +5,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
+use crate::rest::series::{EventMetadata, SettlementSource};
 use crate::types::{EventStatus, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
 use reqwest::Method;
@@ -146,6 +146,21 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Settlement sources added to the events API on 2026-06-18. Nullable in the
+    /// OpenAPI spec; deserializes to an empty vec when null or absent.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    /// Fee type override for this event; takes precedence over the series-level fee.
+    /// Nullable per OpenAPI.
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Fee multiplier override for this event; paired with `fee_type_override`.
+    /// Nullable per OpenAPI.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
+    /// Exchange index this event's markets live on. Defaults to 0 (primary) when absent.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

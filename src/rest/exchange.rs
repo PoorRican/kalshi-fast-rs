@@ -11,12 +11,30 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Per-index status entry returned by `GET /exchange/status` (added 2026-06-26).
+/// One entry per exchange index; the top-level fields on `GetExchangeStatusResponse`
+/// reflect the default index (0).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: i32,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Whether intra-exchange transfers are currently permitted (added 2026-06-26).
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-index status breakdown (added 2026-06-26). Absent when the breakdown
+    /// is unavailable; the top-level fields reflect index 0.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

@@ -1235,12 +1235,26 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+}
+
+/// Old responses (pre-2026-06-24) without `exchange_index` must still parse;
+/// the field defaults to 0 (primary exchange index).
+#[test]
+fn get_subaccount_balances_response_deserializes_without_exchange_index() {
+    let json = r#"{
+        "subaccount_balances": [{"subaccount_number":1,"balance":"100.00","updated_ts":1700000000}]
+    }"#;
+
+    let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
+    assert_eq!(resp.subaccount_balances[0].balance, "100.00");
 }
 
 #[test]

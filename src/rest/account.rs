@@ -79,6 +79,11 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index this balance is held on (added 2026-06-24). Required per
+    /// the current OpenAPI spec; defaults to 0 (primary index) for responses
+    /// predating the field.
+    #[serde(default)]
+    pub exchange_index: i32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
