@@ -8,6 +8,79 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-06-28
+
+### Compatibility
+
+- Docs snapshot: 2026-06-28
+- OpenAPI: (fetched 2026-06-28; version string not advertised in YAML)
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-28
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Date | Action |
+|---|---|---|
+| Margin risk per-market metrics limited to single-position subaccounts/gross markets | 2026-06-27 | No code change — margin market types not in crate |
+| Per-index exchange status (`intra_exchange_transfers_active`, `exchange_index_statuses`) | 2026-06-26 | **Added** — new fields on `GetExchangeStatusResponse`; new `ExchangeIndexStatus` struct |
+| Per-index subaccount balances (`exchange_index` field added, required) | 2026-06-24 | **Added** — `exchange_index: i32` to `SubaccountBalance` |
+| More specific FIX rejects for cancel/replace failures | 2026-06-25 | No code change — FIX protocol only |
+| RFQ quote retention window reduced to 7 days | 2026-06-24 | No code change — operational retention change |
+| RFQ-scoped quote action endpoints | 2026-06-25 | **Added** — `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote` |
+| API usage tier qualification requirements halved | 2026-06-23 | No code change — operational policy change |
+| FIX exchange index routing via `ExDestination<100>` | 2026-06-24 | No code change — FIX protocol only |
+| FIX RFQ quote post-only support (`ExecInst<18>=6`) | 2026-06-24 | No code change — FIX protocol only |
+| Get Quote rate-limit cost reduced to 2 tokens | 2026-06-23 | No code change — operational rate-limit change |
+| `GET /communications/quotes` `market_ticker` / `event_ticker` filters removed | 2026-06-20 | **Breaking** — removed from `GetQuotesParams`; added `min_ts`, `max_ts`, `user_filter` |
+| RFQ quote identity on FIX (quoter public ID in `NoPartyIDs`) | 2026-06-15 | No code change — FIX protocol only |
+| Trade entries in FIX market data | 2026-06-15 | No code change — FIX protocol only |
+| `settlement_sources` added to events API (`GET /events`, `GET /events/{event_ticker}`) | 2026-06-18 | **Added** — `settlement_sources: Option<Vec<SettlementSource>>` to `EventData` |
+| `strike_type` and `cap_strike` on `market_lifecycle_v2` `metadata_updated` events | 2026-06-17 | **Added** — top-level `strike_type`, `cap_strike`, `custom_strike` on `WsMarketLifecycleV2/Ref` |
+
+**Version bump:** 0.6.0 → 0.7.0 (minor). Removing `market_ticker` and `event_ticker` from
+`GetQuotesParams` is a breaking Rust API change (VERSIONING.md: pre-1.0, any breaking change is a
+minor bump).
+
+### Added
+
+- [Rust API] Added `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse`.
+  Both are `Option` because older payloads lack the fields. New `ExchangeIndexStatus` struct holds
+  `exchange_index: i32`, `exchange_active`, `trading_active`, and `intra_exchange_transfers_active`
+  per shard. (2026-06-26)
+- [Rust API] Added `exchange_index: i32` (with `#[serde(default)]`) to `SubaccountBalance`.
+  The field is required in the new OpenAPI shape; the default of `0` preserves parsing of any
+  legacy payloads. (2026-06-24)
+- [Rust API] Added `settlement_sources: Option<Vec<SettlementSource>>` to `EventData`. The
+  `SettlementSource` type is reused from `rest::series`. The field is `Option` because the OpenAPI
+  marks it `nullable` despite being in the `required` array. (2026-06-18)
+- [Rust API] Added top-level `strike_type: Option<String>`, `cap_strike: Option<f64>`, and
+  `custom_strike: Option<Map<String, Value>>` to `WsMarketLifecycleV2` and `WsMarketLifecycleV2Ref`.
+  Per the AsyncAPI these keys are present only on `metadata_updated` events (alongside the already-
+  modeled `floor_strike` and `yes_sub_title`). (2026-06-17)
+- [Rust API] Added `min_ts: Option<i64>`, `max_ts: Option<i64>`, and `user_filter: Option<String>`
+  to `GetQuotesParams` to match the current OpenAPI parameter set.
+- [Rust API] Added `user_filter: Option<String>` to `GetRFQsParams`.
+- [Rust API] Added `delete_rfq_quote`, `accept_rfq_quote`, and `confirm_rfq_quote` methods to
+  `KalshiRestClient` for the new RFQ-scoped quote action endpoints
+  (`/communications/rfqs/{rfq_id}/quotes/{quote_id}` DELETE / `accept` PUT / `confirm` PUT). These
+  use the same request/response types as the existing flat-path variants. (2026-06-25)
+
+### Changed
+
+- [Rust API] `quote_creator_user_id` and `rfq_creator_user_id` on `GetQuotesParams` are now
+  `#[deprecated]`; the OpenAPI marks them deprecated. Use `user_filter` and `rfq_user_filter`
+  respectively.
+- [Rust API] `creator_user_id` on `GetRFQsParams` is now `#[deprecated]`; use `user_filter`.
+
+### Breaking
+
+- [Rust API] `GetQuotesParams` no longer has `event_ticker` or `market_ticker` fields. These query
+  parameters were removed from `GET /communications/quotes` by Kalshi on 2026-06-20. Downstream code
+  that set these fields must switch to `rfq_id`, `rfq_user_filter`, `user_filter`, `status`,
+  `min_ts`, or `max_ts`.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

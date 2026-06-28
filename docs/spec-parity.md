@@ -91,6 +91,39 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/status` now returns `intra_exchange_transfers_active: bool` and
+  `exchange_index_statuses: Vec<ExchangeIndexStatus>` (added 2026-06-26). Both are modeled as
+  `Option` on `GetExchangeStatusResponse` because older payloads may omit them. `ExchangeIndexStatus`
+  is the per-shard breakdown; `exchange_index` is an `i32` matching the OpenAPI `ExchangeIndex`
+  integer type (currently only `0` in production).
+
+- `EventData.settlement_sources` was added to the OpenAPI `EventData` required array in 2026-06-18,
+  but the field is `nullable: true`. It is modeled as `Option<Vec<SettlementSource>>` with
+  `#[serde(default)]` so both `null` and absent parse as `None`. `SettlementSource` is already
+  defined in `rest::series` (used by `Series` and `EventMetadata`) and re-used here.
+
+- `SubaccountBalance.exchange_index: i32` was added to the OpenAPI `required` array in 2026-06-24
+  when per-index subaccount balances launched. It is modeled with `#[serde(default)]` (defaults to
+  `0`) so payloads from before the change still parse.
+
+- `GET /communications/quotes` no longer accepts `market_ticker` or `event_ticker` query parameters
+  as of 2026-06-20. These fields have been removed from `GetQuotesParams`. The deprecated
+  `quote_creator_user_id` and `rfq_creator_user_id` parameters are still accepted by the server but
+  marked `#[deprecated]` in Rust; use `user_filter` and `rfq_user_filter` instead. The new
+  `user_filter`, `min_ts`, and `max_ts` parameters are now present in the struct.
+
+- `WsMarketLifecycleV2` `metadata_updated` events now carry `strike_type`, `cap_strike`, and
+  `custom_strike` at the top level of the payload (in addition to `floor_strike` and `yes_sub_title`,
+  which were already modeled). All three are present only on `metadata_updated` events. `custom_strike`
+  is kept as `Option<Map<String, Value>>` (not a typed struct) because the OpenAPI describes it as a
+  generic object with no fixed properties. `WsMarketLifecycleAdditionalMetadata` retains its own
+  copies of these fields as they are separately emitted on `created` events.
+
+- RFQ-scoped quote action endpoints (`DELETE /communications/rfqs/{rfq_id}/quotes/{quote_id}`,
+  `PUT .../accept`, `PUT .../confirm`) were added to the OpenAPI in 2026-06-25. These are modeled
+  as `delete_rfq_quote`, `accept_rfq_quote`, and `confirm_rfq_quote` on `KalshiRestClient`. They
+  use the same request/response types as the existing flat-path variants.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

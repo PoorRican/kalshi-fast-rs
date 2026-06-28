@@ -4,15 +4,16 @@ pub(crate) use cargo_husky as _;
 use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
-    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
-    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
-    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
+    ExchangeIndexStatus, GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse,
+    GetEventsParams, GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse,
+    GetExchangeStatusResponse, GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse,
+    GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams,
+    GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse, GetSettlementsParams,
+    GetSettlementsResponse, GetSubaccountBalancesResponse, GetSubaccountTransfersParams,
+    GetSubaccountTransfersResponse, GetTradesParams, GetTradesResponse,
+    GetUserDataTimestampResponse, MarketMetadata, MarketStatus, MarketStatusConversionError,
+    MarketStatusQuery, MveFilter, OrderStatus, OrderType, PositionCountFilter, PriceRange,
+    SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
 
 // ============================================================================
@@ -1057,7 +1058,16 @@ fn get_exchange_status_response_deserializes() {
     let json = r#"{
         "exchange_active": true,
         "trading_active": false,
-        "exchange_estimated_resume_time": "2025-01-01T00:00:00Z"
+        "exchange_estimated_resume_time": "2025-01-01T00:00:00Z",
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "exchange_active": true,
+                "trading_active": false,
+                "intra_exchange_transfers_active": true
+            }
+        ]
     }"#;
 
     let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
@@ -1067,6 +1077,25 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    let statuses = resp.exchange_index_statuses.as_ref().unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].exchange_index, 0);
+    assert!(statuses[0].trading_active == false);
+    assert!(statuses[0].intra_exchange_transfers_active);
+}
+
+#[test]
+fn get_exchange_status_response_deserializes_legacy_shape() {
+    // Old payloads without the new fields must still parse.
+    let json = r#"{
+        "exchange_active": true,
+        "trading_active": true
+    }"#;
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert!(resp.exchange_active);
+    assert!(resp.intra_exchange_transfers_active.is_none());
+    assert!(resp.exchange_index_statuses.is_none());
 }
 
 #[test]
@@ -1655,6 +1684,31 @@ fn market_metadata_deserializes_without_image_url() {
     assert_eq!(meta.market_ticker, "MKT-1");
     assert!(meta.image_url.is_none());
     assert!(meta.color_code.is_none());
+}
+
+#[test]
+fn event_data_deserializes_settlement_sources() {
+    // settlement_sources was added to EventData in 2026-06-18.
+    let json = r#"{
+        "event_ticker": "EVT-1",
+        "settlement_sources": [
+            {"name": "Source A", "url": "https://example.com/a"},
+            {"name": "Source B"}
+        ]
+    }"#;
+    let event: EventData = serde_json::from_str(json).unwrap();
+    let sources = event.settlement_sources.unwrap();
+    assert_eq!(sources.len(), 2);
+    assert_eq!(sources[0].name.as_deref(), Some("Source A"));
+    assert_eq!(sources[1].url, None);
+}
+
+#[test]
+fn event_data_deserializes_null_settlement_sources() {
+    // The OpenAPI marks settlement_sources as nullable; null must parse as None.
+    let json = r#"{"event_ticker": "EVT-1", "settlement_sources": null}"#;
+    let event: EventData = serde_json::from_str(json).unwrap();
+    assert!(event.settlement_sources.is_none());
 }
 
 #[test]

@@ -15,8 +15,25 @@ use serde_json::{Map, Value};
 pub struct GetExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    /// Whether intra-exchange transfers are currently permitted. Added 2026-06-26.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Per-index breakdown. Absent when the per-index breakdown is unavailable. Added 2026-06-26.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+/// Per-exchange-index status. Present in `GetExchangeStatusResponse.exchange_index_statuses`.
+/// Added 2026-06-26.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    /// Exchange shard identifier (currently only `0` in production).
+    pub exchange_index: i32,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
