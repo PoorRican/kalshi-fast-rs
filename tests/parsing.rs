@@ -4,16 +4,15 @@ pub(crate) use cargo_husky as _;
 use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
-    ExchangeIndexStatus, GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse,
-    GetEventsParams, GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse,
-    GetExchangeStatusResponse, GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse,
-    GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams,
-    GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse, GetSettlementsParams,
-    GetSettlementsResponse, GetSubaccountBalancesResponse, GetSubaccountTransfersParams,
-    GetSubaccountTransfersResponse, GetTradesParams, GetTradesResponse,
-    GetUserDataTimestampResponse, MarketMetadata, MarketStatus, MarketStatusConversionError,
-    MarketStatusQuery, MveFilter, OrderStatus, OrderType, PositionCountFilter, PriceRange,
-    SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
+    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
+    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
+    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
+    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
+    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
+    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
+    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
+    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
 
 // ============================================================================
@@ -1081,7 +1080,7 @@ fn get_exchange_status_response_deserializes() {
     let statuses = resp.exchange_index_statuses.as_ref().unwrap();
     assert_eq!(statuses.len(), 1);
     assert_eq!(statuses[0].exchange_index, 0);
-    assert!(statuses[0].trading_active == false);
+    assert!(!statuses[0].trading_active);
     assert!(statuses[0].intra_exchange_transfers_active);
 }
 
