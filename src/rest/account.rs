@@ -76,9 +76,18 @@ pub struct CreateSubaccountResponse {
     pub subaccount_number: u32,
 }
 
+/// Balance for one (subaccount, exchange_index) pair.
+///
+/// `GET /portfolio/subaccounts/balances` was updated 2026-06-24 to return one
+/// balance per exchange index rather than one per subaccount. `exchange_index`
+/// is required by the spec (defaults to 0 when the server omits it during any
+/// transition window, per the ExchangeIndex schema description).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange shard this balance is held on. Currently always 0. Added 2026-06-24.
+    #[serde(default)]
+    pub exchange_index: i32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,

@@ -91,6 +91,42 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/status` now returns `intra_exchange_transfers_active` and `exchange_index_statuses`
+  (added 2026-06-26). `intra_exchange_transfers_active` is NOT in the OpenAPI `required` list for
+  `ExchangeStatus` and is modeled as `Option<bool>` with `#[serde(default)]`. `exchange_index_statuses`
+  is also optional ("Absent when the per-index breakdown is unavailable"). A new `ExchangeIndexStatus`
+  struct covers the per-shard fields; its `intra_exchange_transfers_active` IS in the `required` list
+  and is modeled as a plain `bool`.
+
+- `SubaccountBalance` gained `exchange_index: i32` (added 2026-06-24). The spec marks it required;
+  `#[serde(default)]` is used for deserialization so any pre-rollout payloads (or future exchange
+  instances that omit the field) still parse. Currently always 0 (the only supported exchange index).
+  Adding the field is a breaking struct-literal change → 0.6.0 → 0.7.0 (minor bump per VERSIONING.md).
+
+- `EventData` now includes `settlement_sources: Vec<SettlementSource>` and `fee_type_override` /
+  `fee_multiplier_override` (added to the events API 2026-06-18). All three are nullable in the OpenAPI
+  schema; `settlement_sources` uses `deserialize_null_as_empty_vec` and the two override fields are
+  `Option`. These fields were previously captured by the `extra` flatten; callers relying on
+  `extra["settlement_sources"]` must migrate to the typed field.
+
+- `WsMarketLifecycleV2` now exposes `strike_type: Option<String>` and `cap_strike: Option<f64>` at
+  the top level (added 2026-06-17). Per the AsyncAPI these keys appear **only** on `metadata_updated`
+  events. Both fields were previously silently captured by the `extra` flatten. Note that
+  `WsMarketLifecycleAdditionalMetadata` already had `strike_type` and `cap_strike` for the creation-time
+  `additional_metadata.*` copy; the top-level variants are distinct and represent the updated values.
+
+- `GetQuotesParams.event_ticker` and `GetQuotesParams.market_ticker` were removed server-side on
+  2026-06-20. They are marked `#[deprecated(since = "0.7.0")]`; passing them has no effect on
+  filtering. New query parameters `user_filter`, `min_ts`, and `max_ts` were added to
+  `GetQuotesParams`. `quote_creator_user_id` and `rfq_creator_user_id` are also marked deprecated
+  upstream (use `user_filter` / `rfq_user_filter` instead).
+
+- Three new RFQ-scoped communications methods were added (2026-06-25): `delete_rfq_quote`,
+  `accept_rfq_quote`, and `confirm_rfq_quote`. These mirror the existing flat-path equivalents
+  (`delete_quote`, `accept_quote`, `confirm_quote`) but are scoped under
+  `/communications/rfqs/{rfq_id}/quotes/{quote_id}/…`. The OpenAPI only provides a `DELETE` at the
+  RFQ-scoped quote path (no `GET`); the existing `get_quote` method remains the canonical read path.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

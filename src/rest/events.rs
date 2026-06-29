@@ -6,6 +6,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::series::EventMetadata;
+use crate::rest::series::SettlementSource;
 use crate::types::{EventStatus, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
 use reqwest::Method;
@@ -146,6 +147,14 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official settlement sources for this event. Added to the events API 2026-06-18.
+    /// Marked required+nullable in the OpenAPI schema; `null` is treated as an empty list.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

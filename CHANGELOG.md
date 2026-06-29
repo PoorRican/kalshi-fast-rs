@@ -8,6 +8,70 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-06-29
+
+### Compatibility
+
+- Docs snapshot: 2026-06-29
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-27
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Margin risk per-market metrics (2026-06-27) | No code change — per-market margin fields are only returned for single-position subaccounts / gross margin; no type changes needed |
+| Per-index exchange status (2026-06-26) | **Changed** — added `intra_exchange_transfers_active: Option<bool>` and `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse`; added `ExchangeIndexStatus` struct |
+| Per-index subaccount balances (2026-06-24) | **Breaking** — added `exchange_index: i32` to `SubaccountBalance` (`#[serde(default)]` for deserialization safety; struct-literal construction breaks) |
+| FIX cancel/replace rejection specificity (2026-06-25) | No code change — FIX protocol only |
+| RFQ quote retention and actions (2026-06-25) | Added `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote` methods on `KalshiRestClient` |
+| API tier qualification halved (2026-06-23) | No code change — operational change only |
+| FIX exchange index routing (2026-06-24) | No code change — FIX protocol only |
+| RFQ post-only on FIX (2026-06-24) | No code change — FIX protocol only |
+| Quote retrieval rate-limit reduction (2026-06-23) | No code change — rate-limit operational change only |
+| RFQ filtering removed (2026-06-20) | Deprecated `GetQuotesParams::event_ticker` and `market_ticker`; added `user_filter`, `min_ts`, `max_ts`; deprecated `quote_creator_user_id` and `rfq_creator_user_id` |
+| Retention window reduction (2026-06-19) | No code change — server-side retention policy only |
+| Settlement sources in events API (2026-06-18) | Added `settlement_sources: Vec<SettlementSource>`, `fee_type_override: Option<String>`, `fee_multiplier_override: Option<f64>` to `EventData` |
+| Enhanced market lifecycle data (2026-06-17) | Added `strike_type: Option<String>` and `cap_strike: Option<f64>` as top-level fields on `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` |
+| RFQ quote identity on FIX (2026-06-15) | No code change — FIX protocol only |
+| Trade data in FIX market feeds (2026-06-15) | No code change — FIX protocol only |
+
+### Added
+
+- [Rust API] Added `ExchangeIndexStatus` struct with fields `exchange_index: i32`,
+  `exchange_active: bool`, `trading_active: bool`, `intra_exchange_transfers_active: bool`.
+- [Rust API] Added `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse`
+  (2026-06-26). Both fields are optional per the OpenAPI schema.
+- [Rust API] Added `exchange_index: i32` to `SubaccountBalance` with `#[serde(default)]`
+  (2026-06-24). Currently always 0 (the only supported shard). The field is required per the
+  OpenAPI `SubaccountBalance.required` list.
+- [Rust API] Added `delete_rfq_quote(rfq_id, quote_id)`,
+  `accept_rfq_quote(rfq_id, quote_id, body)`, and `confirm_rfq_quote(rfq_id, quote_id)` to
+  `KalshiRestClient` for the new RFQ-scoped quote endpoints (2026-06-25).
+- [Rust API] Added `user_filter: Option<String>`, `min_ts: Option<i64>`, and
+  `max_ts: Option<i64>` to `GetQuotesParams`.
+- [Rust API] Added `settlement_sources: Vec<SettlementSource>`, `fee_type_override: Option<String>`,
+  and `fee_multiplier_override: Option<f64>` to `EventData` (2026-06-18). `settlement_sources` uses
+  `deserialize_null_as_empty_vec` since the field is nullable in the spec.
+- [Rust API] Added `strike_type: Option<String>` and `cap_strike: Option<f64>` as top-level fields
+  on `WsMarketLifecycleV2` and `WsMarketLifecycleV2Ref` (2026-06-17). Per the AsyncAPI these keys
+  appear only on `metadata_updated` events. Previously they were silently swallowed by the `extra`
+  flatten.
+
+### Changed
+
+- [Rust API] `GetQuotesParams::event_ticker`, `market_ticker`, `quote_creator_user_id`, and
+  `rfq_creator_user_id` are now marked `#[deprecated(since = "0.7.0")]`. The first two were removed
+  server-side on 2026-06-20 and have no effect when passed; the latter two were deprecated upstream
+  in favour of `user_filter` / `rfq_user_filter`.
+
+### Breaking
+
+- [Rust API] `SubaccountBalance` gained the field `exchange_index: i32`. Code that constructs
+  `SubaccountBalance` using struct literal syntax must add the field (e.g. `exchange_index: 0`).
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
