@@ -32,6 +32,15 @@ pub struct WsMarketLifecycleV2 {
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level cap (upper bound) strike. Present only on `metadata_updated` events.
+    /// Added to the AsyncAPI schema in 2026-06.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Determines how `floor_strike`/`cap_strike` are interpreted
+    /// (`"greater"`, `"less"`, `"between"`, etc.). Present only on `metadata_updated` events.
+    /// Added to the AsyncAPI schema in 2026-06.
+    #[serde(default)]
+    pub strike_type: Option<String>,
     /// Top-level updated yes subtitle. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events.
     #[serde(default)]
@@ -150,6 +159,12 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level cap strike; present only on `metadata_updated` events. Added 2026-06.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Strike type interpretation hint; present only on `metadata_updated` events. Added 2026-06.
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
@@ -175,6 +190,8 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
             floor_strike: self.floor_strike,
+            cap_strike: self.cap_strike,
+            strike_type: self.strike_type.map(Cow::into_owned),
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
@@ -334,14 +351,16 @@ mod tests {
     use super::*;
 
     /// Per the AsyncAPI, `metadata_updated` carries the updated values
-    /// (`floor_strike`, `yes_sub_title`) at the top level of the payload, not
-    /// nested under `additional_metadata`. They must not be silently dropped.
+    /// (`floor_strike`, `cap_strike`, `strike_type`, `yes_sub_title`) at the top level of the
+    /// payload, not nested under `additional_metadata`. They must not be silently dropped.
     #[test]
     fn metadata_updated_surfaces_top_level_fields() {
         let json = r#"{
             "event_type": "metadata_updated",
             "market_ticker": "KXHIGHNY-24JAN01-T60",
             "floor_strike": 60.5,
+            "cap_strike": 95250.0,
+            "strike_type": "between",
             "yes_sub_title": "Above 60°F",
             "some_future_key": "kept"
         }"#;
@@ -352,6 +371,8 @@ mod tests {
             Some(WsMarketLifecycleEventType::MetadataUpdated)
         );
         assert_eq!(owned.floor_strike, Some(60.5));
+        assert_eq!(owned.cap_strike, Some(95250.0));
+        assert_eq!(owned.strike_type.as_deref(), Some("between"));
         assert_eq!(owned.yes_sub_title.as_deref(), Some("Above 60°F"));
         assert_eq!(
             owned.extra.get("some_future_key").and_then(Value::as_str),
@@ -362,6 +383,8 @@ mod tests {
         let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
         let round_tripped = borrowed.into_owned();
         assert_eq!(round_tripped.floor_strike, Some(60.5));
+        assert_eq!(round_tripped.cap_strike, Some(95250.0));
+        assert_eq!(round_tripped.strike_type.as_deref(), Some("between"));
         assert_eq!(round_tripped.yes_sub_title.as_deref(), Some("Above 60°F"));
         assert_eq!(
             round_tripped

@@ -8,6 +8,81 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-06-30
+
+### Compatibility
+
+- Docs snapshot: 2026-06-30
+- OpenAPI: 3.22.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-06-30
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Margin positions `margin_used` omitted for jointly-margined portfolio positions (2026-06-29) | No code change — margin market types not in crate |
+| Margin risk per-market metrics limited (2026-06-26) | No code change — margin market types not in crate |
+| Per-index exchange status (2026-06-26) | **Added** `intra_exchange_transfers_active` and `exchange_index_statuses` to `GetExchangeStatusResponse`; added `ExchangeIndexStatus` struct |
+| Per-index subaccount balances (2026-06-24) | **Breaking** — added required `exchange_index: i64` to `SubaccountBalance` |
+| More specific FIX rejects for cancel/replace (2026-06-25) | No code change — FIX protocol only |
+| RFQ quote retention and RFQ-scoped quote actions (2026-06-25) | Added `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote` methods |
+| API usage tier qualification requirements halved (2026-06-25) | No code change — operational change only |
+| FIX exchange index routing (2026-06-24) | No code change — FIX protocol only |
+| RFQ quotes support post-only on FIX (2026-06-24) | No code change — FIX protocol only |
+| Get Quote rate-limit cost reduced to 2 tokens (2026-06-23) | No code change — operational change only |
+| RFQ quote market and event filters removed (2026-06-20) | **Breaking** — removed `market_ticker` and `event_ticker` from `GetQuotesParams` |
+| Communications RFQ and quote retention window reduced (2026-06-24) | No code change — operational change only |
+| Sub-account-restricted API keys (2026-06-29) | No code change — `scopes` stored as `Vec<String>` already |
+| `settlement_sources` added to the events API (2026-06-18) | Added `settlement_sources`, `fee_type_override`, `fee_multiplier_override`, `exchange_index` to `EventData` |
+| Strike type and cap strike on `market_lifecycle_v2` metadata_updated (2026-06-17) | Added `strike_type` and `cap_strike` as top-level fields on `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` |
+| Pre-existing: `SeriesFeeChange` field type divergence | **Breaking** — corrected `id` (`i64` → `String`), `fee_multiplier` (`i64` → `f64`), `scheduled_ts` (`i64` → `String`) to match current OpenAPI |
+
+### Added
+
+- [Rust API] Added `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse` for the
+  new per-index exchange status fields (2026-06-26). Added the `ExchangeIndexStatus` struct
+  (`exchange_index: i64`, `exchange_active: bool`, `trading_active: bool`,
+  `intra_exchange_transfers_active: bool`).
+- [Rust API] Added `settlement_sources: Option<Vec<SettlementSource>>`, `fee_type_override:
+  Option<String>`, `fee_multiplier_override: Option<f64>`, and `exchange_index: Option<i64>` to
+  `EventData` (returned by `GET /events` and `GET /events/{ticker}`). The `settlement_sources` field
+  is marked required (but nullable) in the current OpenAPI; it is `Option` so `null` or absent
+  payloads still parse. Previously these values fell into the `extra` flatten.
+- [Rust API] Added `cap_strike: Option<f64>` and `strike_type: Option<String>` as top-level fields
+  on `WsMarketLifecycleV2` and `WsMarketLifecycleV2Ref` for `metadata_updated` events (2026-06-17).
+  These join the existing top-level `floor_strike` and `yes_sub_title`. The `into_owned()` converter
+  on `WsMarketLifecycleV2Ref` is updated to propagate the new fields.
+- [Rust API] Added `delete_rfq_quote(rfq_id, quote_id)`, `accept_rfq_quote(rfq_id, quote_id, body)`,
+  and `confirm_rfq_quote(rfq_id, quote_id)` methods to `KalshiRestClient` for the RFQ-scoped quote
+  action endpoints added in 2026-06-25. The scoped variants are preferred — they tolerate the 7-day
+  quote retention window without ambiguous 404s. The older quote-ID-only endpoints remain intact.
+- [Rust API] Added `min_ts: Option<i64>`, `max_ts: Option<i64>`, and `user_filter: Option<String>`
+  to `GetQuotesParams` for the filters present in the current OpenAPI spec.
+
+### Changed
+
+- [Rust API] `SeriesFeeChange` field types corrected to match the current OpenAPI: `id` is now
+  `String` (was `i64`), `fee_multiplier` is now `f64` (was `i64`), and `scheduled_ts` is now
+  `String` (ISO 8601 date-time, was `i64`).
+
+### Breaking
+
+- [Rust API] `SubaccountBalance` gained a required `exchange_index: i64` field (per-index subaccount
+  balances, 2026-06-24). Downstream code with exhaustive struct destructuring or struct-literal
+  construction must add the field. Response payloads from the exchange always include it now.
+- [Rust API] `GetQuotesParams.market_ticker` and `GetQuotesParams.event_ticker` removed. These
+  query parameters were dropped from `GET /communications/quotes` effective 2026-06-20. Use
+  `rfq_id` to scope to a specific RFQ, or `rfq_user_filter = "self"` to scope to your own RFQs.
+- [Rust API] `SeriesFeeChange.id` changed from `i64` to `String`. Downstream field access such as
+  arithmetic operations on `.id` must be updated.
+- [Rust API] `SeriesFeeChange.fee_multiplier` changed from `i64` to `f64`. Downstream integer
+  operations on `.fee_multiplier` must be updated.
+- [Rust API] `SeriesFeeChange.scheduled_ts` changed from `i64` to `String`. Downstream timestamp
+  arithmetic on `.scheduled_ts` must parse the ISO 8601 string first.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

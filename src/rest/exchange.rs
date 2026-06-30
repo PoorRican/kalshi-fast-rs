@@ -11,12 +11,33 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Per-index exchange status breakdown.
+///
+/// Added to `GET /exchange/status` responses in 2026-06 (per-index exchange status).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    /// Exchange index identifier (currently only 0 is supported in production).
+    pub exchange_index: i64,
+    /// False if this exchange index is not taking state changes. True unless under maintenance.
+    pub exchange_active: bool,
+    /// True if trading is permitted on this exchange index.
+    pub trading_active: bool,
+    /// True if intra-exchange transfers are permitted on this exchange index.
+    pub intra_exchange_transfers_active: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// True if intra-exchange transfers are currently permitted. Added 2026-06.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-index status breakdown. Absent when the breakdown is unavailable. Added 2026-06.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -105,11 +126,14 @@ pub struct GetUserDataTimestampResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SeriesFeeChange {
-    pub id: i64,
+    /// Unique identifier for this fee change (string per current OpenAPI).
+    pub id: String,
     pub series_ticker: String,
     pub fee_type: FeeType,
-    pub fee_multiplier: i64,
-    pub scheduled_ts: i64,
+    /// Floating-point multiplier applied to fee calculations.
+    pub fee_multiplier: f64,
+    /// ISO 8601 date-time string for when this change takes effect.
+    pub scheduled_ts: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

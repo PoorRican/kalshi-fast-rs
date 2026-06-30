@@ -91,6 +91,44 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/status` (`get_exchange_status`) now returns two additional optional fields
+  (`intra_exchange_transfers_active: bool` and `exchange_index_statuses: array`) added in 2026-06.
+  Both are `Option` because they are not in the OpenAPI `required` list and the field
+  `exchange_index_statuses` is explicitly described as "absent when the per-index breakdown is
+  unavailable". The new `ExchangeIndexStatus` struct carries the four required per-index fields.
+
+- `GET /portfolio/subaccounts/balances` responses now include `exchange_index: i64` on each
+  `SubaccountBalance` entry (required per current OpenAPI, added 2026-06-24). This is a structural
+  change — the field is non-optional in the struct. Payloads predating the field will fail to
+  deserialize, but the exchange began populating it immediately; old records are not expected.
+
+- `EventData` (returned by `GET /events` and `GET /events/{ticker}`) now exposes
+  `settlement_sources: Option<Vec<SettlementSource>>` as a typed field rather than capturing it in
+  the `extra` flatten. The OpenAPI marks this field `required` but also `nullable`; it is modeled
+  as `Option` so payloads where the field is absent or `null` still parse. The fields
+  `fee_type_override: Option<String>`, `fee_multiplier_override: Option<f64>`, and
+  `exchange_index: Option<i64>` are also now explicit (previously fell into `extra`).
+
+- `WsMarketLifecycleV2` (and `WsMarketLifecycleV2Ref`) now expose `strike_type: Option<String>`
+  and `cap_strike: Option<f64>` at the **top level** for `metadata_updated` events, matching the
+  AsyncAPI update from 2026-06. These join the existing top-level `floor_strike` and `yes_sub_title`.
+  They also remain in `WsMarketLifecycleAdditionalMetadata` for market-creation events.
+
+- `GetQuotesParams` no longer includes `market_ticker` or `event_ticker`. These parameters were
+  removed from `GET /trade-api/v2/communications/quotes` effective 2026-06-20 per the changelog and
+  are absent from the current OpenAPI spec. The new `user_filter: Option<String>` (filter for quotes
+  created by the authenticated user) and timestamp filters `min_ts`/`max_ts` were added instead.
+
+- RFQ-scoped quote actions (`DELETE/PUT /communications/rfqs/{rfq_id}/quotes/{quote_id}[/accept|/confirm]`)
+  are now available via `delete_rfq_quote`, `accept_rfq_quote`, and `confirm_rfq_quote`. The older
+  quote-ID-only endpoints remain supported by the exchange and the crate; the scoped variants are
+  preferred because they tolerate the reduced quote-retention window (7 days post-close) more
+  gracefully.
+
+- `SeriesFeeChange` field types updated to match the current OpenAPI: `id` changed from `i64` to
+  `String`; `fee_multiplier` changed from `i64` to `f64`; `scheduled_ts` changed from `i64` to
+  `String` (ISO 8601 date-time). This was a pre-existing divergence from the OpenAPI schema.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
