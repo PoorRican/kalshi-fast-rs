@@ -1114,15 +1114,22 @@ fn get_user_data_timestamp_response_deserializes() {
 
 #[test]
 fn get_series_fee_changes_response_deserializes() {
+    // id is now String, fee_multiplier is f64, scheduled_ts is ISO 8601 string per current OpenAPI.
     let json = r#"{
         "series_fee_change_arr": [
-            {"id":1,"series_ticker":"SERIES-1","fee_type":"flat","fee_multiplier":5,"scheduled_ts":1700000000}
+            {"id":"change-1","series_ticker":"SERIES-1","fee_type":"flat","fee_multiplier":1.5,"scheduled_ts":"2026-07-01T00:00:00Z"}
         ]
     }"#;
 
     let resp: GetSeriesFeeChangesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.series_fee_change_arr.len(), 1);
     assert_eq!(resp.series_fee_change_arr[0].series_ticker, "SERIES-1");
+    assert_eq!(resp.series_fee_change_arr[0].id, "change-1");
+    assert_eq!(resp.series_fee_change_arr[0].fee_multiplier, 1.5_f64);
+    assert_eq!(
+        resp.series_fee_change_arr[0].scheduled_ts,
+        "2026-07-01T00:00:00Z"
+    );
 }
 
 #[test]
@@ -1234,13 +1241,15 @@ fn get_account_endpoint_costs_response_deserializes() {
 
 #[test]
 fn get_subaccount_balances_response_deserializes() {
+    // exchange_index is now required per the June 2026 per-index subaccount balances update.
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
 }
 
 #[test]
