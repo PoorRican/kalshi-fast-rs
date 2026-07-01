@@ -155,7 +155,7 @@ pub struct MveSelectedLeg {
     pub extra: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct PriceRange {
     #[serde(alias = "min_price")]
     pub start: String,

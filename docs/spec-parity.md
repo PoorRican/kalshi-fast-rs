@@ -91,6 +91,48 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GetExchangeStatusResponse` gained `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` (per-index exchange status, 2026-06-26).
+  Both stay `Option` because the OpenAPI `ExchangeStatus` schema does not mark them required — the
+  top-level `exchange_active` / `trading_active` fields continue to reflect the default exchange
+  index (`0`), and the per-index breakdown is additive.
+
+- `SubaccountBalance.exchange_index: i64` was added (per-index subaccount balances, 2026-06-24). The
+  OpenAPI spec marks it required, but the field is kept `#[serde(default)]` (defaulting to `0`, the
+  only exchange index in production today) rather than a bare required field, so payloads from before
+  the rollout still parse. Only exchange index `0` exists in production today; `ExchangeIndex` is
+  modeled as a plain `i64` rather than an enum so future indexes need no crate update.
+
+- `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` gained `price_ranges: Option<Vec<PriceRange>>`
+  (2026-06-30), reusing the REST `PriceRange` type (`start` / `end` / `step` in fixed-point dollars).
+  It is emitted alongside `price_level_structure` on `created` and `price_level_structure_updated`
+  events only, so it stays optional.
+
+- `GetQuotesParams` no longer has `market_ticker` / `event_ticker` (Kalshi removed these filters from
+  `GET /communications/quotes` on 2026-06-20; the field set now matches the live OpenAPI parameter
+  list exactly — intentional minor-version break, 0.6.0 → 0.7.0). `min_ts`, `max_ts`, and
+  `user_filter` were added in the same pass since the changelog entry pointed at them as the
+  replacement filters (by user, RFQ, status, or update time). RFQs (`GetRFQsParams`,
+  `GET /communications/rfqs`) are unaffected — that endpoint still supports `market_ticker` /
+  `event_ticker` per the spec.
+
+- Added RFQ-scoped quote action methods (`delete_rfq_quote`, `accept_rfq_quote`,
+  `confirm_rfq_quote`) for `/communications/rfqs/{rfq_id}/quotes/{quote_id}[/accept|/confirm]`
+  (2026-06-25). The quote-ID-only methods (`delete_quote`, `accept_quote`, `confirm_quote`) remain
+  supported since Kalshi has not yet made `rfq_id` required for quote actions, but the RFQ-scoped
+  variants are preferred going forward. RFQ quotes are no longer guaranteed durably queryable except
+  in a post-acceptance state (`accepted`, `confirmed`, `executed`, effective 2026-06-25) — a
+  behavioral/availability change only (an open or cancelled quote may now 404), so no `Quote` field
+  shape changed.
+
+- FIX protocol changes (AcceptQuote reject reasons, cancel/replace reject reasons, exchange index
+  routing, RFQ post-only quotes) require no crate changes: this crate does not implement the FIX
+  protocol, only REST and WebSocket.
+
+- Margin risk (`GET /margin/risk`) and margin positions (`GET /margin/positions`) changes require no
+  crate changes: neither endpoint is modeled in the crate (consistent with margin markets generally
+  being out of scope; see `get_margin_fee_tiers` for the one margin endpoint that is modeled).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

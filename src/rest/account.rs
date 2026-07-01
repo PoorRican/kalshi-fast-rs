@@ -79,6 +79,11 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index this balance is held on. A subaccount with funds on multiple
+    /// indexes appears as multiple entries. Defaults to `0` (the only index in
+    /// production today) for payloads predating the per-index breakdown.
+    #[serde(default)]
+    pub exchange_index: i64,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
