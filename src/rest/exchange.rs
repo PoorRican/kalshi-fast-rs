@@ -17,6 +17,26 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Whether intra-exchange transfers are currently permitted. Added 2026-07-02.
+    /// `Option` because the OpenAPI spec does not mark it required at the
+    /// top level (unlike on `ExchangeIndexStatus`, where it is required).
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-exchange-index status breakdown. Added 2026-07-02. The top-level
+    /// fields above reflect the default exchange index (0); this is absent
+    /// when the per-index breakdown is unavailable.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+/// Operational status of a single exchange index (shard). See
+/// `GetExchangeStatusResponse::exchange_index_statuses`. Added 2026-07-02.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: i64,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

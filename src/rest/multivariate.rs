@@ -103,12 +103,23 @@ pub struct CreateMarketInMultivariateEventCollectionResponse {
     pub extra: Map<String, Value>,
 }
 
+/// Params for the lookup-history endpoint. **Deprecated 2026-07-02**: removed
+/// from the published OpenAPI schema ("fully deprecated"), but as of this
+/// writing `GET .../lookup?lookback_seconds=N` still returns `200` with a
+/// live (possibly empty) `lookup_points` array — see `docs/spec-parity.md`.
 #[derive(Debug, Clone, Default, Serialize)]
+#[deprecated(
+    note = "removed from the OpenAPI schema 2026-07-02 (this endpoint predates RFQs); prefer RFQs/quotes for new integrations"
+)]
 pub struct GetMultivariateEventCollectionLookupHistoryParams {
     pub lookback_seconds: u32,
 }
 
+/// **Deprecated 2026-07-02**: see [`GetMultivariateEventCollectionLookupHistoryParams`].
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[deprecated(
+    note = "removed from the OpenAPI schema 2026-07-02 (this endpoint predates RFQs); prefer RFQs/quotes for new integrations"
+)]
 pub struct GetMultivariateEventCollectionLookupHistoryResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub lookup_points: Vec<LookupPoint>,
@@ -183,6 +194,14 @@ impl KalshiRestClient {
             .await
     }
 
+    /// **Deprecated 2026-07-02**: removed from the published OpenAPI schema
+    /// ("this endpoint predates RFQs and should not be used for new
+    /// integrations"), but still functional as of this writing. See
+    /// `docs/spec-parity.md`.
+    #[deprecated(
+        note = "removed from the OpenAPI schema 2026-07-02 (this endpoint predates RFQs); prefer RFQs/quotes for new integrations"
+    )]
+    #[allow(deprecated)]
     pub async fn get_multivariate_event_collection_lookup_history(
         &self,
         collection_ticker: &str,
@@ -201,6 +220,9 @@ impl KalshiRestClient {
         .await
     }
 
+    /// **Deprecated** per the OpenAPI spec: "This endpoint predates RFQs and
+    /// should not be used for new integrations."
+    #[deprecated(note = "predates RFQs; prefer RFQs/quotes for new integrations")]
     pub async fn lookup_tickers_for_market_in_multivariate_event_collection(
         &self,
         collection_ticker: &str,

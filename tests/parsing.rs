@@ -1067,6 +1067,27 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
+    assert_eq!(resp.intra_exchange_transfers_active, None);
+    assert_eq!(resp.exchange_index_statuses, None);
+}
+
+#[test]
+fn get_exchange_status_response_deserializes_per_index_breakdown() {
+    // 2026-07-02: per-index exchange status.
+    let json = r#"{
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {"exchange_index":0,"exchange_active":true,"trading_active":true,"intra_exchange_transfers_active":true}
+        ]
+    }"#;
+
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    let statuses = resp.exchange_index_statuses.expect("statuses present");
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].exchange_index, 0);
 }
 
 #[test]
@@ -1235,12 +1256,29 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+}
+
+#[test]
+fn subaccount_balance_per_index_deserializes_multiple_entries() {
+    // 2026-07-02: a subaccount with funds on multiple exchange indexes now
+    // appears as multiple entries rather than one combined row.
+    let json = r#"{
+        "subaccount_balances": [
+            {"subaccount_number":1,"exchange_index":0,"balance":"100","updated_ts":1700000000},
+            {"subaccount_number":1,"exchange_index":1,"balance":"50","updated_ts":1700000001}
+        ]
+    }"#;
+
+    let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.subaccount_balances.len(), 2);
+    assert_eq!(resp.subaccount_balances[1].exchange_index, 1);
 }
 
 #[test]
@@ -1802,6 +1840,7 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
 }
 
 #[test]
+#[allow(deprecated)] // GetMultivariateEventCollectionLookupHistory* deprecated 2026-07-02; still functional
 fn multivariate_collections_and_lookup_responses_deserialize_typed() {
     let json = r#"{
         "multivariate_contracts": [{

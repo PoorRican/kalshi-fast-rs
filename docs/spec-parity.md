@@ -91,6 +91,62 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Legacy V1 order-mutation endpoints are non-functional but not removed from the crate.**
+  Kalshi deprecated `/portfolio/orders` create/cancel/amend/decrease/batch-create/batch-cancel
+  between 2026-06-18 and 2026-06-25 and removed their operations from the OpenAPI schema; calls now
+  return an error directing callers to the V2 endpoints. `KalshiRestClient::create_order`,
+  `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, and `batch_cancel_orders`
+  are kept in the public API but marked `#[deprecated]` (idiomatic Rust signal, non-breaking) rather
+  than deleted, since removing them outright would be a larger breaking change than necessary — call
+  sites just need to switch to the already-present `_v2` methods (`create_order_v2`, etc.), which
+  this crate has supported since 0.6.0. `examples/place_order.rs` and `tests/rest_orders.rs` were
+  updated to exercise the V2 endpoints instead.
+
+- **`get_multivariate_event_collection_lookup_history` and
+  `lookup_tickers_for_market_in_multivariate_event_collection` are deprecated-but-functional.**
+  The GET lookup-history endpoint was removed entirely from the OpenAPI schema on 2026-07-02
+  ("Multivariate lookup history endpoints are fully deprecated"), yet a live probe
+  (`GET .../multivariate_event_collections/{ticker}/lookup?lookback_seconds=60` against production)
+  still returns `200 {"lookup_points":[]}` as of this writing. The PUT lookup endpoint is separately
+  marked `deprecated: true` in the OpenAPI spec ("predates RFQs"). Per the deprecated-but-still-present
+  rule, both client methods and the lookup-history request/response types are marked `#[deprecated]`
+  rather than removed.
+
+- **RFQ-scoped quote actions.** Effective 2026-06-25, RFQ quotes are no longer guaranteed queryable
+  unless in a post-acceptance state (`accepted`, `confirmed`, `executed`); open/cancelled quotes are
+  best-effort only and a cleared quote may 404. Clients should prefer the RFQ-scoped action endpoints
+  (`delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`, all requiring `rfq_id` + `quote_id`)
+  over the quote-ID-only equivalents (`delete_quote`, `accept_quote`, `confirm_quote`), which remain
+  supported for now but are expected to require `rfq_id` in a future migration. The retention window
+  for closed RFQs/cancelled quotes was also reduced from 14 to 7 days (2026-06-19); this is a
+  server-side behavior change with no crate-visible shape change.
+
+- **`GetQuotesParams` no longer supports `market_ticker`/`event_ticker` filters.** Kalshi removed
+  these query parameters from `GET /communications/quotes` on 2026-06-20 ("effective immediately");
+  the fields were removed from the crate to match (breaking Rust API change, 0.6.0 → 0.7.0). Filter
+  by `rfq_id`, `status`, user, or the new `min_ts`/`max_ts` window instead.
+
+- **`SubaccountBalance.exchange_index` and `SubaccountTransfer.exchange_index`/`transfer_type`.**
+  Per-index subaccount balances (2026-07-02) made `exchange_index` a required field on
+  `SubaccountBalance` — modeled as non-`Option` `i64` since the spec has no conditional-absence case
+  for it and a subaccount with funds on multiple exchange indexes now returns multiple balance rows.
+  Subaccount position transfers (2026-07-09) added `exchange_index` and `transfer_type`
+  (`cash`/`position`) to `SubaccountTransfer`, also required by the spec; these are modeled as
+  `Option` instead, since transfer rows recorded before this migration may lack them.
+
+- **Per-index exchange status.** `GetExchangeStatusResponse.intra_exchange_transfers_active` and
+  `.exchange_index_statuses` (added 2026-07-02) are `Option` even though `ExchangeIndexStatus`'s own
+  `intra_exchange_transfers_active` is required — the OpenAPI spec does not mark the top-level
+  `GetExchangeStatusResponse.intra_exchange_transfers_active` as required, and
+  `exchange_index_statuses` is explicitly "absent when the per-index breakdown is unavailable".
+
+- **Known gap: block-trade proposals are not modeled.** The OpenAPI spec defines
+  `GET /communications/block-trade-proposals` and
+  `POST /communications/block-trade-proposals/{id}/accept` (surfaced again by the 2026-06-18
+  `read::block_trade_accept`/`write::block_trade_accept` API-key-scope changelog entry, but not
+  themselves dated by any changelog entry in range), yet this crate does not implement them. Tracked
+  here rather than in the crate as a to-do; add `BlockTradeProposal` REST support in a future refresh.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

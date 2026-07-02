@@ -5,10 +5,13 @@ mod common;
 use kalshi_fast::{
     BatchGetMarketCandlesticksParams, EventStatus, GetEventCandlesticksParams, GetEventsParams,
     GetIncentiveProgramsParams, GetMarketCandlesticksParams, GetMarketsParams, GetMilestonesParams,
-    GetMultivariateEventCollectionLookupHistoryParams, GetMultivariateEventCollectionsParams,
-    GetMultivariateEventsParams, GetSeriesFeeChangesParams, GetSeriesListParams,
-    GetStructuredTargetsParams, GetTradesParams, MarketStatusQuery,
+    GetMultivariateEventCollectionsParams, GetMultivariateEventsParams, GetSeriesFeeChangesParams,
+    GetSeriesListParams, GetStructuredTargetsParams, GetTradesParams, MarketStatusQuery,
 };
+// Deprecated 2026-07-02 (removed from the OpenAPI schema; still functional). See
+// docs/spec-parity.md.
+#[allow(deprecated)]
+use kalshi_fast::GetMultivariateEventCollectionLookupHistoryParams;
 
 fn assert_market_list_shape(market: &kalshi_fast::Market) {
     assert!(!market.ticker.is_empty());
@@ -514,6 +517,7 @@ async fn test_get_multivariate_event_collection() {
 }
 
 #[tokio::test]
+#[allow(deprecated)] // removed from OpenAPI schema 2026-07-02; still functional, see docs/spec-parity.md
 async fn test_get_multivariate_event_collection_lookup_history() {
     let client = common::demo_client();
 
