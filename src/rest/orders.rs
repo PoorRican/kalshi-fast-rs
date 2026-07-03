@@ -65,10 +65,10 @@ impl GetOrdersParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -255,10 +255,10 @@ impl CreateOrderRequest {
         }
 
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
+                "CreateOrderRequest: subaccount must be 0..=63".to_string(),
             ));
         }
 
@@ -419,7 +419,7 @@ pub struct CreateOrderGroupRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateOrderGroupResponse {
     pub order_group_id: String,
-    /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
+    /// 0 = primary account, 1–63 = subaccount. Added 2026-05-07.
     #[serde(default)]
     pub subaccount: Option<u32>,
 }
@@ -529,7 +529,7 @@ pub struct CreateOrderV2Request {
     pub cancel_order_on_pause: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reduce_only: Option<bool>,
-    /// 0 = primary; 1–32 = subaccount.
+    /// 0 = primary; 1–63 = subaccount.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -739,9 +739,18 @@ impl KalshiRestClient {
             .await
     }
 
-    /// Place a new order.
+    /// Place a new order via the legacy `/portfolio/orders` endpoint.
+    ///
+    /// Deprecated upstream 2026-06-18 – 2026-06-25 in favor of the V2
+    /// event-order endpoints; the legacy mutation routes are no longer
+    /// documented in the OpenAPI spec and now return an error directing
+    /// callers to switch. Use [`Self::create_order_v2`] instead.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        since = "0.7.0",
+        note = "Legacy /portfolio/orders mutation endpoints are deprecated upstream; use create_order_v2"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -752,9 +761,16 @@ impl KalshiRestClient {
             .await
     }
 
-    /// Cancel an order by ID.
+    /// Cancel an order by ID via the legacy `/portfolio/orders` endpoint.
+    ///
+    /// Deprecated upstream; use [`Self::cancel_order_v2`] instead. See
+    /// [`Self::create_order`] for details.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        since = "0.7.0",
+        note = "Legacy /portfolio/orders mutation endpoints are deprecated upstream; use cancel_order_v2"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +787,12 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated upstream; use [`Self::amend_order_v2`] instead. See
+    /// [`Self::create_order`] for details.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Legacy /portfolio/orders mutation endpoints are deprecated upstream; use amend_order_v2"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +803,12 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated upstream; use [`Self::decrease_order_v2`] instead. See
+    /// [`Self::create_order`] for details.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Legacy /portfolio/orders mutation endpoints are deprecated upstream; use decrease_order_v2"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +831,12 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated upstream; use [`Self::batch_create_orders_v2`] instead. See
+    /// [`Self::create_order`] for details.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Legacy /portfolio/orders mutation endpoints are deprecated upstream; use batch_create_orders_v2"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +846,12 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated upstream; use [`Self::batch_cancel_orders_v2`] instead. See
+    /// [`Self::create_order`] for details.
+    #[deprecated(
+        since = "0.7.0",
+        note = "Legacy /portfolio/orders mutation endpoints are deprecated upstream; use batch_cancel_orders_v2"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,

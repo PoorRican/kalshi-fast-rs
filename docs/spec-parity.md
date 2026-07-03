@@ -91,6 +91,47 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Subaccount numbering is 0 (primary) through 63 (64 accounts total including primary), not 0-32.
+  The client-side range validation in `GetOrdersParams`, `CreateOrderRequest`, and
+  `GetPositionsParams` previously rejected 33-63 as out of range; this was a pre-existing bug
+  (predating this refresh) fixed by widening the bound to `0..=63` to match the OpenAPI spec.
+
+- Legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were removed from the OpenAPI spec
+  between 2026-06-18 and 2026-06-25; the changelog states calls now return an error directing
+  callers to the V2 event-order endpoints. Rather than deleting these methods outright (the routes
+  still respond, just with an error, and the exact cutover date is fuzzy), they are marked
+  `#[deprecated]` pointing at their V2 equivalents (`create_order_v2`, `cancel_order_v2`,
+  `amend_order_v2`, `decrease_order_v2`, `batch_create_orders_v2`, `batch_cancel_orders_v2`).
+  `get_orders`/`get_order` (read-only) are unaffected and remain in the spec.
+
+- `lookup_tickers_for_market_in_multivariate_event_collection` (`PUT
+  /multivariate_event_collections/{ticker}/lookup`) is now marked `deprecated: true` in the OpenAPI
+  spec ("predates RFQs, do not use for new integrations") and is marked `#[deprecated]` in Rust
+  accordingly, but the endpoint itself remains present and functional.
+
+- The multivariate lookup-history feed (`GET
+  /multivariate_event_collections/{ticker}/lookup?lookback_seconds=`,
+  `get_multivariate_event_collection_lookup_history` /
+  `GetMultivariateEventCollectionLookupHistoryParams` /
+  `GetMultivariateEventCollectionLookupHistoryResponse` / `LookupPoint`) was fully removed from the
+  OpenAPI spec (no trace of `lookback_seconds` or `lookup_points` remains) per the 2026-07-02
+  changelog entry "Multivariate lookup history endpoints are fully deprecated." Unlike the ticker
+  lookup endpoint above, this one has no surviving route in the spec, so it was removed from the
+  public Rust API rather than kept as a deprecated stub (breaking change, 0.6.0 → 0.7.0).
+
+- `SubaccountBalance.exchange_index` (2026-07-02, per-index subaccount balances) and
+  `ExchangeIndexStatus` / `GetExchangeStatusResponse.exchange_index_statuses` (2026-07-02, per-index
+  exchange status) are the first per-exchange-index fields modeled in the crate; the top-level
+  `GetExchangeStatusResponse` fields continue to reflect exchange index 0 for backward
+  compatibility, per the spec's own description of the relationship.
+
+- `SubaccountTransfer.transfer_type` (`cash` | `position`) discriminates cash transfers from the new
+  position transfers (2026-07-09, `transfer_subaccount_position` /
+  `ApplySubaccountPositionTransferRequest`). It, along with `exchange_index`, is `Option` so older
+  cached transfer rows without the field still parse; `market_ticker` / `side` / `count` /
+  `price_cents` are populated only for position-transfer rows.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

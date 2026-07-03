@@ -1067,6 +1067,31 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
+    assert!(resp.intra_exchange_transfers_active.is_none());
+    assert!(resp.exchange_index_statuses.is_empty());
+}
+
+/// Added 2026-07-02: per-index exchange status breakdown.
+#[test]
+fn get_exchange_status_response_deserializes_per_index() {
+    let json = r#"{
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "exchange_active": true,
+                "trading_active": true,
+                "intra_exchange_transfers_active": true
+            }
+        ]
+    }"#;
+
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    assert_eq!(resp.exchange_index_statuses.len(), 1);
+    assert_eq!(resp.exchange_index_statuses[0].exchange_index, 0);
 }
 
 #[test]
@@ -1232,15 +1257,36 @@ fn get_account_endpoint_costs_response_deserializes() {
     assert!(resp.endpoint_costs.is_empty());
 }
 
+/// Added 2026-06-11: `GET /account/api_usage_level/volume_progress`.
+#[test]
+fn get_account_api_usage_level_volume_progress_response_deserializes() {
+    let json = r#"{
+        "volume_progress": [{
+            "computed_ts": 1700000000,
+            "trailing_30d_volume_fp": "1000.00",
+            "goals": [
+                {"level": "expert", "earn_volume_goal_fp": "5000.00", "keep_volume_goal_fp": "2500.00"}
+            ]
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetAccountApiUsageLevelVolumeProgressResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.volume_progress.len(), 1);
+    assert_eq!(resp.volume_progress[0].computed_ts, 1700000000);
+    assert_eq!(resp.volume_progress[0].goals[0].level, "expert");
+}
+
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000,"exchange_index":0}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
 }
 
 #[test]
@@ -1263,6 +1309,39 @@ fn get_subaccount_transfers_response_deserializes() {
     let resp: GetSubaccountTransfersResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_transfers.len(), 1);
     assert_eq!(resp.cursor, Some("c1".into()));
+    // Older payloads without exchange_index/transfer_type still parse.
+    assert!(resp.subaccount_transfers[0].transfer_type.is_none());
+}
+
+#[test]
+fn get_subaccount_transfers_response_deserializes_position_transfer() {
+    let json = r#"{
+        "subaccount_transfers": [
+            {
+                "transfer_id": "t2",
+                "from_subaccount": 0,
+                "to_subaccount": 1,
+                "amount_cents": 0,
+                "created_ts": 1700000000,
+                "exchange_index": 0,
+                "transfer_type": "position",
+                "market_ticker": "MKT-1",
+                "side": "yes",
+                "count": 5,
+                "price_cents": 50
+            }
+        ]
+    }"#;
+
+    let resp: GetSubaccountTransfersResponse = serde_json::from_str(json).unwrap();
+    let transfer = &resp.subaccount_transfers[0];
+    assert_eq!(
+        transfer.transfer_type,
+        Some(kalshi_fast::SubaccountTransferType::Position)
+    );
+    assert_eq!(transfer.exchange_index, Some(0));
+    assert_eq!(transfer.market_ticker.as_deref(), Some("MKT-1"));
+    assert_eq!(transfer.count, Some(5));
 }
 
 #[test]
@@ -1402,13 +1481,13 @@ fn get_events_params_validates_limit_bounds() {
 #[test]
 fn get_positions_params_validates_subaccount_bounds() {
     let params = GetPositionsParams {
-        subaccount: Some(32),
+        subaccount: Some(63),
         ..Default::default()
     };
     assert!(params.validate().is_ok());
 
     let params = GetPositionsParams {
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1459,7 +1538,7 @@ fn get_orders_params_validates_event_ticker_count() {
 #[test]
 fn get_orders_params_validates_subaccount_bounds() {
     let params = GetOrdersParams {
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1549,7 +1628,7 @@ fn create_order_request_validate_subaccount_bounds() {
         action: BuySell::Buy,
         count: Some(1),
         yes_price: Some(10),
-        subaccount: Some(32),
+        subaccount: Some(63),
         ..Default::default()
     };
     assert!(req.validate().is_ok());
@@ -1560,7 +1639,7 @@ fn create_order_request_validate_subaccount_bounds() {
         action: BuySell::Buy,
         count: Some(1),
         yes_price: Some(10),
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(req.validate().is_err());
@@ -1678,6 +1757,27 @@ fn event_data_deserializes_with_partial_product_metadata() {
     );
 }
 
+/// Added 2026-06-18: `GET /events`/`GET /events/{event_ticker}` now returns
+/// `settlement_sources` on each event, mirroring the field already on series.
+#[test]
+fn event_data_deserializes_settlement_sources() {
+    let json = r#"{
+        "event_ticker": "EVT-1",
+        "settlement_sources": [{"name": "Official Source", "url": "https://example.com"}]
+    }"#;
+
+    let event: EventData = serde_json::from_str(json).unwrap();
+    assert_eq!(event.settlement_sources.len(), 1);
+    assert_eq!(
+        event.settlement_sources[0].name.as_deref(),
+        Some("Official Source")
+    );
+
+    // Absent settlement_sources tolerates missing field (empty vec).
+    let event: EventData = serde_json::from_str(r#"{"event_ticker": "EVT-2"}"#).unwrap();
+    assert!(event.settlement_sources.is_empty());
+}
+
 #[test]
 fn get_event_response_deserializes_nested_event_markets() {
     let json = r#"{
@@ -1754,6 +1854,23 @@ fn get_api_keys_response_deserializes_typed() {
     assert_eq!(resp.api_keys.len(), 1);
     assert_eq!(resp.api_keys[0].api_key_id, "key-1");
     assert_eq!(resp.api_keys[0].scopes, vec!["read", "write"]);
+    assert!(resp.api_keys[0].subaccount.is_none());
+}
+
+/// Added 2026-07-02: sub-account-restricted API keys.
+#[test]
+fn get_api_keys_response_deserializes_restricted_key() {
+    let json = r#"{
+        "api_keys": [{
+            "api_key_id": "key-2",
+            "name": "restricted key",
+            "scopes": ["read"],
+            "subaccount": 5
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetApiKeysResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.api_keys[0].subaccount, Some(5));
 }
 
 #[test]
@@ -1801,6 +1918,48 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
     );
 }
 
+/// Added 2026-06 / 2026-07: `post_only`, `creator_subaccount`, and
+/// `rfq_creator_subaccount` on `Quote`; `creator_subaccount` on `RFQ`.
+#[test]
+fn quote_and_rfq_surface_subaccount_and_post_only_fields() {
+    let quotes_json = r#"{
+        "quotes": [{
+            "id": "q-1",
+            "rfq_id": "r-1",
+            "creator_id": "u-1",
+            "rfq_creator_id": "u-2",
+            "market_ticker": "MKT-1",
+            "contracts_fp": "10.00",
+            "yes_bid_dollars": "0.4400",
+            "no_bid_dollars": "0.5600",
+            "created_ts": "2023-11-07T05:31:56Z",
+            "updated_ts": "2023-11-07T05:31:56Z",
+            "status": "open",
+            "post_only": true,
+            "creator_subaccount": 2,
+            "rfq_creator_subaccount": 3
+        }]
+    }"#;
+    let quotes: kalshi_fast::GetQuotesResponse = serde_json::from_str(quotes_json).unwrap();
+    assert_eq!(quotes.quotes[0].post_only, Some(true));
+    assert_eq!(quotes.quotes[0].creator_subaccount, Some(2));
+    assert_eq!(quotes.quotes[0].rfq_creator_subaccount, Some(3));
+
+    let rfqs_json = r#"{
+        "rfqs": [{
+            "id": "r-1",
+            "creator_id": "u-1",
+            "market_ticker": "MKT-1",
+            "contracts_fp": "10.00",
+            "status": "open",
+            "created_ts": "2023-11-07T05:31:56Z",
+            "creator_subaccount": 4
+        }]
+    }"#;
+    let rfqs: kalshi_fast::GetRFQsResponse = serde_json::from_str(rfqs_json).unwrap();
+    assert_eq!(rfqs.rfqs[0].creator_subaccount, Some(4));
+}
+
 #[test]
 fn multivariate_collections_and_lookup_responses_deserialize_typed() {
     let json = r#"{
@@ -1833,23 +1992,6 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
-
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
 }
 
 #[test]
