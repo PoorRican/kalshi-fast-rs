@@ -1,4 +1,8 @@
 #![cfg(feature = "live-tests")]
+// This file intentionally exercises the legacy /portfolio/orders mutation
+// endpoints (deprecated 2026-06-18 in favor of the V2 event-order endpoints,
+// covered separately in tests/rest_order_groups.rs).
+#![allow(deprecated)]
 
 mod common;
 

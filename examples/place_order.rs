@@ -1,12 +1,17 @@
 /// Example of using authenticated REST endpoints:
 /// - Gets balance
 /// - Places an order
+///
+/// Uses the legacy `/portfolio/orders` mutation endpoint, deprecated
+/// 2026-06-18 in favor of `create_order_v2` (see `rfq_quotes_order_groups.rs`
+/// for a V2 event-order flow).
 use kalshi_fast::{
     BuySell, CreateOrderRequest, GetMarketsParams, KalshiAuth, KalshiEnvironment, KalshiRestClient,
     MarketStatusQuery, OrderType, YesNo,
 };
 
 #[tokio::main]
+#[allow(deprecated)]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 

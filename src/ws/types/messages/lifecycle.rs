@@ -1,3 +1,4 @@
+use crate::rest::PriceRange;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -24,14 +25,27 @@ pub struct WsMarketLifecycleV2 {
     #[serde(default)]
     pub is_deactivated: Option<bool>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// Emitted alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Fixed-point-dollar price bands
+    /// describing the market's valid order prices. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events and is distinct from
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level strike type, present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Top-level updated cap strike, present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level custom/structured strike map, present only on `metadata_updated`
+    /// events for custom or structured strike types. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events.
     #[serde(default)]
@@ -143,13 +157,24 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub settled_ts: Option<i64>,
     #[serde(default)]
     pub is_deactivated: Option<bool>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    /// Emitted alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level strike type; present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
+    /// Top-level updated cap strike; present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level custom/structured strike map; present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
@@ -172,9 +197,12 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             settlement_value: self.settlement_value.map(Cow::into_owned),
             settled_ts: self.settled_ts,
             is_deactivated: self.is_deactivated,
-            fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges,
             floor_strike: self.floor_strike,
+            strike_type: self.strike_type.map(Cow::into_owned),
+            cap_strike: self.cap_strike,
+            custom_strike: self.custom_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
@@ -342,6 +370,9 @@ mod tests {
             "event_type": "metadata_updated",
             "market_ticker": "KXHIGHNY-24JAN01-T60",
             "floor_strike": 60.5,
+            "cap_strike": 90.0,
+            "strike_type": "between",
+            "custom_strike": {"target_a": "60.5"},
             "yes_sub_title": "Above 60°F",
             "some_future_key": "kept"
         }"#;
@@ -352,6 +383,12 @@ mod tests {
             Some(WsMarketLifecycleEventType::MetadataUpdated)
         );
         assert_eq!(owned.floor_strike, Some(60.5));
+        assert_eq!(owned.cap_strike, Some(90.0));
+        assert_eq!(owned.strike_type.as_deref(), Some("between"));
+        assert_eq!(
+            owned.custom_strike.as_ref().and_then(|m| m.get("target_a")),
+            Some(&"60.5".to_string())
+        );
         assert_eq!(owned.yes_sub_title.as_deref(), Some("Above 60°F"));
         assert_eq!(
             owned.extra.get("some_future_key").and_then(Value::as_str),
@@ -362,6 +399,15 @@ mod tests {
         let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
         let round_tripped = borrowed.into_owned();
         assert_eq!(round_tripped.floor_strike, Some(60.5));
+        assert_eq!(round_tripped.cap_strike, Some(90.0));
+        assert_eq!(round_tripped.strike_type.as_deref(), Some("between"));
+        assert_eq!(
+            round_tripped
+                .custom_strike
+                .as_ref()
+                .and_then(|m| m.get("target_a")),
+            Some(&"60.5".to_string())
+        );
         assert_eq!(round_tripped.yes_sub_title.as_deref(), Some("Above 60°F"));
         assert_eq!(
             round_tripped
@@ -370,5 +416,28 @@ mod tests {
                 .and_then(Value::as_str),
             Some("kept")
         );
+    }
+
+    /// `price_ranges` is emitted alongside `price_level_structure` on `created`
+    /// and `price_level_structure_updated` events. Added 2026-07-02.
+    #[test]
+    fn price_ranges_parses_on_created_event() {
+        let json = r#"{
+            "event_type": "created",
+            "market_ticker": "KXHIGHNY-24JAN01-T60",
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start": "0.01", "end": "0.99", "step": "0.01"}]
+        }"#;
+
+        let owned: WsMarketLifecycleV2 = serde_json::from_str(json).unwrap();
+        let ranges = owned.price_ranges.expect("price_ranges present");
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].start, "0.01");
+        assert_eq!(ranges[0].end, "0.99");
+        assert_eq!(ranges[0].step, "0.01");
+
+        let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
+        let round_tripped = borrowed.into_owned();
+        assert_eq!(round_tripped.price_ranges.unwrap().len(), 1);
     }
 }

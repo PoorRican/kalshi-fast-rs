@@ -79,6 +79,10 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange shard the balance is held on. Added 2026-07-02 (per-index
+    /// subaccount balances); a subaccount with funds on multiple indexes now
+    /// appears as multiple entries rather than one combined row.
+    pub exchange_index: i64,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -96,18 +100,73 @@ pub struct ApplySubaccountTransferRequest {
     pub from_subaccount: u32,
     pub to_subaccount: u32,
     pub amount_cents: i64,
+    /// Exchange shard to apply the transfer on. Defaults to 0 if unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
 pub struct ApplySubaccountTransferResponse {}
+
+/// Request for `POST /portfolio/subaccounts/positions/transfer`. Moves an
+/// existing position between two of the caller's own subaccounts. Idempotent
+/// on `client_transfer_id`: retrying with the same value returns 409. Added
+/// 2026-07-09.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApplySubaccountPositionTransferRequest {
+    pub client_transfer_id: String,
+    pub from_subaccount: u32,
+    pub to_subaccount: u32,
+    pub market_ticker: String,
+    pub side: crate::types::YesNo,
+    pub count: i64,
+    /// Per-contract transfer price in cents (0-100); sets cost basis and P&L
+    /// on both sides of the transfer.
+    pub price_cents: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApplySubaccountPositionTransferResponse {
+    pub position_transfer_id: String,
+}
+
+/// Discriminates whether a `SubaccountTransfer` row moved cash or a position.
+/// Added 2026-07-09.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SubaccountTransferType {
+    Cash,
+    Position,
+    #[serde(other)]
+    Unknown,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountTransfer {
     pub transfer_id: String,
     pub from_subaccount: u32,
     pub to_subaccount: u32,
+    /// Cash transfer amount in cents. Zero for position transfers.
     pub amount_cents: i64,
     pub created_ts: i64,
+    /// Exchange shard the transfer was applied on. Added 2026-07-09.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
+    /// Whether this row is a cash or position transfer. Added 2026-07-09.
+    #[serde(default)]
+    pub transfer_type: Option<SubaccountTransferType>,
+    /// Market ticker (position transfers only). Added 2026-07-09.
+    #[serde(default)]
+    pub market_ticker: Option<String>,
+    /// Position side (position transfers only). Added 2026-07-09.
+    #[serde(default)]
+    pub side: Option<crate::types::YesNo>,
+    /// Number of contracts moved (position transfers only). Added 2026-07-09.
+    #[serde(default)]
+    pub count: Option<i64>,
+    /// Per-contract price in cents (position transfers only). Added 2026-07-09.
+    #[serde(default)]
+    pub price_cents: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -146,6 +205,11 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, this key is restricted to a single sub-account (0-63) and may
+    /// only read and trade on it. `None` means the key is unrestricted.
+    /// Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -162,6 +226,10 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// If set, restricts the key to a single sub-account (0-63) that you own.
+    /// Omit to create an unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +244,10 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// If set, restricts the key to a single sub-account (0-63) that you own.
+    /// Omit to create an unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -283,6 +355,19 @@ impl KalshiRestClient {
         body: ApplySubaccountTransferRequest,
     ) -> Result<ApplySubaccountTransferResponse, KalshiError> {
         let path = Self::full_path("/portfolio/subaccounts/transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Move an existing position between two of the caller's own subaccounts.
+    /// Idempotent on `client_transfer_id`. Added 2026-07-09.
+    ///
+    /// **Requires auth.**
+    pub async fn apply_subaccount_position_transfer(
+        &self,
+        body: ApplySubaccountPositionTransferRequest,
+    ) -> Result<ApplySubaccountPositionTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/subaccounts/positions/transfer");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
     }

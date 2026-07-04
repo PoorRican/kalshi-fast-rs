@@ -426,6 +426,25 @@ fn get_subaccount_transfers_params_serializes_correctly() {
 }
 
 #[test]
+fn get_quotes_params_serializes_correctly() {
+    let params = kalshi_fast::GetQuotesParams {
+        min_ts: Some(1700000000),
+        max_ts: Some(1700003600),
+        rfq_id: Some("rfq-1".into()),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["min_ts"], 1700000000);
+    assert_eq!(json["max_ts"], 1700003600);
+    assert_eq!(json["rfq_id"], "rfq-1");
+    // market_ticker / event_ticker filters were removed from this endpoint
+    // (2026-06-20); the fields no longer exist on the struct at all.
+    assert!(json.get("market_ticker").is_none());
+    assert!(json.get("event_ticker").is_none());
+}
+
+#[test]
 fn historical_params_serialize_correctly() {
     let markets = kalshi_fast::GetHistoricalMarketsParams {
         limit: Some(100),
@@ -611,6 +630,7 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "strike_date": "2023-11-07T05:31:56Z",
             "strike_period": "day",
             "last_updated_ts": "2023-11-07T05:31:56Z",
+            "settlement_sources": [{"name": "NWS", "url": "https://weather.gov"}],
             "markets": []
         },
         "markets": [{
@@ -620,7 +640,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "yes_bid_size_fp": "10.00",
             "yes_ask_size_fp": "11.00",
             "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
             "notional_value": 100,
             "notional_value_dollars": "1.0000",
             "previous_yes_bid": 50,
@@ -655,6 +674,11 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.event.event_ticker, "EVT-1");
     assert_eq!(resp.event.collateral_return_type.as_deref(), Some("binary"));
     assert_eq!(resp.event.mutually_exclusive, Some(true));
+    assert_eq!(resp.event.settlement_sources.len(), 1);
+    assert_eq!(
+        resp.event.settlement_sources[0].name.as_deref(),
+        Some("NWS")
+    );
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
     assert_eq!(
@@ -863,7 +887,6 @@ fn get_positions_response_deserializes() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -894,7 +917,6 @@ fn positions_page_from_response() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -1057,7 +1079,14 @@ fn get_exchange_status_response_deserializes() {
     let json = r#"{
         "exchange_active": true,
         "trading_active": false,
-        "exchange_estimated_resume_time": "2025-01-01T00:00:00Z"
+        "exchange_estimated_resume_time": "2025-01-01T00:00:00Z",
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [{
+            "exchange_index": 0,
+            "exchange_active": true,
+            "trading_active": false,
+            "intra_exchange_transfers_active": true
+        }]
     }"#;
 
     let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
@@ -1067,6 +1096,10 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    let statuses = resp.exchange_index_statuses.expect("statuses present");
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].exchange_index, 0);
 }
 
 #[test]
@@ -1235,11 +1268,12 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
 }
 
@@ -1254,14 +1288,28 @@ fn create_subaccount_response_deserializes() {
 #[test]
 fn get_subaccount_transfers_response_deserializes() {
     let json = r#"{
-        "subaccount_transfers": [
-            {"transfer_id":"t1","from_subaccount":0,"to_subaccount":1,"amount_cents":100,"created_ts":1700000000}
+        "transfers": [
+            {"transfer_id":"t1","from_subaccount":0,"to_subaccount":1,"amount_cents":100,"created_ts":1700000000,"exchange_index":0,"transfer_type":"cash"},
+            {"transfer_id":"t2","from_subaccount":0,"to_subaccount":1,"amount_cents":0,"created_ts":1700000001,"exchange_index":0,"transfer_type":"position","market_ticker":"MKT-1","side":"yes","count":5,"price_cents":50}
         ],
         "cursor": "c1"
     }"#;
 
     let resp: GetSubaccountTransfersResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.subaccount_transfers.len(), 1);
+    assert_eq!(resp.subaccount_transfers.len(), 2);
+    assert_eq!(
+        resp.subaccount_transfers[0].transfer_type,
+        Some(kalshi_fast::SubaccountTransferType::Cash)
+    );
+    assert_eq!(
+        resp.subaccount_transfers[1].transfer_type,
+        Some(kalshi_fast::SubaccountTransferType::Position)
+    );
+    assert_eq!(
+        resp.subaccount_transfers[1].market_ticker.as_deref(),
+        Some("MKT-1")
+    );
+    assert_eq!(resp.subaccount_transfers[1].count, Some(5));
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
@@ -1269,6 +1317,14 @@ fn get_subaccount_transfers_response_deserializes() {
 fn apply_subaccount_transfer_response_deserializes() {
     let json = r#"{}"#;
     let _resp: ApplySubaccountTransferResponse = serde_json::from_str(json).unwrap();
+}
+
+#[test]
+fn apply_subaccount_position_transfer_response_deserializes() {
+    let json = r#"{"position_transfer_id": "pt-1"}"#;
+    let resp: kalshi_fast::ApplySubaccountPositionTransferResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.position_transfer_id, "pt-1");
 }
 
 // ============================================================================
@@ -1747,13 +1803,20 @@ fn get_api_keys_response_deserializes_typed() {
             "api_key_id": "key-1",
             "name": "test key",
             "scopes": ["read", "write"]
+        }, {
+            "api_key_id": "key-2",
+            "name": "restricted key",
+            "scopes": ["read", "write"],
+            "subaccount": 3
         }]
     }"#;
 
     let resp: kalshi_fast::GetApiKeysResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.api_keys.len(), 1);
+    assert_eq!(resp.api_keys.len(), 2);
     assert_eq!(resp.api_keys[0].api_key_id, "key-1");
     assert_eq!(resp.api_keys[0].scopes, vec!["read", "write"]);
+    assert_eq!(resp.api_keys[0].subaccount, None);
+    assert_eq!(resp.api_keys[1].subaccount, Some(3));
 }
 
 #[test]

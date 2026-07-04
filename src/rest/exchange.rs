@@ -17,6 +17,24 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Whether intra-exchange transfers are currently permitted. Added 2026-07-02.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-index status breakdown. The top-level fields above reflect the
+    /// default exchange index (0). Absent when the per-index breakdown is
+    /// unavailable. Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+/// Operational status of a single exchange index (shard). Added 2026-07-02.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    /// Exchange shard identifier. Currently only `0` is available in production.
+    pub exchange_index: i64,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

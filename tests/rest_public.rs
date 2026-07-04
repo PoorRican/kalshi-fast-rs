@@ -1,4 +1,7 @@
 #![cfg(feature = "live-tests")]
+// Multivariate lookup-history endpoints are deprecated (2026-07-02) but this
+// file still exercises them for regression coverage while they remain live.
+#![allow(deprecated)]
 
 mod common;
 
