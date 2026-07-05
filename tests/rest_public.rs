@@ -302,6 +302,7 @@ async fn test_get_exchange_status() {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_get_exchange_announcements() {
     let client = common::demo_client();
     let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
@@ -514,6 +515,7 @@ async fn test_get_multivariate_event_collection() {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_get_multivariate_event_collection_lookup_history() {
     let client = common::demo_client();
 
@@ -690,11 +692,21 @@ async fn test_get_market_candlesticks() {
     }
 
     let market = &markets_resp.markets[0];
-    let series_ticker = match &market.series_ticker {
-        Some(st) => st.clone(),
+    let event_ticker = match &market.event_ticker {
+        Some(et) => et.clone(),
         None => return,
     };
     let ticker = market.ticker.clone();
+
+    let event_resp =
+        tokio::time::timeout(common::TEST_TIMEOUT, client.get_event(&event_ticker, None))
+            .await
+            .expect("timeout")
+            .expect("request failed");
+    let series_ticker = match &event_resp.event.series_ticker {
+        Some(st) => st.clone(),
+        None => return,
+    };
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

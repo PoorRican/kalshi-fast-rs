@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -79,6 +79,10 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index this balance is held on. Added to the OpenAPI spec
+    /// 2026-07 alongside per-index subaccount balances: a subaccount with
+    /// funds on multiple indexes now appears as multiple entries.
+    pub exchange_index: i64,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -96,10 +100,23 @@ pub struct ApplySubaccountTransferRequest {
     pub from_subaccount: u32,
     pub to_subaccount: u32,
     pub amount_cents: i64,
+    /// Exchange shard to apply the transfer on. Defaults to `0` if omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
 pub struct ApplySubaccountTransferResponse {}
+
+/// Whether a subaccount-transfer row moved cash or a position.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SubaccountTransferType {
+    Cash,
+    Position,
+    #[serde(other)]
+    Unknown,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountTransfer {
@@ -108,6 +125,52 @@ pub struct SubaccountTransfer {
     pub to_subaccount: u32,
     pub amount_cents: i64,
     pub created_ts: i64,
+    /// Exchange index the transfer was applied on. Added to the OpenAPI spec
+    /// 2026-07.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
+    /// Whether this row is a cash or position transfer. Added to the OpenAPI
+    /// spec 2026-07 alongside subaccount position transfers.
+    #[serde(default)]
+    pub transfer_type: Option<SubaccountTransferType>,
+    /// Market ticker; present only on position transfers.
+    #[serde(default)]
+    pub market_ticker: Option<String>,
+    /// Position side (`yes`/`no`); present only on position transfers.
+    #[serde(default)]
+    pub side: Option<crate::types::YesNo>,
+    /// Number of contracts moved; present only on position transfers.
+    #[serde(default)]
+    pub count: Option<i64>,
+    /// Per-contract price in cents; present only on position transfers.
+    #[serde(default)]
+    pub price_cents: Option<i64>,
+}
+
+/// Request for `POST /portfolio/subaccounts/positions/transfer`.
+///
+/// Moves an existing position between two of the authenticated user's own
+/// subaccounts. Idempotent on `client_transfer_id`: retrying with the same
+/// value returns 409. Added to the OpenAPI spec 2026-07.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApplySubaccountPositionTransferRequest {
+    pub client_transfer_id: String,
+    pub from_subaccount: u32,
+    pub to_subaccount: u32,
+    /// Ticker of the market whose position is being moved. Must be on
+    /// exchange shard 0; markets on any other shard are rejected.
+    pub market_ticker: String,
+    pub side: crate::types::YesNo,
+    /// Number of contracts to move (must be greater than 0).
+    pub count: i64,
+    /// Per-contract price in cents (0-100) used to set cost basis and
+    /// realized P&L.
+    pub price_cents: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApplySubaccountPositionTransferResponse {
+    pub position_transfer_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -146,6 +209,11 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, this key is restricted to a single sub-account (0-63) and may
+    /// only read/trade on it. `None` means the key is unrestricted. Added to
+    /// the OpenAPI spec 2026-07.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -162,6 +230,10 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Omit to leave the
+    /// key unrestricted. Added to the OpenAPI spec 2026-07.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +248,10 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Omit to leave the
+    /// key unrestricted. Added to the OpenAPI spec 2026-07.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -210,12 +286,79 @@ pub struct GetSubaccountNettingResponse {
     pub netting_configs: Vec<SubaccountNettingConfig>,
 }
 
+/// Volume goal for one API usage level (`GET /account/api_usage_level/volume_progress`).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level for this Predictions volume goal (e.g. `"expert"`).
+    pub level: String,
+    pub earn_volume_goal_fp: FixedPointCount,
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Trailing 30-day volume progress toward volume-based API usage tiers.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed;
+    /// `trailing_30d_volume_fp` covers the trailing 30 days ending at this time.
+    pub computed_ts: i64,
+    pub trailing_30d_volume_fp: FixedPointCount,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`. Added to the
+/// OpenAPI spec 2026-06.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 impl KalshiRestClient {
     /// Get API rate-limit and position limits for the account.
     ///
     /// **Requires auth.**
     pub async fn get_account_api_limits(&self) -> Result<GetAccountApiLimitsResponse, KalshiError> {
         let path = Self::full_path("/account/limits");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant a permanent Advanced API usage-level grant.
+    ///
+    /// Currently only the Predictions exchange instance is supported;
+    /// requires at least one of the user's last 100 Predictions orders to
+    /// have been created via API. Added to the OpenAPI spec 2026-06.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get the authenticated user's trailing 30-day volume progress toward
+    /// volume-based API usage tiers.
+    ///
+    /// Added to the OpenAPI spec 2026-06.
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
         self.send(
             Method::GET,
             &path,
@@ -283,6 +426,22 @@ impl KalshiRestClient {
         body: ApplySubaccountTransferRequest,
     ) -> Result<ApplySubaccountTransferResponse, KalshiError> {
         let path = Self::full_path("/portfolio/subaccounts/transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Move an existing position between two of the authenticated user's own
+    /// subaccounts.
+    ///
+    /// Idempotent on `client_transfer_id`: retrying with the same value
+    /// returns 409. Added to the OpenAPI spec 2026-07.
+    ///
+    /// **Requires auth.**
+    pub async fn transfer_position_subaccount(
+        &self,
+        body: ApplySubaccountPositionTransferRequest,
+    ) -> Result<ApplySubaccountPositionTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/subaccounts/positions/transfer");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
     }

@@ -17,6 +17,25 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// True if intra-exchange transfers are currently permitted. Added to
+    /// the OpenAPI spec 2026-07.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-exchange-index status breakdown. The top-level fields above
+    /// reflect the default exchange index (`0`). Absent when unavailable.
+    /// Added to the OpenAPI spec 2026-07.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+/// Status of a single exchange shard. Currently only exchange index `0` is
+/// used in production.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: i64,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -163,6 +182,12 @@ impl KalshiRestClient {
     }
 
     /// Get exchange announcements.
+    ///
+    /// `GET /exchange/announcements` was removed from the OpenAPI spec
+    /// (Kalshi changelog, effective 2026-07-09) in favor of
+    /// `GET /exchange/schedule`. The endpoint is still live as of this
+    /// refresh; see `docs/spec-parity.md`.
+    #[deprecated(note = "removed from the Kalshi OpenAPI spec; use get_exchange_schedule instead")]
     pub async fn get_exchange_announcements(
         &self,
     ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {

@@ -41,12 +41,6 @@ async fn test_get_historical_market() {
             .as_ref()
             .is_some_and(|v| !v.is_empty())
     );
-    assert!(
-        resp.market
-            .series_ticker
-            .as_ref()
-            .is_some_and(|v| !v.is_empty())
-    );
 }
 
 #[tokio::test]
@@ -286,7 +280,6 @@ async fn test_get_markets_cross_consistency() {
 
     assert_eq!(single_resp.market.ticker, list_market.ticker);
     assert_eq!(single_resp.market.event_ticker, list_market.event_ticker);
-    assert_eq!(single_resp.market.series_ticker, list_market.series_ticker);
 }
 
 #[tokio::test]
@@ -394,9 +387,6 @@ async fn audit_market_option_fields() {
     let event_ticker_none = count_none(Box::new(
         markets.markets.iter().map(|m| m.event_ticker.is_none()),
     ));
-    let series_ticker_none = count_none(Box::new(
-        markets.markets.iter().map(|m| m.series_ticker.is_none()),
-    ));
     let market_type_none = count_none(Box::new(
         markets.markets.iter().map(|m| m.market_type.is_none()),
     ));
@@ -404,17 +394,13 @@ async fn audit_market_option_fields() {
         markets.markets.iter().map(|m| m.rules_primary.is_none()),
     ));
     let status_none = count_none(Box::new(markets.markets.iter().map(|m| m.status.is_none())));
+    #[allow(deprecated)]
     let title_none = count_none(Box::new(markets.markets.iter().map(|m| m.title.is_none())));
-    let can_trade_none = count_none(Box::new(
-        markets.markets.iter().map(|m| m.can_trade.is_none()),
-    ));
 
     eprintln!("--- Market Option<_> audit (n = {n}) ---");
     eprintln!("event_ticker  None in {event_ticker_none}/{n}");
-    eprintln!("series_ticker None in {series_ticker_none}/{n}");
     eprintln!("market_type   None in {market_type_none}/{n}");
     eprintln!("rules_primary None in {rules_primary_none}/{n}");
     eprintln!("status        None in {status_none}/{n}");
     eprintln!("title         None in {title_none}/{n}");
-    eprintln!("can_trade     None in {can_trade_none}/{n}");
 }

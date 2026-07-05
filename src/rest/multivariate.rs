@@ -183,6 +183,14 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Get lookup history for a multivariate event collection.
+    ///
+    /// Fully deprecated per the Kalshi changelog (2026-07-02) and no longer
+    /// present in the OpenAPI spec. The endpoint is still live as of this
+    /// refresh; see `docs/spec-parity.md`.
+    #[deprecated(
+        note = "fully deprecated by Kalshi (changelog 2026-07-02); no longer in the OpenAPI spec"
+    )]
     pub async fn get_multivariate_event_collection_lookup_history(
         &self,
         collection_ticker: &str,
