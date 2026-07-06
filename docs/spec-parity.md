@@ -91,6 +91,53 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/announcements` was removed from the OpenAPI spec (2026-07-04) and has no successor;
+  `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, and `AnnouncementStatus` were removed from the public API.
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the OpenAPI schema (changelog-scheduled for
+  2026-07-09) and are no longer modeled. The WebSocket `market_lifecycle_v2` message's
+  `fractional_trading_enabled` field and the `WsMarketLifecycleEventType::FractionalTradingUpdated`
+  variant were removed for the same reason (absent from the AsyncAPI spec's `event_type` enum);
+  unknown event types still fall back to `WsMarketLifecycleEventType::Unknown`.
+- `GetExchangeStatusResponse` gained `intra_exchange_transfers_active` and a per-index
+  `exchange_index_statuses: Vec<ExchangeIndexStatus>` breakdown (2026-07-02). Both are `Option`
+  because only `exchange_active`/`trading_active` are required in the OpenAPI schema.
+- `market_lifecycle_v2` `metadata_updated` events gained top-level `strike_type`, `cap_strike`, and
+  `custom_strike` (2026-06-18), alongside the pre-existing top-level `floor_strike`/`yes_sub_title`.
+  `created` / `price_level_structure_updated` events gained a top-level `price_ranges` array
+  (2026-07-02), reusing the REST `PriceRange` type since the shape (`start`/`end`/`step` fixed-point
+  dollar strings) is identical.
+- `EventData` (`GET /events`, `GET /events/{event_ticker}`) gained `settlement_sources` (mirroring
+  the field already on `Series`), plus `fee_type_override`, `fee_multiplier_override`, and
+  `exchange_index` (all `Option`, matching the OpenAPI's nullable/optional treatment).
+  `GetEventsParams` gained `tickers` (comma-separated event ticker filter) and `min_updated_ts`.
+- `GET /communications/quotes` (`GetQuotesParams`) dropped its `market_ticker`/`event_ticker` filters
+  (removed 2026-06-20; use RFQ/user/time filters instead) and gained `min_ts`/`max_ts` (2026-06-18).
+  RFQ-scoped quote-action endpoints were added (`delete_rfq_quote`, `accept_rfq_quote`,
+  `confirm_rfq_quote`, using `rfq_id` + `quote_id` path params, 2026-06-25); the quote-ID-only
+  endpoints (`delete_quote`, `accept_quote`, `confirm_quote`) remain supported per the changelog and
+  are not deprecated.
+- `ApiKey`, `CreateApiKeyRequest`, and `GenerateApiKeyRequest` gained an `Option<u32>` `subaccount`
+  field (2026-07-02) for sub-account-restricted API keys. Scopes remain modeled as `Vec<String>`
+  (not a `ApiKeyScope` enum) so new scope values (e.g. `write::trade`, `read::block_trade_accept`)
+  round-trip without a crate update.
+- `POST /portfolio/subaccounts/positions/transfer` (`apply_subaccount_position_transfer`) moves a
+  position between the caller's own subaccounts (2026-07-09). `SubaccountBalance` gained
+  `exchange_index` and `SubaccountTransfer` gained `exchange_index` / `transfer_type`
+  (`SubaccountTransferType`) plus position-transfer-only fields (`market_ticker`, `side`, `count`,
+  `price_cents`), all `Option` since they're absent on cash-transfer rows.
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) are absent from the current OpenAPI
+  spec, whose own description states it only covers "endpoints being migrated to spec-first
+  approach" — i.e. omission does not reliably mean removal from the live exchange. The changelog
+  (2026-06-18) says these will start returning a redirect error rather than disappearing outright, so
+  they are kept and marked `#[deprecated]` pointing at the V2 event-order equivalents rather than
+  removed. The same reasoning applies to
+  `get_multivariate_event_collection_lookup_history` (changelog: "fully deprecated" 2026-07-02, also
+  absent from the spec) and `lookup_tickers_for_market_in_multivariate_event_collection` (present but
+  marked `deprecated: true` in the OpenAPI spec itself).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

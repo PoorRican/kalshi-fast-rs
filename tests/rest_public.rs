@@ -299,20 +299,10 @@ async fn test_get_exchange_status() {
     if let Some(ts) = resp.exchange_estimated_resume_time.as_deref() {
         assert!(!ts.is_empty());
     }
-}
-
-#[tokio::test]
-async fn test_get_exchange_announcements() {
-    let client = common::demo_client();
-    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_exchange_announcements().await
-    })
-    .await
-    .expect("timeout")
-    .expect("request failed");
-
-    if let Some(first) = resp.announcements.first() {
-        assert!(!first.message.is_empty());
+    if let Some(statuses) = resp.exchange_index_statuses.as_ref() {
+        for status in statuses {
+            let _ = status.exchange_index;
+        }
     }
 }
 

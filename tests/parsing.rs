@@ -5,12 +5,12 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -620,7 +620,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "yes_bid_size_fp": "10.00",
             "yes_ask_size_fp": "11.00",
             "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
             "notional_value": 100,
             "notional_value_dollars": "1.0000",
             "previous_yes_bid": 50,
@@ -863,7 +862,6 @@ fn get_positions_response_deserializes() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -894,7 +892,6 @@ fn positions_page_from_response() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -1070,16 +1067,21 @@ fn get_exchange_status_response_deserializes() {
 }
 
 #[test]
-fn get_exchange_announcements_response_deserializes() {
+fn get_exchange_status_response_with_per_index_statuses_deserializes() {
     let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {"exchange_index": 0, "exchange_active": true, "trading_active": true, "intra_exchange_transfers_active": true}
         ]
     }"#;
 
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    let statuses = resp.exchange_index_statuses.unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].exchange_index, 0);
 }
 
 #[test]
@@ -1233,14 +1235,35 @@ fn get_account_endpoint_costs_response_deserializes() {
 }
 
 #[test]
+fn get_account_api_usage_level_volume_progress_response_deserializes() {
+    let json = r#"{
+        "volume_progress": [{
+            "computed_ts": 1700000000,
+            "trailing_30d_volume_fp": "1000.00",
+            "goals": [
+                {"level": "expert", "earn_volume_goal_fp": "500.00", "keep_volume_goal_fp": "250.00"}
+            ]
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetAccountApiUsageLevelVolumeProgressResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.volume_progress.len(), 1);
+    assert_eq!(resp.volume_progress[0].computed_ts, 1700000000);
+    assert_eq!(resp.volume_progress[0].trailing_30d_volume_fp, "1000.00");
+    assert_eq!(resp.volume_progress[0].goals[0].level, "expert");
+}
+
+#[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000,"exchange_index":0}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[0].exchange_index, Some(0));
 }
 
 #[test]
@@ -1265,10 +1288,52 @@ fn get_subaccount_transfers_response_deserializes() {
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
+/// Per the OpenAPI spec, `GetSubaccountTransfersResponse` now names the array
+/// `transfers` (rather than `subaccount_transfer_arr`), and each transfer carries
+/// `exchange_index` / `transfer_type`, plus position-only fields for position
+/// transfers. Added 2026-07-09.
+#[test]
+fn get_subaccount_transfers_response_deserializes_position_transfer_shape() {
+    let json = r#"{
+        "transfers": [
+            {
+                "transfer_id":"t1","from_subaccount":0,"to_subaccount":1,
+                "amount_cents":0,"created_ts":1700000000,"exchange_index":0,
+                "transfer_type":"position","market_ticker":"KXHIGHNY-24JAN01-T60",
+                "side":"yes","count":5,"price_cents":40
+            }
+        ],
+        "cursor": "c1"
+    }"#;
+
+    let resp: GetSubaccountTransfersResponse = serde_json::from_str(json).unwrap();
+    let transfer = &resp.subaccount_transfers[0];
+    assert_eq!(transfer.exchange_index, Some(0));
+    assert_eq!(
+        transfer.transfer_type,
+        Some(kalshi_fast::SubaccountTransferType::Position)
+    );
+    assert_eq!(
+        transfer.market_ticker.as_deref(),
+        Some("KXHIGHNY-24JAN01-T60")
+    );
+    assert_eq!(transfer.side.map(YesNo::as_str), Some("yes"));
+    assert_eq!(transfer.count, Some(5));
+    assert_eq!(transfer.price_cents, Some(40));
+}
+
 #[test]
 fn apply_subaccount_transfer_response_deserializes() {
     let json = r#"{}"#;
     let _resp: ApplySubaccountTransferResponse = serde_json::from_str(json).unwrap();
+}
+
+#[test]
+fn apply_subaccount_position_transfer_response_deserializes() {
+    let json = r#"{"position_transfer_id": "pt_1"}"#;
+    let resp: kalshi_fast::ApplySubaccountPositionTransferResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.position_transfer_id, "pt_1");
 }
 
 // ============================================================================

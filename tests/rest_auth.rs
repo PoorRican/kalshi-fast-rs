@@ -126,8 +126,26 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    assert!(resp.read.bucket_capacity >= 0);
+    assert!(resp.write.bucket_capacity >= 0);
+}
+
+#[tokio::test]
+async fn test_get_account_api_usage_level_volume_progress() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = common::demo_auth_client(auth);
+
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_account_api_usage_level_volume_progress().await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    if let Some(first) = resp.volume_progress.first() {
+        assert!(first.computed_ts > 0);
+    }
 }
 
 #[tokio::test]
