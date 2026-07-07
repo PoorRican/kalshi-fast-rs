@@ -91,6 +91,54 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/announcements` was removed from the OpenAPI spec (2026-07-04). `get_exchange_announcements`,
+  `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, and `AnnouncementStatus` were
+  removed from the public Rust API rather than kept as a dead-endpoint shim (intentional minor-version
+  break, 0.6.0 → 0.7.0).
+
+- `market.response_price_units`, `market.fractional_trading_enabled`, and
+  `market_positions.resting_orders_count` were removed from the OpenAPI schema (2026-07-03). None of the
+  three appear anywhere in the current AsyncAPI schema either, so the corresponding WebSocket mirror
+  fields (`WsMarketLifecycleV2::fractional_trading_enabled`, the `market_position` snapshot's
+  `resting_orders_count`) and the `market_lifecycle_v2` `fractional_trading_updated` event type were
+  removed too, rather than kept as optional dead fields (intentional minor-version break, 0.6.0 → 0.7.0).
+
+- The multivariate lookup-history feed (`GET /multivariate_event_collections/{ticker}/lookup`) was fully
+  deprecated and removed from the OpenAPI spec (2026-07-02). `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams/Response`, and `LookupPoint` were removed (intentional
+  minor-version break, 0.6.0 → 0.7.0). The sibling `PUT` operation on the same path
+  (`lookup_tickers_for_market_in_multivariate_event_collection`) is still present but the OpenAPI spec
+  marks it `deprecated: true` ("predates RFQs; do not use for new integrations"); the method and its
+  request/response types now carry `#[deprecated]` instead of being removed, since the operation itself
+  still exists.
+
+- Numbered subaccounts run `1..=63` (64 total including the primary account, `0`), per the OpenAPI
+  descriptions on `CreateSubaccount` and every subaccount-scoped parameter. The crate's `subaccount`
+  validation (`GetPositionsParams`, `GetOrdersParams`, `CreateOrderRequest`) previously rejected any
+  value above `32` — a stale bound predating the current 63-subaccount limit — and has been corrected
+  to `0..=63`.
+
+- `GetExchangeStatusResponse` gained `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` (2026-06-26). The top-level
+  `exchange_active`/`trading_active`/`intra_exchange_transfers_active` fields describe the default
+  exchange index (0); `exchange_index_statuses` carries the same breakdown per index and is absent
+  when per-index status isn't available.
+
+- Subaccounts are now shard-aware: `SubaccountBalance` and `SubaccountTransfer` gained a required
+  `exchange_index: i64` (2026-06-24), and `ApplySubaccountTransferRequest` gained an optional
+  `exchange_index: Option<i64>` to target a non-default shard.
+
+- `SubaccountTransfer` gained a required `transfer_type: TransferType` (`cash` | `position`) plus
+  optional `market_ticker` / `side` / `count` / `price` fields, populated only on position-transfer rows
+  (2026-07-02). `POST /portfolio/subaccounts/positions/transfer` (`apply_subaccount_position_transfer`)
+  is new: it moves a position between the caller's own subaccounts and is idempotent on
+  `client_transfer_id`. `price` is always the YES-side per-contract price, even when `side` is `no`.
+
+- `price_ranges: Option<Vec<PriceRange>>` was added to the `market_lifecycle_v2` WebSocket message
+  (`WsMarketLifecycleV2`), emitted alongside `price_level_structure` on `created` and
+  `price_level_structure_updated` events (2026-06-30). It reuses the REST `PriceRange` type so callers
+  get the same valid-price-band shape from either transport.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

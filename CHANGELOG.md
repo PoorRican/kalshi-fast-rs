@@ -8,6 +8,90 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-07-07
+
+### Compatibility
+
+- Docs snapshot: 2026-07-07
+- OpenAPI: 3.23.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-07-07
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Exchange announcements endpoint removed (2026-07-04) | **Breaking** — removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus` |
+| Deprecated Predictions REST schema fields removed (2026-07-03) | **Breaking** — removed `Market::response_price_units`, `Market::fractional_trading_enabled`, `MarketPosition::resting_orders_count`; also removed the AsyncAPI-absent WS mirrors (`WsMarketLifecycleV2::fractional_trading_enabled`, `market_position` snapshot's `resting_orders_count`, `WsMarketLifecycleEventType::FractionalTradingUpdated`) |
+| Margin orders now identify system order reasons (2026-07-02) | No code change — margin market/order types not modeled in this crate |
+| New price level structures (2026-07-07) | Added `price_ranges` to `market_lifecycle_v2` WS events (`WsMarketLifecycleV2`); no new tick-size fields per the changelog note |
+| Multivariate lookup history endpoints are fully deprecated (2026-07-02) | **Breaking** — removed `get_multivariate_event_collection_lookup_history`, `GetMultivariateEventCollectionLookupHistoryParams/Response`, `LookupPoint` (endpoint removed from OpenAPI); marked `lookup_tickers_for_market_in_multivariate_event_collection` and its request/response types `#[deprecated]` (sibling `PUT` operation still exists but is `deprecated: true` in the OpenAPI spec) |
+| Margin positions now include an `is_portfolio` flag (2026-07-01) | No code change — margin position types not modeled in this crate |
+| Subaccount position transfers (2026-07-02) | Added `POST /portfolio/subaccounts/positions/transfer` (`apply_subaccount_position_transfer`, `ApplySubaccountPositionTransferRequest/Response`); added `transfer_type: TransferType` plus optional `market_ticker`/`side`/`count`/`price` to `SubaccountTransfer` |
+| Trade-scoped API key permissions (2026-06-30) | No code change — scopes already modeled as free-form `Vec<String>` |
+| `price_ranges` added to `market_lifecycle_v2` events (2026-06-30) | Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` |
+| Margin positions `margin_used` omitted for jointly-margined portfolio positions (2026-06-30) | No code change — margin position types not modeled in this crate |
+| Margin risk per-market metrics limited to single-position subaccounts and gross margin markets (2026-06-27) | No code change — margin risk types not modeled in this crate |
+| Per-index exchange status (2026-06-26) | Added `intra_exchange_transfers_active` and `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse` |
+| Per-index subaccount balances (2026-06-24) | Added `exchange_index: i64` to `SubaccountBalance`; added optional `exchange_index: Option<i64>` to `ApplySubaccountTransferRequest`; added `exchange_index: i64` to `SubaccountTransfer` |
+| AcceptQuote rejects carry a specific reason on FIX (2026-06-30) | No code change — FIX protocol not modeled in this crate (REST/WebSocket only) |
+| More specific FIX rejects for cancel/replace failures (2026-06-25) | No code change — FIX protocol not modeled in this crate (REST/WebSocket only) |
+
+### Breaking
+
+- [Rust API] Removed the `GET /exchange/announcements` endpoint support: `get_exchange_announcements`,
+  `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus`. The
+  endpoint was removed from the OpenAPI spec (2026-07-04).
+- [Rust API] Removed `Market::response_price_units` and `Market::fractional_trading_enabled` (both
+  removed from the OpenAPI schema, 2026-07-03).
+- [Rust API] Removed `MarketPosition::resting_orders_count` (removed from the OpenAPI schema,
+  2026-07-03). The internal WS mirror (`market_position` snapshot type) was updated to match.
+- [Rust API] Removed `WsMarketLifecycleV2::fractional_trading_enabled` and the
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` variant. Neither `fractional_trading_enabled`
+  nor a `fractional_trading_updated` event type appear anywhere in the current AsyncAPI spec.
+- [Rust API] Removed `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`, `GetMultivariateEventCollectionLookupHistoryResponse`,
+  and `LookupPoint`. The underlying `GET .../lookup` operation no longer exists in the OpenAPI spec.
+- [Rust API] `lookup_tickers_for_market_in_multivariate_event_collection`,
+  `LookupTickersForMarketInMultivariateEventCollectionRequest`, and
+  `LookupTickersForMarketInMultivariateEventCollectionResponse` are now `#[deprecated]` (the sibling
+  `PUT .../lookup` operation remains in the OpenAPI spec but is marked `deprecated: true`).
+- [Rust API] Corrected the `subaccount` upper bound from `32` to `63` in `GetPositionsParams::validate`,
+  `GetOrdersParams::validate`, and `CreateOrderRequest::validate`. The OpenAPI spec documents 63 numbered
+  subaccounts (`1..=63`) plus the primary account (`0`); the crate's stale `32` bound rejected valid
+  subaccount numbers 33–63.
+
+### Added
+
+- [Rust API] Added `GetExchangeStatusResponse::intra_exchange_transfers_active: Option<bool>` and
+  `GetExchangeStatusResponse::exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>`, plus the new
+  `ExchangeIndexStatus` struct (2026-06-26).
+- [Rust API] Added `SubaccountBalance::exchange_index: i64` and `SubaccountTransfer::exchange_index: i64`
+  (2026-06-24). Added `ApplySubaccountTransferRequest::exchange_index: Option<i64>` to target a
+  non-default exchange shard.
+- [Rust API] Added `TransferType` enum (`Cash` | `Position`) and `SubaccountTransfer::transfer_type`,
+  plus optional `market_ticker` / `side` / `count` / `price` fields populated on position-transfer rows
+  (2026-07-02).
+- [Rust API] Added `apply_subaccount_position_transfer()` and the
+  `ApplySubaccountPositionTransferRequest` / `ApplySubaccountPositionTransferResponse` types for the new
+  `POST /portfolio/subaccounts/positions/transfer` endpoint (2026-07-02).
+- [Rust API] Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` /
+  `WsMarketLifecycleV2Ref`, emitted alongside `price_level_structure` on `created` and
+  `price_level_structure_updated` events (2026-06-30).
+
+### Fixed
+
+- [Tests] Fixed a stale `tests/rest_auth.rs` live test (`test_get_account_api_limits`) that still
+  referenced the pre-0.6.0 flat `read_limit` / `write_limit` fields removed by the 0.6.0 restructuring;
+  it now reads `resp.read.bucket_capacity` / `resp.write.bucket_capacity`. This was a compile error under
+  `--features live-tests` prior to this fix.
+
+### Deprecated
+
+- [Upstream] `PUT /multivariate_event_collections/{collection_ticker}/lookup` is marked
+  `deprecated: true` in the OpenAPI spec ("predates RFQs; do not use for new integrations"); the
+  corresponding Rust method and types now carry `#[deprecated]`.
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
