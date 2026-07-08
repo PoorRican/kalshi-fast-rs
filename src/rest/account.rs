@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointDollars, YesNo, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -82,6 +82,10 @@ pub struct SubaccountBalance {
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
+    /// Exchange index this balance is held on. Added 2026-07 (per-index
+    /// subaccount balances).
+    #[serde(default)]
+    pub exchange_index: u32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -96,10 +100,26 @@ pub struct ApplySubaccountTransferRequest {
     pub from_subaccount: u32,
     pub to_subaccount: u32,
     pub amount_cents: i64,
+    /// Exchange shard to apply the transfer on. Defaults to 0 (server-side)
+    /// if omitted. Added 2026-07.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
 pub struct ApplySubaccountTransferResponse {}
+
+/// Discriminator on [`SubaccountTransfer`] rows. Added 2026-07-02 (subaccount
+/// position transfers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransferType {
+    #[default]
+    Cash,
+    Position,
+    #[serde(other)]
+    Unknown,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountTransfer {
@@ -108,6 +128,45 @@ pub struct SubaccountTransfer {
     pub to_subaccount: u32,
     pub amount_cents: i64,
     pub created_ts: i64,
+    /// Exchange index the transfer was applied on. Added 2026-07.
+    #[serde(default)]
+    pub exchange_index: u32,
+    /// Whether this row is a cash or position transfer. Added 2026-07-02.
+    #[serde(default)]
+    pub transfer_type: TransferType,
+    /// Market ticker whose position moved. Position transfers only.
+    #[serde(default)]
+    pub market_ticker: Option<String>,
+    /// Position side moved. Position transfers only.
+    #[serde(default)]
+    pub side: Option<YesNo>,
+    /// Number of contracts moved. Position transfers only.
+    #[serde(default)]
+    pub count: Option<u32>,
+    /// Per-contract transfer price in fixed-point dollars, always the
+    /// YES-side price. Position transfers only.
+    #[serde(default)]
+    pub price: Option<FixedPointDollars>,
+}
+
+/// Body for `POST /portfolio/subaccounts/positions/transfer`. Added
+/// 2026-07-02 (subaccount position transfers).
+#[derive(Debug, Clone, Serialize)]
+pub struct ApplySubaccountPositionTransferRequest {
+    pub client_transfer_id: String,
+    pub from_subaccount: u32,
+    pub to_subaccount: u32,
+    pub market_ticker: String,
+    pub side: YesNo,
+    pub count: u32,
+    /// Per-contract price in fixed-point dollars (0 to 1.00 inclusive), always
+    /// the YES-side price even when `side` is `no`.
+    pub price: FixedPointDollars,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApplySubaccountPositionTransferResponse {
+    pub position_transfer_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -283,6 +342,19 @@ impl KalshiRestClient {
         body: ApplySubaccountTransferRequest,
     ) -> Result<ApplySubaccountTransferResponse, KalshiError> {
         let path = Self::full_path("/portfolio/subaccounts/transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Move an existing position between two of the caller's own subaccounts.
+    /// Added 2026-07-02 (subaccount position transfers).
+    ///
+    /// **Requires auth.**
+    pub async fn transfer_subaccount_position(
+        &self,
+        body: ApplySubaccountPositionTransferRequest,
+    ) -> Result<ApplySubaccountPositionTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/subaccounts/positions/transfer");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
     }

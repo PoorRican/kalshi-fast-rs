@@ -91,6 +91,44 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/announcements` was removed from the Predictions REST API (2026-07-04). It, and the
+  `Announcement` / `AnnouncementType` / `AnnouncementStatus` / `GetExchangeAnnouncementsResponse`
+  types, were removed from the crate rather than kept as dead code.
+- `response_price_units` and `fractional_trading_enabled` (REST `Market`; the latter also on the
+  `market_lifecycle_v2` WS event) and `resting_orders_count` (`MarketPosition`) were removed from
+  the Predictions REST/WebSocket schemas on 2026-07-03 and were removed from the crate to match.
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` is no longer a valid `event_type` value and
+  was removed alongside the field.
+- The multivariate lookup history feed (`GET /multivariate_event_collections/{ticker}/lookup`) was
+  fully deprecated and dropped from the OpenAPI spec (2026-07-02); the corresponding
+  `get_multivariate_event_collection_lookup_history` method and its types were removed. The sibling
+  `PUT .../lookup` endpoint (`lookup_tickers_for_market_in_multivariate_event_collection`) is still
+  present but now marked `deprecated: true` upstream ("predates RFQs"), so the Rust method carries a
+  `#[deprecated]` attribute rather than being removed.
+- The quote-ID-only endpoints (`GET`/`DELETE /communications/quotes/{quote_id}`, `PUT
+  .../accept`, `PUT .../confirm`) are all marked `deprecated: true` upstream in favor of the
+  RFQ-scoped equivalents (`/communications/rfqs/{rfq_id}/quotes/{quote_id}...`, added 2026-07-07).
+  The crate keeps both: the legacy `get_quote`/`delete_quote`/`accept_quote`/`confirm_quote` methods
+  are `#[deprecated]`, and `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`
+  are the recommended replacements.
+- `price_ranges` was added to `market_lifecycle_v2` events (2026-06-30), emitted alongside
+  `price_level_structure` on `created` and `price_level_structure_updated` events. Modeled as
+  `Option<Vec<PriceRange>>` on `WsMarketLifecycleV2` (reusing the REST `PriceRange` type) since it's
+  only present on those two event types.
+- `SubaccountBalance.exchange_index` and `SubaccountTransfer.exchange_index` (per-index subaccount
+  balances/transfers, 2026-07) and `GetExchangeStatusResponse.exchange_index_statuses` /
+  `intra_exchange_transfers_active` (per-index exchange status) are all `Option`/defaulted rather
+  than strictly required, since the exchange currently only operates index 0 and per-index
+  breakdowns may be absent.
+- `SubaccountTransfer.transfer_type` (`TransferType::Cash` | `Position`, added 2026-07-02 for
+  subaccount position transfers) defaults to `Cash` when absent, so older transfer rows without the
+  discriminator still parse as cash transfers (their only prior meaning).
+- Margin-market endpoints (`/margin/risk`, `/margin/positions`, `/margin/orders`) are not modeled in
+  this crate; only `/margin/fee_tiers` is. Upstream margin-market changelog entries (per-market risk
+  metric gating, `margin_used`/`is_portfolio` flags, system order reasons) require no crate changes.
+- FIX-protocol behavior (e.g. AcceptQuote reject reasons on `35=UA`) is out of scope; this crate only
+  implements the REST and WebSocket APIs.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
