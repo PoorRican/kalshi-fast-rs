@@ -91,6 +91,62 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `market.response_price_units`, `market.fractional_trading_enabled`, and
+  `market_positions.resting_orders_count` were removed outright from the Predictions REST schema on
+  2026-07-03 (not deprecated-in-place — gone). Per the crate's removal policy these fields were
+  deleted from `Market` (REST and `WsMarketLifecycleV2`/`Ref`) and `MarketPosition` (REST and
+  `MarketPositionRef`) rather than kept as stale `Option` fields. The
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` variant was removed for the same reason —
+  the AsyncAPI's `market_lifecycle_v2` `event_type` enum no longer lists `fractional_trading_updated`.
+  This is an intentional minor-version break (0.6.0 → 0.7.0).
+
+- `GET /exchange/announcements` was removed from the OpenAPI spec on 2026-07-04. The crate's
+  `get_exchange_announcements` method and `GetExchangeAnnouncementsResponse` / `Announcement` /
+  `AnnouncementType` / `AnnouncementStatus` types were deleted rather than kept as dead code
+  (intentional minor-version break, 0.6.0 → 0.7.0).
+
+- `GetExchangeStatusResponse` gained `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` (2026-06, per-index exchange status).
+  Both are `Option` because the top-level fields reflect only the default exchange index (0) and the
+  per-index breakdown is documented as "absent when unavailable."
+
+- `SubaccountBalance.exchange_index: i64` and `SubaccountTransfer.exchange_index: i64` /
+  `SubaccountTransfer.transfer_type: SubaccountTransferType` are newly *required* fields in the
+  OpenAPI spec (2026-06, per-index subaccount balances/transfers) that were entirely missing from
+  the crate's structs — not a case of upstream relaxing a requirement, but a gap this refresh closed.
+  `SubaccountTransfer` also gained the position-transfer-only fields `market_ticker`, `side`,
+  `count`, and `price`, modeled as `Option` since the spec marks them present only for
+  `transfer_type: position` rows.
+
+- The multivariate lookup-history endpoint (`GET
+  /multivariate_event_collections/{collection_ticker}/lookup`, exposed by the crate as
+  `get_multivariate_event_collection_lookup_history`) no longer exists anywhere in the OpenAPI spec
+  (changelog: "fully deprecated," 2026-07-02). The method and its `GetMultivariateEventCollection
+  LookupHistoryParams` / `Response` / `LookupPoint` types were removed rather than kept as dead code
+  (intentional minor-version break, 0.6.0 → 0.7.0). The sibling `PUT` lookup endpoint
+  (`lookup_tickers_for_market_in_multivariate_event_collection`) still exists but is now marked
+  `deprecated: true` in the OpenAPI spec ("predates RFQs"); it is kept and annotated
+  `#[deprecated(since = "0.7.0", ...)]` rather than removed, since it is still live upstream.
+
+- RFQ-scoped quote lookup: `GET /communications/rfqs/{rfq_id}/quotes/{quote_id}` (and the sibling
+  `DELETE`/`accept`/`confirm` endpoints) are the current, non-deprecated way to operate on a quote.
+  The unscoped `/communications/quotes/{quote_id}` family (`GetQuote`, `DeleteQuote`, `AcceptQuote`,
+  `ConfirmQuote`) is marked `deprecated: true` in the OpenAPI spec as of 2026-07-07. The crate adds
+  `get_rfq_quote` / `delete_rfq_quote` / `accept_rfq_quote` / `confirm_rfq_quote` and marks the
+  existing unscoped `get_quote` / `delete_quote` / `accept_quote` / `confirm_quote` methods
+  `#[deprecated(since = "0.7.0", ...)]` rather than removing them, since they are still live
+  upstream (deprecated, not removed).
+
+- `price_level_structure` (`Market.price_level_structure`, `WsMarketLifecycleV2.price_level_structure`)
+  remains a raw `Option<String>` rather than a closed enum. Seven new values were added to the
+  OpenAPI/AsyncAPI enum in 2026-07 ("New price level structures," pilot rollout starting the week of
+  2026-07-27), and modeling this as a string means no crate update is needed as the rollout expands.
+  `WsMarketLifecycleV2`/`Ref` gained a typed `price_ranges: Option<Vec<WsPriceRange>>` /
+  `Option<Vec<WsPriceRangeRef>>` field (previously only reachable via the `extra` catch-all),
+  mirroring the REST `Market.price_ranges: Option<Vec<PriceRange>>` field added in the prior release.
+  It is `Option` because the AsyncAPI marks it present only on `created` and
+  `price_level_structure_updated` events.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

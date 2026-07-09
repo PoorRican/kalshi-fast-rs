@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointDollars, YesNo, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -79,6 +79,8 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on. Added 2026-06.
+    pub exchange_index: i64,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -101,6 +103,16 @@ pub struct ApplySubaccountTransferRequest {
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
 pub struct ApplySubaccountTransferResponse {}
 
+/// Whether a `SubaccountTransfer` row moves cash or a position.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SubaccountTransferType {
+    Cash,
+    Position,
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountTransfer {
     pub transfer_id: String,
@@ -108,6 +120,23 @@ pub struct SubaccountTransfer {
     pub to_subaccount: u32,
     pub amount_cents: i64,
     pub created_ts: i64,
+    /// Exchange index the transfer was applied on. Added 2026-06.
+    pub exchange_index: i64,
+    /// Whether this row is a cash or position transfer. Added 2026-06.
+    pub transfer_type: SubaccountTransferType,
+    /// Market ticker (position transfers only).
+    #[serde(default)]
+    pub market_ticker: Option<String>,
+    /// Position side (position transfers only).
+    #[serde(default)]
+    pub side: Option<YesNo>,
+    /// Number of contracts moved (position transfers only).
+    #[serde(default)]
+    pub count: Option<i64>,
+    /// Per-contract transfer price in fixed-point dollars, always the YES-side
+    /// price (position transfers only).
+    #[serde(default)]
+    pub price: Option<FixedPointDollars>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

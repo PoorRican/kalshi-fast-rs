@@ -24,9 +24,13 @@ pub struct WsMarketLifecycleV2 {
     #[serde(default)]
     pub is_deactivated: Option<bool>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// The market's valid price bands, in fixed-point dollars. Emitted alongside
+    /// `price_level_structure` on `created` and `price_level_structure_updated`
+    /// events. Use this to determine valid order prices rather than hardcoding
+    /// a tick size.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<WsPriceRange>>,
     /// Top-level updated floor strike. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events and is distinct from
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
@@ -54,12 +58,20 @@ pub enum WsMarketLifecycleEventType {
     CloseDateUpdated,
     Determined,
     Settled,
-    FractionalTradingUpdated,
     PriceLevelStructureUpdated,
     /// Fires when market metadata (name, title, subtitles, etc.) changes. Added 2026-05-11.
     MetadataUpdated,
     #[serde(other)]
     Unknown,
+}
+
+/// A valid order-price band, in fixed-point dollars. See
+/// `WsMarketLifecycleV2::price_ranges`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsPriceRange {
+    pub start: String,
+    pub end: String,
+    pub step: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -143,10 +155,10 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub settled_ts: Option<i64>,
     #[serde(default)]
     pub is_deactivated: Option<bool>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    #[serde(default, borrow)]
+    pub price_ranges: Option<Vec<WsPriceRangeRef<'a>>>,
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
@@ -172,14 +184,41 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             settlement_value: self.settlement_value.map(Cow::into_owned),
             settled_ts: self.settled_ts,
             is_deactivated: self.is_deactivated,
-            fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges.map(|ranges| {
+                ranges
+                    .into_iter()
+                    .map(WsPriceRangeRef::into_owned)
+                    .collect()
+            }),
             floor_strike: self.floor_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
                 .map(WsMarketLifecycleAdditionalMetadataRef::into_owned),
             extra: self.extra,
+        }
+    }
+}
+
+/// A valid order-price band, in fixed-point dollars (borrowed variant). See
+/// `WsMarketLifecycleV2Ref::price_ranges`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsPriceRangeRef<'a> {
+    #[serde(borrow)]
+    pub start: Cow<'a, str>,
+    #[serde(borrow)]
+    pub end: Cow<'a, str>,
+    #[serde(borrow)]
+    pub step: Cow<'a, str>,
+}
+
+impl<'a> WsPriceRangeRef<'a> {
+    pub fn into_owned(self) -> WsPriceRange {
+        WsPriceRange {
+            start: self.start.into_owned(),
+            end: self.end.into_owned(),
+            step: self.step.into_owned(),
         }
     }
 }
