@@ -8,6 +8,100 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-07-10
+
+### Compatibility
+
+- Docs snapshot: 2026-07-10
+- OpenAPI: 3.24.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-07-09
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Per-index subaccount balances (2026-06-24) | Added `exchange_index` to `SubaccountBalance` |
+| Per-index exchange status (2026-06-26) | Added `exchange_index_statuses`, `intra_exchange_transfers_active` to `GetExchangeStatusResponse`; added `ExchangeIndexStatus` |
+| Margin risk per-market metrics limited to single-position subaccounts / gross margin markets (2026-06-27) | No code change — `/margin/risk` not modeled |
+| Margin positions `margin_used` omitted for jointly-margined positions (2026-06-30) | No code change — `/margin/positions` not modeled |
+| `price_ranges` added to `market_lifecycle_v2` events (2026-06-30) | Added `price_ranges` to `WsMarketLifecycleV2`/`Ref` |
+| AcceptQuote rejects carry a specific reason on FIX (2026-06-30) | No code change — FIX protocol not modeled |
+| Trade-scoped API key permissions (`write::trade`) (2026-06-30) | No code change — scopes stored as `Vec<String>` already |
+| Margin positions `is_portfolio` flag (2026-07-01) | No code change — `/margin/positions` and `/margin/risk` not modeled |
+| Multivariate lookup history endpoints fully deprecated (2026-07-02) | **Breaking** — removed `get_multivariate_event_collection_lookup_history` and its `Params`/`Response`/`LookupPoint` types (endpoint removed from OpenAPI); deprecated the sibling PUT lookup endpoint |
+| Margin orders identify system order reasons (2026-07-02) | No code change — `/margin/orders` not modeled |
+| Deprecated Predictions REST schema fields removed (2026-07-03) | **Breaking** — removed `Market.response_price_units`, `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count` |
+| Exchange announcements endpoint removed (2026-07-04) | **Breaking** — removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus` |
+| New price level structures (2026-07-07) | No code change — `price_level_structure` already a raw `String`/`Cow<str>` |
+| RFQ-scoped quote lookup endpoint (2026-07-07) | Added `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`; deprecated `get_quote`/`delete_quote`/`accept_quote`/`confirm_quote` (all four quote-ID-only endpoints are now `deprecated: true` upstream) |
+| Support for FIX Tag 2446 on Incremental Refresh (2026-07-09) | No code change — FIX protocol not modeled |
+
+### Added
+
+- [Rust API] Added `exchange_index: Option<i64>` to `SubaccountBalance` (2026-06-24) and `Market`
+  (2026-06-26), part of a multi-index exchange rollout.
+- [Rust API] Added `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse`, and
+  the new `ExchangeIndexStatus` struct (2026-06-26).
+- [Rust API] Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` (reusing the
+  REST `PriceRange` type) and a zero-copy `price_ranges: Option<Vec<WsPriceRangeRef<'a>>>` plus new
+  `WsPriceRangeRef` type to `WsMarketLifecycleV2Ref`, emitted on `created` and
+  `price_level_structure_updated` lifecycle events (2026-06-30).
+- [Rust API] Added `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`
+  methods for the RFQ-scoped quote endpoints under `/communications/rfqs/{rfq_id}/quotes/{quote_id}`
+  (2026-07-07).
+- [Rust API] Added `PartialEq` derive to `PriceRange` to support equality assertions across the
+  REST/WebSocket owned/borrowed round-trip.
+
+### Deprecated
+
+- [Rust API] `get_quote`, `delete_quote`, `accept_quote`, and `confirm_quote` are now
+  `#[deprecated]`; use the RFQ-scoped `get_rfq_quote` / `delete_rfq_quote` / `accept_rfq_quote` /
+  `confirm_rfq_quote` instead. The underlying endpoints are marked `deprecated: true` upstream with
+  no removal date announced.
+- [Rust API] `lookup_tickers_for_market_in_multivariate_event_collection` is now `#[deprecated]`
+  ("predates RFQs, do not use for new integrations"); no replacement endpoint exists.
+
+### Removed
+
+- [Rust API] Removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`,
+  `Announcement`, `AnnouncementType`, `AnnouncementStatus` — `GET /exchange/announcements` was
+  removed from the OpenAPI spec (2026-07-04).
+- [Rust API] Removed `Market.response_price_units` and `Market.fractional_trading_enabled` —
+  removed from the Predictions REST schema (2026-07-03).
+- [Rust API] Removed `MarketPosition.resting_orders_count` (and the corresponding field on the
+  WebSocket `MarketPositionRef`) — removed from the Predictions REST schema (2026-07-03).
+- [Rust API] Removed `WsMarketLifecycleV2`/`Ref.fractional_trading_enabled` and
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` — the `fractional_trading_updated` event
+  type and field are no longer present in the AsyncAPI `market_lifecycle_v2` schema.
+- [Rust API] Removed `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`,
+  `GetMultivariateEventCollectionLookupHistoryResponse`, and `LookupPoint` — the underlying
+  `GET /multivariate_event_collections/{collection_ticker}/lookup` endpoint was fully removed from
+  the OpenAPI spec (2026-07-02).
+
+### Fixed
+
+- [Tests] `tests/rest_auth.rs::test_get_account_api_limits` still referenced the pre-0.6.0
+  `read_limit`/`write_limit` fields removed by the `GetAccountApiLimitsResponse` restructuring;
+  updated to `resp.read.refill_rate` / `resp.write.refill_rate`. This was a stale-test compile
+  break under `--features live-tests`, caught while re-validating this refresh.
+
+### Breaking
+
+- [Rust API] Code constructing or matching on `Market`, `MarketPosition`, `WsMarketLifecycleV2`, or
+  `WsMarketLifecycleV2Ref` via exhaustive field patterns must drop references to
+  `response_price_units`, `fractional_trading_enabled`, and `resting_orders_count`.
+- [Rust API] Code matching on `WsMarketLifecycleEventType` must drop the `FractionalTradingUpdated`
+  arm; unrecognized event types fall through to `Unknown` via `#[serde(other)]`.
+- [Rust API] `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, `AnnouncementStatus`, `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`,
+  `GetMultivariateEventCollectionLookupHistoryResponse`, and `LookupPoint` no longer exist; callers
+  must remove all references.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

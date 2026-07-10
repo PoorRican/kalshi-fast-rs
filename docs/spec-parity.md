@@ -91,6 +91,46 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/announcements` was removed from the OpenAPI spec (2026-07-04). The crate no longer
+  exposes `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, or `AnnouncementStatus`.
+- `Market.response_price_units` and `Market.fractional_trading_enabled` were removed from the
+  Predictions REST schema (2026-07-03); `MarketPosition.resting_orders_count` was removed at the
+  same time. All three are removed from the crate's public types rather than kept as stale
+  `Option` fields, since they no longer round-trip any upstream value. The WebSocket
+  `market_lifecycle_v2` payload's `fractional_trading_enabled` field and the
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` variant were removed for the same reason
+  (the `fractional_trading_updated` event type is no longer in the AsyncAPI `event_type` enum).
+- A multi-index exchange rollout added `exchange_index` (integer, defaults to `0`) to several
+  response shapes: `Market`, `SubaccountBalance`, and the new `ExchangeIndexStatus` (part of
+  `GetExchangeStatusResponse.exchange_index_statuses`). `GetExchangeStatusResponse` also gained
+  `intra_exchange_transfers_active`. All are modeled as `Option` since the per-index breakdown is
+  absent on older/unaffected responses.
+- The `market_lifecycle_v2` `created` and `price_level_structure_updated` events now carry a
+  `price_ranges` array (start/end/step, fixed-point dollars) alongside `price_level_structure`.
+  Modeled as `Option<Vec<PriceRange>>` reusing the REST `PriceRange` type (owned path) and a
+  zero-copy `WsPriceRangeRef` (borrowed path), consistent with the WebSocket module's zero-copy
+  parsing goal. `price_level_structure` itself stays a raw `String`/`Cow<str>` so the seven new
+  price-level-structure values introduced 2026-07-07 round-trip with no crate change.
+- `GET /multivariate_event_collections/{collection_ticker}/lookup` (the lookup-history feed) was
+  fully removed from the OpenAPI spec (2026-07-02, "fully deprecated"). The crate no longer exposes
+  `get_multivariate_event_collection_lookup_history` or its `Params`/`Response`/`LookupPoint`
+  types. The sibling `PUT` endpoint (`lookup_tickers_for_market_in_multivariate_event_collection`)
+  is still present upstream but now marked `deprecated: true` ("predates RFQs, do not use for new
+  integrations", no replacement) — kept in the crate but annotated `#[deprecated]`.
+- The quote-ID-only endpoints (`GET`/`DELETE`/`PUT .../accept`/`PUT .../confirm` under
+  `/communications/quotes/{quote_id}`) were all marked `deprecated: true` upstream (2026-07-07) in
+  favor of RFQ-scoped equivalents under `/communications/rfqs/{rfq_id}/quotes/{quote_id}`. The
+  crate keeps `get_quote`/`delete_quote`/`accept_quote`/`confirm_quote` (annotated `#[deprecated]`)
+  and adds `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote` as their
+  replacements; both sets return the same response types.
+- Margin endpoints beyond `/margin/fee_tiers` (`/margin/risk`, `/margin/positions`,
+  `/margin/orders`) remain unmodeled, so upstream margin-only changes (per-market risk metric
+  gating, `margin_used` omission for jointly-margined positions, `is_portfolio` flag,
+  `order_reason` on system orders) require no crate change.
+- FIX protocol behavior (`AcceptQuote` reject reasons, FIX tag 2446 on Incremental Refresh) is out
+  of scope: this crate only implements the REST and WebSocket JSON APIs, not FIX.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
