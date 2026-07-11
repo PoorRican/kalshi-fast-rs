@@ -91,6 +91,54 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/announcements` was removed from the OpenAPI spec (2026-07-04) with no
+  replacement. `get_exchange_announcements`, `Announcement`, `AnnouncementType`,
+  `AnnouncementStatus`, and `GetExchangeAnnouncementsResponse` were removed from the public Rust
+  API rather than kept as dead code.
+
+- `GET /exchange/status` gained a per-index breakdown (2026-06-26): `intra_exchange_transfers_active:
+  Option<bool>` and `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` on
+  `GetExchangeStatusResponse`. Both are optional because the top-level fields still describe the
+  default exchange index (0) and the per-index array is absent when unavailable.
+
+- `/multivariate_event_collections/{collection_ticker}/lookup` (GET, the lookup-history feed) was
+  removed from the OpenAPI spec entirely (2026-07-02, "fully deprecated"). The PUT
+  ticker-pair-lookup endpoint at the same path is unaffected and still present. Removed
+  `get_multivariate_event_collection_lookup_history`, `GetMultivariateEventCollectionLookupHistoryParams`,
+  `GetMultivariateEventCollectionLookupHistoryResponse`, and `LookupPoint`.
+
+- `market.response_price_units`, `market.fractional_trading_enabled`, and
+  `market_positions.resting_orders_count` were removed from the OpenAPI schema (2026-07-03). All
+  three fields (plus the corresponding WebSocket mirrors: `WsMarketLifecycleV2.fractional_trading_enabled`
+  and `MarketPositionRef.resting_orders_count`) were removed from the public Rust API. The
+  `fractional_trading_updated` value was also dropped from the `market_lifecycle_v2` `event_type`
+  enum in the AsyncAPI, so `WsMarketLifecycleEventType::FractionalTradingUpdated` was removed; any
+  future occurrence of an unrecognized event type still falls back to `Unknown` via `#[serde(other)]`.
+
+- The `/communications/quotes/{quote_id}` family (`GET`/`DELETE`/`PUT .../accept`/`PUT
+  .../confirm`) is marked `deprecated: true` in the OpenAPI spec (2026-07-07) in favor of RFQ-scoped
+  equivalents at `/communications/rfqs/{rfq_id}/quotes/{quote_id}`. `get_quote`, `delete_quote`,
+  `accept_quote`, and `confirm_quote` are kept and marked `#[deprecated]` (both are still present in
+  the spec, so removing them isn't warranted yet); `get_rfq_quote`, `delete_rfq_quote`,
+  `accept_rfq_quote`, and `confirm_rfq_quote` were added as their non-deprecated replacements.
+
+- `market_lifecycle_v2` `metadata_updated` events carry more top-level fields than previously
+  modeled: `strike_type: Option<String>`, `cap_strike: Option<f64>`, and `custom_strike:
+  Option<BTreeMap<String, String>>` join the already-modeled `floor_strike` / `yes_sub_title`.
+  Additionally, `price_ranges: Option<Vec<PriceRange>>` (reusing the REST `PriceRange` type) is
+  emitted alongside `price_level_structure` on market creation and
+  `price_level_structure_updated` events (added 2026-06-30). None of these were previously in the
+  changelog watermark range; they were found by diffing the live AsyncAPI against the code.
+
+- `GET /portfolio/subaccounts/balances` returns one balance per exchange index rather than one per
+  subaccount (2026-06-24, "per-index subaccount balances"): `SubaccountBalance` gained a required
+  `exchange_index: i64` field.
+
+- Numbered subaccounts now go up to 63 (previously 32) across the REST surface (`GetPositionsParams`,
+  `GetOrdersParams`, `CreateOrderRequest`, and related doc comments). The live OpenAPI consistently
+  documents "1-63 for subaccounts" everywhere subaccount numbers are described; the crate's
+  `validate()` bounds checks and comments were updated to match.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

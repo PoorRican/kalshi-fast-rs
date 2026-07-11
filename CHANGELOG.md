@@ -8,6 +8,115 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-07-11
+
+### Compatibility
+
+- Docs snapshot: 2026-07-11
+- OpenAPI: 3.24.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-07-09
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Per-index subaccount balances (2026-06-24) | Added `exchange_index: i64` to `SubaccountBalance` |
+| Per-index exchange status (2026-06-26) | Added `intra_exchange_transfers_active`, `exchange_index_statuses` / `ExchangeIndexStatus` to `GetExchangeStatusResponse` |
+| Margin risk per-market metrics limited to single-position subaccounts (2026-06-27) | No code change — margin risk types not in crate |
+| Trade-scoped API key permissions (2026-06-30) | No code change — scopes already stored as `Vec<String>` |
+| price_ranges added to market_lifecycle_v2 events (2026-06-30) | Added `price_ranges` to `WsMarketLifecycleV2` / `Ref` |
+| Margin positions `margin_used` omitted for jointly-margined positions (2026-06-30) | No code change — margin position types not in crate |
+| AcceptQuote rejects carry a specific reason on FIX (2026-06-30) | No code change — FIX protocol out of scope (crate is REST/WS only) |
+| Margin positions now include an `is_portfolio` flag (2026-07-01) | No code change — margin position types not in crate |
+| Multivariate lookup history endpoints are fully deprecated (2026-07-02) | **Breaking** — removed `get_multivariate_event_collection_lookup_history`, `GetMultivariateEventCollectionLookupHistoryParams`/`Response`, `LookupPoint` (endpoint removed from OpenAPI, not just marked deprecated) |
+| Margin orders now identify system order reasons (2026-07-02) | No code change — margin order types not in crate |
+| Deprecated Predictions REST schema fields removed (2026-07-03) | **Breaking** — removed `Market.response_price_units`, `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count` (+ WS mirrors) |
+| Exchange announcements endpoint removed (2026-07-04) | **Breaking** — removed `get_exchange_announcements`, `Announcement`, `AnnouncementType`, `AnnouncementStatus`, `GetExchangeAnnouncementsResponse` |
+| RFQ-scoped quote lookup endpoint (2026-07-07) | Added `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`; deprecated the quote-ID-only equivalents |
+| New price level structures (2026-07-07, effective late July/August) | No code change — `price_level_structure` already modeled as an opaque `Option<String>`; new enum values pass through unchanged |
+| Support for FIX Tag 2446 on Incremental Refresh (2026-07-09) | No code change — FIX protocol out of scope (crate is REST/WS only) |
+
+**Additional drift found by diffing the live OpenAPI/AsyncAPI against the code (not called out by
+the changelog RSS in this window):**
+
+| Drift | Action |
+|---|---|
+| Numbered subaccounts now go up to 63 (spec consistently says "1-63"; crate validated `0..=32`) | Widened `GetPositionsParams`, `GetOrdersParams`, and `CreateOrderRequest` subaccount validation to `0..=63`; updated doc comments |
+| `market_lifecycle_v2` `metadata_updated` events carry `strike_type`, `cap_strike`, `custom_strike` at the top level, not just `floor_strike`/`yes_sub_title` | Added the three fields to `WsMarketLifecycleV2` / `Ref` |
+| `market_lifecycle_v2` `event_type` enum no longer includes `fractional_trading_updated` | Removed `WsMarketLifecycleEventType::FractionalTradingUpdated` (unrecognized future values still fall back to `Unknown`) |
+
+### Added
+
+- [Rust API] Added `exchange_index: i64` to `SubaccountBalance` (per-index subaccount balances,
+  2026-06-24). `GET /portfolio/subaccounts/balances` now returns one balance per exchange index.
+- [Rust API] Added `intra_exchange_transfers_active: Option<bool>` and `exchange_index_statuses:
+  Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse`, plus the new
+  `ExchangeIndexStatus` struct (per-index exchange status, 2026-06-26).
+- [Rust API] Added `price_ranges: Option<Vec<PriceRange>>`, `strike_type: Option<String>`,
+  `cap_strike: Option<f64>`, and `custom_strike: Option<BTreeMap<String, String>>` to
+  `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref`. `price_ranges` is emitted alongside
+  `price_level_structure` on market creation and `price_level_structure_updated` events
+  (2026-06-30); the other three are additional `metadata_updated` top-level fields found by
+  diffing the live AsyncAPI.
+- [Rust API] Added `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, and
+  `confirm_rfq_quote` methods, scoped to `/communications/rfqs/{rfq_id}/quotes/{quote_id}`
+  (2026-07-07). These replace the quote-ID-only endpoints, which the OpenAPI spec now marks
+  `deprecated: true`.
+- [Tests] Added coverage for the new `GetExchangeStatusResponse` per-index fields, the
+  `WsMarketLifecycleV2` `price_ranges`/`strike_type`/`cap_strike`/`custom_strike` fields, and the
+  `SubaccountBalance.exchange_index` field.
+
+### Changed
+
+- [Rust API] Widened the numbered-subaccount validation bound from `0..=32` to `0..=63` in
+  `GetPositionsParams::validate`, `GetOrdersParams::validate`, and
+  `CreateOrderRequest::validate`, matching the live OpenAPI's "1-63 for subaccounts" description
+  everywhere subaccount numbers are documented.
+
+### Deprecated
+
+- [Rust API] `get_quote`, `delete_quote`, `accept_quote`, and `confirm_quote` are marked
+  `#[deprecated]`. The OpenAPI spec marks their underlying quote-ID-only endpoints
+  `deprecated: true` (2026-07-07) in favor of the RFQ-scoped equivalents; the endpoints are still
+  present in the spec so the methods are kept, not removed.
+
+### Removed
+
+- [Rust API] Removed `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`,
+  `GetMultivariateEventCollectionLookupHistoryResponse`, and `LookupPoint`. The lookup-history
+  endpoint (`GET /multivariate_event_collections/{collection_ticker}/lookup`) was removed from
+  the OpenAPI spec entirely (2026-07-02); the ticker-pair-lookup `PUT` at the same path is
+  unaffected.
+- [Rust API] Removed `get_exchange_announcements`, `Announcement`, `AnnouncementType`,
+  `AnnouncementStatus`, and `GetExchangeAnnouncementsResponse`. `GET /exchange/announcements` was
+  removed from the OpenAPI spec with no replacement (2026-07-04).
+- [Rust API] Removed `Market.response_price_units` and `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` (REST and the WebSocket `MarketPositionRef` mirror). All
+  three fields were removed from the OpenAPI schema (2026-07-03).
+- [Rust API] Removed `fractional_trading_enabled` from `WsMarketLifecycleV2` /
+  `WsMarketLifecycleV2Ref`, and removed the `WsMarketLifecycleEventType::FractionalTradingUpdated`
+  variant. Neither is present in the live AsyncAPI `market_lifecycle_v2` schema; unrecognized
+  future event types still parse via the `Unknown` `#[serde(other)]` fallback.
+
+### Breaking
+
+- [Rust API] `get_multivariate_event_collection_lookup_history` and its request/response types no
+  longer exist. Downstream code using the multivariate lookup-history feed must remove it; there
+  is no replacement (Kalshi removed the endpoint, not just deprecated it).
+- [Rust API] `get_exchange_announcements` and its supporting types no longer exist. Downstream
+  code must remove any use of exchange announcements; there is no replacement endpoint.
+- [Rust API] `Market` no longer has `response_price_units` or `fractional_trading_enabled` fields.
+  `MarketPosition` no longer has `resting_orders_count`. Downstream exhaustive struct
+  destructuring must drop these fields.
+- [Rust API] `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` no longer have
+  `fractional_trading_enabled`. `WsMarketLifecycleEventType` no longer has the
+  `FractionalTradingUpdated` variant; downstream exhaustive matches must drop it.
+- [Rust API] `SubaccountBalance` gained a required `exchange_index: i64` field; downstream
+  struct-literal construction or exhaustive destructuring must account for it.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
