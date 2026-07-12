@@ -8,6 +8,94 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-07-12
+
+### Compatibility
+
+- Docs snapshot: 2026-07-12
+- OpenAPI: 3.24.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-07-09
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Per-index subaccount balances (2026-06-24) | Added `exchange_index` to `SubaccountBalance` |
+| Per-index exchange status (2026-06-26) | Added `intra_exchange_transfers_active`, `exchange_index_statuses` (new `ExchangeIndexStatus`) to `GetExchangeStatusResponse` |
+| Margin risk per-market metrics limited to single-position subaccounts (2026-06-27) | No code change — margin risk/positions/orders not modeled in crate |
+| Margin positions `margin_used` omitted for jointly-margined positions (2026-06-30) | No code change — margin not modeled |
+| `price_ranges` added to `market_lifecycle_v2` events (2026-06-30) | Added `price_ranges` to `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` |
+| AcceptQuote rejects carry a specific reason on FIX (2026-06-30) | No code change — FIX protocol not modeled (REST/WS crate only) |
+| Trade-scoped API key permissions (`write::trade`) (2026-06-30) | No code change — scopes already modeled as `Vec<String>` |
+| Margin positions `is_portfolio` flag (2026-07-01) | No code change — margin not modeled |
+| Multivariate lookup history endpoints fully deprecated (2026-07-02) | **Breaking** — removed `get_multivariate_event_collection_lookup_history` and related types; the GET verb was never defined on `/multivariate_event_collections/{collection_ticker}/lookup` in the OpenAPI spec |
+| Margin orders system order reasons (2026-07-02) | No code change — margin not modeled |
+| Deprecated Predictions REST schema fields removed (2026-07-03) | **Breaking** — removed `Market.response_price_units`, `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count` (REST + WS `MarketPositionRef`) |
+| Exchange announcements endpoint removed (2026-07-04) | **Breaking** — removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus` |
+| New price level structures (2026-07-07) | No code change — `price_level_structure` already modeled as untyped `String`, tolerates new enum values without a crate update |
+| RFQ-scoped quote lookup endpoint (2026-07-07) | Added `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`; deprecated `get_quote`, `delete_quote`, `accept_quote`, `confirm_quote` (upstream marks all four `deprecated: true` in favor of the RFQ-scoped paths) |
+| Support for FIX Tag 2446 on Incremental Refresh (2026-07-09) | No code change — FIX protocol not modeled |
+
+Also caught by a full OpenAPI schema diff of touched structs (not called out individually in the upstream changelog):
+
+- `Market.exchange_index` (new, optional) — added.
+- `lookup_tickers_for_market_in_multivariate_event_collection` is marked `deprecated: true` in the OpenAPI spec (predates RFQs) — marked `#[deprecated]` in Rust; still functional and left in place.
+
+### Added
+
+- [Rust API] `SubaccountBalance.exchange_index: i64` (`#[serde(default)]`) — exchange shard the balance is held on.
+- [Rust API] `GetExchangeStatusResponse.intra_exchange_transfers_active: bool` (`#[serde(default)]`) and
+  `GetExchangeStatusResponse.exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` (new `ExchangeIndexStatus`
+  struct: `exchange_index`, `exchange_active`, `trading_active`, `intra_exchange_transfers_active`).
+- [Rust API] `Market.exchange_index: Option<i64>`.
+- [Rust API] `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref.price_ranges: Option<Vec<PriceRange>>`, emitted
+  alongside `price_level_structure` on `created` and `price_level_structure_updated` events. Reuses the existing
+  REST `PriceRange` type.
+- [Rust API] `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote` on `KalshiRestClient`,
+  hitting the new `/communications/rfqs/{rfq_id}/quotes/{quote_id}[/accept|/confirm]` paths.
+
+### Deprecated
+
+- [Rust API] `get_quote`, `delete_quote`, `accept_quote`, `confirm_quote` (quote-ID-only paths) — marked
+  `#[deprecated]`. Upstream OpenAPI marks all four `deprecated: true` in favor of the RFQ-scoped equivalents added
+  above. Still functional.
+- [Rust API] `lookup_tickers_for_market_in_multivariate_event_collection` — marked `#[deprecated]`. Upstream
+  OpenAPI marks it `deprecated: true` ("predates RFQs and should not be used for new integrations"). Still
+  functional.
+
+### Removed
+
+- [Rust API] **Breaking.** `Market.response_price_units: Option<String>` and
+  `Market.fractional_trading_enabled: Option<bool>` — removed from the Predictions REST schema upstream
+  (2026-07-03).
+- [Rust API] **Breaking.** `MarketPosition.resting_orders_count: Option<i32>` (REST `MarketPosition` and WS
+  `MarketPositionRef`) — removed from the Predictions REST schema upstream (2026-07-03).
+- [Rust API] **Breaking.** `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, `AnnouncementStatus` — `GET /exchange/announcements` was removed from the Predictions REST
+  API upstream (2026-07-04).
+- [Rust API] **Breaking.** `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`, `GetMultivariateEventCollectionLookupHistoryResponse`,
+  `LookupPoint` — the OpenAPI spec only ever defines a `PUT` on
+  `/multivariate_event_collections/{collection_ticker}/lookup`; no `GET` (lookup history) operation exists on that
+  path, so this was removed rather than carried forward.
+
+### Breaking
+
+- `Market`, `MarketPosition` (and WS `MarketPositionRef`) lost fields that no longer exist upstream (see Removed).
+  Downstream code reading `response_price_units`, `fractional_trading_enabled`, or `resting_orders_count` will not
+  compile.
+- `get_exchange_announcements` and its response types are gone; downstream code calling this method will not
+  compile.
+- `get_multivariate_event_collection_lookup_history` and its request/response types are gone; downstream code
+  calling this method will not compile.
+
+### Fixed
+
+- [Tests] `tests/rest_auth.rs::test_get_account_api_limits` referenced `read_limit` / `write_limit`, fields removed
+  from `GetAccountApiLimitsResponse` in the 0.6.0 restructure. Updated to `resp.read.bucket_capacity` /
+  `resp.write.bucket_capacity` so `cargo build --features live-tests` compiles again.
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

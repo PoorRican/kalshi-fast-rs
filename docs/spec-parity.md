@@ -91,6 +91,38 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The quote-ID-only endpoints (`GET`/`DELETE /communications/quotes/{quote_id}`, `PUT
+  .../accept`, `PUT .../confirm`) were marked `deprecated: true` upstream on 2026-07-07 in favor of
+  RFQ-scoped equivalents at `/communications/rfqs/{rfq_id}/quotes/{quote_id}[/accept|/confirm]`.
+  The old methods (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) are kept and marked
+  `#[deprecated]` rather than removed, since upstream still serves them; new code should prefer
+  `get_rfq_quote` / `delete_rfq_quote` / `accept_rfq_quote` / `confirm_rfq_quote`.
+
+- `lookup_tickers_for_market_in_multivariate_event_collection` (`PUT
+  /multivariate_event_collections/{collection_ticker}/lookup`) is marked `deprecated: true` upstream
+  ("predates RFQs and should not be used for new integrations") but still present, so it is kept and
+  marked `#[deprecated]` rather than removed.
+
+- `get_multivariate_event_collection_lookup_history` was removed (2026-07-02, "Multivariate lookup
+  history endpoints are fully deprecated"). The OpenAPI spec only ever defines a `PUT` on
+  `/multivariate_event_collections/{collection_ticker}/lookup`; no `GET` (lookup history) operation
+  exists on that path, so there was no live upstream shape to preserve as optional.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` (REST and the WS `MarketPositionRef` mirror) were removed
+  upstream on 2026-07-03 and removed from the crate rather than kept as stale `Option` fields, per
+  the "remove fields no longer in the live schema" policy.
+
+- `GET /exchange/announcements` was removed upstream on 2026-07-04. `get_exchange_announcements`,
+  `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, and `AnnouncementStatus`
+  were removed from the crate accordingly.
+
+- `intra_exchange_transfers_active` (on `GetExchangeStatusResponse`) and `exchange_index` (on
+  `SubaccountBalance`) are new required-by-spec fields tied to an in-progress per-index exchange
+  rollout (2026-06-24/26). Both are kept as non-`Option` (`bool` / `i64`) with `#[serde(default)]`
+  rather than `Option`, matching the existing `is_block_trade` pattern, so payloads that predate the
+  rollout on either field still parse instead of failing to deserialize.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

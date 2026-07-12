@@ -1,3 +1,4 @@
+use crate::rest::PriceRange;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -27,6 +28,10 @@ pub struct WsMarketLifecycleV2 {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// Emitted alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Added 2026-06-30.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events and is distinct from
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
@@ -147,6 +152,10 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    /// Emitted alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Added 2026-06-30.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
@@ -174,6 +183,7 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             is_deactivated: self.is_deactivated,
             fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges,
             floor_strike: self.floor_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
@@ -370,5 +380,31 @@ mod tests {
                 .and_then(Value::as_str),
             Some("kept")
         );
+    }
+
+    /// `price_ranges` is emitted alongside `price_level_structure` on `created`
+    /// and `price_level_structure_updated` events (added 2026-06-30).
+    #[test]
+    fn price_ranges_parses_alongside_price_level_structure() {
+        let json = r#"{
+            "event_type": "price_level_structure_updated",
+            "market_ticker": "KXHIGHNY-24JAN01-T60",
+            "price_level_structure": "deci_cent",
+            "price_ranges": [
+                {"start": "0.01", "end": "0.99", "step": "0.001"}
+            ]
+        }"#;
+
+        let owned: WsMarketLifecycleV2 = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.price_level_structure.as_deref(), Some("deci_cent"));
+        let ranges = owned.price_ranges.expect("price_ranges present");
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].start, "0.01");
+        assert_eq!(ranges[0].end, "0.99");
+        assert_eq!(ranges[0].step, "0.001");
+
+        let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
+        let round_tripped = borrowed.into_owned();
+        assert_eq!(round_tripped.price_ranges.unwrap()[0].step, "0.001");
     }
 }
