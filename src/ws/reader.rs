@@ -3,7 +3,7 @@ use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
 use crate::ws::event::{WsEvent, WsReaderMode};
 use crate::ws::low_level::WsLowLevelClient;
-use crate::ws::protocol::{ControlAction, WsProtocol, parse_control_message};
+use crate::ws::protocol::{WsProtocol, parse_control_message};
 use crate::ws::reconnect::WsReconnectConfig;
 use crate::ws::subscription::SubscriptionTracker;
 
@@ -111,14 +111,7 @@ pub(crate) async fn handle_payload<P: WsProtocol>(
     // Parse control messages for subscription tracking (shared JSON format)
     if let Ok(Some(action)) = parse_control_message(&bytes) {
         let mut tracker = tracker.lock().await;
-        match action {
-            ControlAction::Subscribed { cmd_id, sid } => {
-                tracker.handle_subscribed(cmd_id, Some(sid));
-            }
-            ControlAction::Unsubscribed { sid } => {
-                tracker.handle_unsubscribed(Some(sid));
-            }
-        }
+        tracker.handle_control_action(action);
         // Fall through to also forward the control message to the user
     }
 

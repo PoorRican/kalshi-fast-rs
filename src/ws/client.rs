@@ -3,7 +3,7 @@ use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
 use crate::ws::event::{WsEvent, WsEventReceiver, WsReaderConfig};
 use crate::ws::low_level::WsLowLevelClient;
-use crate::ws::protocol::{Channel, EventContractProtocol, WsProtocol};
+use crate::ws::protocol::{Channel, EventContractProtocol, WsProtocol, parse_control_message};
 use crate::ws::reader::reader_loop;
 use crate::ws::reconnect::WsReconnectConfig;
 use crate::ws::subscription::SubscriptionTracker;
@@ -249,13 +249,21 @@ impl<P: WsProtocol> GenericWsClient<P> {
                 .ok_or_else(|| KalshiError::Ws("websocket reader closed".to_string()));
         }
 
-        let client = self
-            .client
-            .as_mut()
-            .ok_or_else(|| KalshiError::Ws("websocket client not connected".to_string()))?;
+        let message = {
+            let client = self
+                .client
+                .as_mut()
+                .ok_or_else(|| KalshiError::Ws("websocket client not connected".to_string()))?;
+            client.next_json_bytes().await
+        };
 
-        match client.next_message().await {
-            Ok(msg) => Ok(WsEvent::Message(msg)),
+        match message {
+            Ok(bytes) => {
+                if let Ok(Some(action)) = parse_control_message(&bytes) {
+                    self.tracker.lock().await.handle_control_action(action);
+                }
+                Ok(WsEvent::Message(P::parse_message(&bytes)?))
+            }
             Err(err) => self.reconnect_loop(err).await,
         }
     }
@@ -303,14 +311,11 @@ impl<P: WsProtocol> GenericWsClient<P> {
                 tracker.prepare_resubscribe()
             };
             for p in params {
-                let id = self.next_id;
-                self.next_id = self.next_id.saturating_add(1);
-
                 let client = self
                     .client
                     .as_mut()
                     .ok_or_else(|| KalshiError::Ws("websocket client not connected".to_string()))?;
-                client.subscribe(p.clone()).await?;
+                let id = client.subscribe(p.clone()).await?;
                 let mut tracker = self.tracker.lock().await;
                 tracker.record_subscribe_cmd(id, p);
             }
@@ -445,10 +450,212 @@ mod tests {
     use crate::KalshiEnvironment;
     use crate::auth::tests::load_test_auth;
     use crate::ws::event::WsReaderMode;
+    use crate::ws::types::{WsChannelV2, WsUpdateAction};
+    use futures::{SinkExt, StreamExt};
+    use serde_json::json;
     use tokio::net::TcpListener;
     use tokio::time::{Duration, Instant};
     use tokio_tungstenite::accept_async;
+    use tokio_tungstenite::tungstenite::Message;
     use url::Url;
+
+    fn test_env(addr: std::net::SocketAddr) -> KalshiEnvironment {
+        KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{}", addr),
+            margin_ws_url: format!("ws://{}", addr),
+        }
+    }
+
+    #[tokio::test]
+    async fn inline_next_event_promotes_subscribed_tracker() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            let request = ws
+                .next()
+                .await
+                .expect("subscribe frame")
+                .expect("valid subscribe frame");
+            let Message::Text(request) = request else {
+                panic!("expected text subscribe frame");
+            };
+            let id =
+                serde_json::from_str::<serde_json::Value>(&request).expect("subscribe JSON")["id"]
+                    .as_u64()
+                    .expect("subscribe command id");
+            ws.send(Message::Text(
+                json!({"type": "subscribed", "id": id, "sid": 42}).to_string(),
+            ))
+            .await
+            .expect("send subscribed");
+        });
+
+        let mut client = KalshiWsClient::connect_authenticated(
+            test_env(addr),
+            load_test_auth(),
+            WsReconnectConfig::default(),
+        )
+        .await
+        .expect("connect");
+        client
+            .subscribe_v2(WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::Ticker],
+                market_tickers: Some(vec!["A".to_string()]),
+                ..Default::default()
+            })
+            .await
+            .expect("subscribe");
+
+        assert!(matches!(
+            client.next_event_v2().await.expect("next event"),
+            WsEvent::Message(WsMessageV2::Subscribed {
+                id: Some(1),
+                sid: Some(42),
+            })
+        ));
+        client
+            .update_subscription_v2(WsUpdateSubscriptionParamsV2 {
+                action: WsUpdateAction::AddMarkets,
+                sid: Some(42),
+                sids: None,
+                market_ticker: Some("B".to_string()),
+                market_tickers: None,
+                market_id: None,
+                market_ids: None,
+                send_initial_snapshot: None,
+                skip_ticker_ack: None,
+                index_ids: None,
+            })
+            .await
+            .expect("update");
+        let replay = client.tracker.lock().await.prepare_resubscribe();
+        assert_eq!(
+            replay[0].market_tickers,
+            Some(vec!["A".to_string(), "B".to_string()])
+        );
+
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn inline_reconnect_matches_resubscribe_acknowledgement_id() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept initial");
+            let mut ws = accept_async(stream).await.expect("accept initial ws");
+            let request = ws
+                .next()
+                .await
+                .expect("initial subscribe frame")
+                .expect("valid initial subscribe frame");
+            let Message::Text(request) = request else {
+                panic!("expected initial text subscribe frame");
+            };
+            let initial_id = serde_json::from_str::<serde_json::Value>(&request)
+                .expect("initial subscribe JSON")["id"]
+                .as_u64()
+                .expect("initial command id");
+            ws.send(Message::Text(
+                json!({"type": "subscribed", "id": initial_id, "sid": 41}).to_string(),
+            ))
+            .await
+            .expect("send initial subscribed");
+            ws.close(None).await.expect("close initial");
+
+            let (stream, _) = listener.accept().await.expect("accept reconnect");
+            let mut ws = accept_async(stream).await.expect("accept reconnect ws");
+            let request = ws
+                .next()
+                .await
+                .expect("resubscribe frame")
+                .expect("valid resubscribe frame");
+            let Message::Text(request) = request else {
+                panic!("expected resubscribe text frame");
+            };
+            let resubscribe_id = serde_json::from_str::<serde_json::Value>(&request)
+                .expect("resubscribe JSON")["id"]
+                .as_u64()
+                .expect("resubscribe command id");
+            ws.send(Message::Text(
+                json!({"type": "subscribed", "id": resubscribe_id, "sid": 42}).to_string(),
+            ))
+            .await
+            .expect("send resubscribed");
+        });
+
+        let reconnect = WsReconnectConfig {
+            max_retries: Some(1),
+            base_delay: Duration::ZERO,
+            max_delay: Duration::ZERO,
+            jitter: 0.0,
+            resubscribe: true,
+        };
+        let mut client =
+            KalshiWsClient::connect_authenticated(test_env(addr), load_test_auth(), reconnect)
+                .await
+                .expect("connect");
+        client
+            .subscribe_v2(WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::Ticker],
+                market_tickers: Some(vec!["A".to_string()]),
+                ..Default::default()
+            })
+            .await
+            .expect("subscribe");
+
+        assert!(matches!(
+            client
+                .next_event_v2()
+                .await
+                .expect("initial acknowledgement"),
+            WsEvent::Message(WsMessageV2::Subscribed {
+                id: Some(1),
+                sid: Some(41),
+            })
+        ));
+        assert!(matches!(
+            client.next_event_v2().await.expect("reconnect"),
+            WsEvent::Reconnected { attempt: 1 }
+        ));
+        assert!(matches!(
+            client
+                .next_event_v2()
+                .await
+                .expect("resubscribe acknowledgement"),
+            WsEvent::Message(WsMessageV2::Subscribed {
+                id: Some(1),
+                sid: Some(42),
+            })
+        ));
+        client
+            .update_subscription_v2(WsUpdateSubscriptionParamsV2 {
+                action: WsUpdateAction::AddMarkets,
+                sid: Some(42),
+                sids: None,
+                market_ticker: Some("B".to_string()),
+                market_tickers: None,
+                market_id: None,
+                market_ids: None,
+                send_initial_snapshot: None,
+                skip_ticker_ack: None,
+                index_ids: None,
+            })
+            .await
+            .expect("update after reconnect");
+        let replay = client.tracker.lock().await.prepare_resubscribe();
+        assert_eq!(
+            replay[0].market_tickers,
+            Some(vec!["A".to_string(), "B".to_string()])
+        );
+
+        server.await.expect("server");
+    }
 
     #[tokio::test]
     async fn close_stops_reader_without_waiting_for_reconnect_backoff() {

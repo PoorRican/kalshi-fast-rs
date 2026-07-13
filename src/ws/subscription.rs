@@ -1,3 +1,4 @@
+use crate::ws::protocol::ControlAction;
 use crate::ws::types::{WsSubscriptionParamsV2, WsUpdateSubscriptionParamsV2};
 
 use std::collections::HashMap;
@@ -11,6 +12,17 @@ pub(crate) struct SubscriptionTracker<P: Clone = WsSubscriptionParamsV2> {
 impl<P: Clone> SubscriptionTracker<P> {
     pub(crate) fn record_subscribe_cmd(&mut self, id: u64, params: P) {
         self.pending.insert(id, params);
+    }
+
+    pub(crate) fn handle_control_action(&mut self, action: ControlAction) {
+        match action {
+            ControlAction::Subscribed { cmd_id, sid } => {
+                self.handle_subscribed(cmd_id, Some(sid));
+            }
+            ControlAction::Unsubscribed { sid } => {
+                self.handle_unsubscribed(Some(sid));
+            }
+        }
     }
 
     pub(crate) fn handle_subscribed(&mut self, id: Option<u64>, sid: Option<u64>) {
