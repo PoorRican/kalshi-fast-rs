@@ -91,6 +91,54 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Kalshi's Margin/Perps product (`/margin/*` REST endpoints, `margin_ticker` WebSocket channel) is
+  documented in **separate** spec files (`perps_openapi.yaml`, `perps_scm_openapi.yaml`,
+  `perps_asyncapi.yaml`), not in the primary `openapi.yaml`/`asyncapi.yaml` this crate tracks. It is
+  out of scope for this crate except for `get_margin_fee_tiers()` (`GET /margin/fee_tiers`), kept
+  for backward compatibility since its path, host, and response shape
+  (`maker_fee_rates`/`taker_fee_rates`) are unchanged in the Perps spec.
+
+- The legacy (non-V2) order-mutation REST endpoints — `POST /portfolio/orders`,
+  `DELETE /portfolio/orders/{order_id}`, `POST /portfolio/orders/{order_id}/amend`,
+  `POST /portfolio/orders/{order_id}/decrease`, `POST /portfolio/orders/batched`,
+  `DELETE /portfolio/orders/batched` — were fully removed from the live OpenAPI spec (only
+  `GET /portfolio/orders` and `GET /portfolio/orders/{order_id}` remain). The crate removed the
+  corresponding `create_order`/`cancel_order`/`amend_order`/`decrease_order`/`batch_create_orders`/
+  `batch_cancel_orders` methods and their request/response types entirely rather than deprecating
+  them, since calling the old paths now fails at the exchange. Use the V2 equivalents
+  (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`), which use a single `BookSide` + fixed-point
+  price instead of separate yes/no integer prices.
+
+- `GET /exchange/announcements` was removed from the Predictions REST API (2026-07-04); the crate
+  removed `get_exchange_announcements()` and its `Announcement`/`AnnouncementType`/
+  `AnnouncementStatus`/`GetExchangeAnnouncementsResponse` types. Use `get_exchange_schedule()` for
+  exchange hours/maintenance-window information instead.
+
+- `GET /communications/quotes` dropped its `market_ticker`/`event_ticker` filters (2026-06-20); the
+  crate removed the corresponding fields from `GetQuotesParams`. Filter by `rfq_id`, `status`, or the
+  new `min_ts`/`max_ts`/`user_filter` params instead.
+
+- Quote-ID-only communications endpoints (`GET`/`DELETE /communications/quotes/{quote_id}`,
+  `PUT .../accept`, `PUT .../confirm`) are marked `deprecated: true` upstream in favor of RFQ-scoped
+  equivalents (`.../rfqs/{rfq_id}/quotes/{quote_id}...`). The crate kept the old methods as
+  `#[deprecated]` (rather than removing them, since they still function) and added
+  `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote` as the new canonical
+  methods.
+
+- `PUT /multivariate_event_collections/{collection_ticker}/lookup` is marked `deprecated: true`
+  upstream ("predates RFQs"); kept as `#[deprecated]`. The paired
+  `GET .../lookup` (lookup-history) endpoint was fully removed from the spec, so the crate removed
+  `get_multivariate_event_collection_lookup_history()` and its `GetMultivariateEventCollection
+  LookupHistoryParams`/`Response`/`LookupPoint` types entirely.
+
+- `WsMarketLifecycleEventType::FractionalTradingUpdated` was removed: the AsyncAPI's
+  `market_lifecycle_v2` event-type enum no longer lists `fractional_trading_updated`, and the
+  paired `fractional_trading_enabled` field was dropped from the same payload (and from the REST
+  `Market` schema, alongside `Market.response_price_units` and `MarketPosition.resting_orders_count`
+  — all three removed 2026-07-09). Unrecognized future event types still deserialize via the
+  `#[serde(other)] Unknown` catch-all.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
