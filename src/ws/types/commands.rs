@@ -4,10 +4,10 @@ use super::subscription::{
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct WsSubscribeCmd {
+pub(crate) struct WsSubscribeCmd<P = WsSubscriptionParamsV2> {
     pub id: u64,
-    pub cmd: &'static str, // "subscribe"
-    pub params: WsSubscriptionParamsV2,
+    pub cmd: &'static str,
+    pub params: P,
 }
 
 #[derive(Debug, Clone, Serialize)]

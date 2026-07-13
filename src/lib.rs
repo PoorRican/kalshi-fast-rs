@@ -196,6 +196,9 @@
 pub mod auth;
 pub mod env;
 pub mod error;
+pub mod margin;
+
+pub use margin::{MarginChannel, MarginDataMessage, MarginSubscribeParams};
 pub mod rest;
 pub mod types;
 pub mod utils;

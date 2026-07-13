@@ -130,6 +130,7 @@
 mod client;
 mod event;
 mod low_level;
+pub mod protocol;
 pub(crate) mod reader;
 mod reconnect;
 pub(crate) mod subscription;
@@ -138,5 +139,6 @@ pub mod types;
 pub use client::*;
 pub use event::*;
 pub use low_level::*;
+pub use protocol::*;
 pub use reconnect::*;
 pub use types::*;

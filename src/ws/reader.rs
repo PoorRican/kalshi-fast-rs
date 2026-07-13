@@ -2,49 +2,24 @@ use crate::auth::KalshiAuth;
 use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
 use crate::ws::event::{WsEvent, WsReaderMode};
-use crate::ws::low_level::KalshiWsLowLevelClient;
+use crate::ws::low_level::WsLowLevelClient;
+use crate::ws::protocol::{WsProtocol, parse_control_message};
 use crate::ws::reconnect::WsReconnectConfig;
 use crate::ws::subscription::SubscriptionTracker;
-use crate::ws::types::{WsMessageV2, WsRawEvent};
 
 use bytes::Bytes;
-use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::Message;
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-pub(crate) enum WsControlMessage {
-    #[serde(rename = "subscribed")]
-    Subscribed {
-        id: Option<u64>,
-        sid: Option<u64>,
-        #[serde(default)]
-        msg: Option<WsControlSubscribedMsg>,
-    },
-    #[serde(rename = "unsubscribed")]
-    Unsubscribed { sid: Option<u64> },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct WsControlSubscribedMsg {
-    #[allow(dead_code)]
-    channel: Option<String>,
-    #[serde(default)]
-    sid: Option<u64>,
-}
-
-pub(crate) async fn reader_loop(
-    mut client: KalshiWsLowLevelClient,
+pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
+    mut client: WsLowLevelClient<P>,
     env: KalshiEnvironment,
     auth: Option<KalshiAuth>,
     config: WsReconnectConfig,
-    tracker: Arc<Mutex<SubscriptionTracker>>,
-    event_tx: mpsc::Sender<WsEvent>,
+    tracker: Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    event_tx: mpsc::Sender<WsEvent<P::Message>>,
     mut outgoing_rx: mpsc::Receiver<Message>,
     mut shutdown_rx: watch::Receiver<bool>,
     mode: WsReaderMode,
@@ -103,11 +78,11 @@ pub(crate) async fn reader_loop(
     }
 }
 
-pub(crate) async fn handle_incoming_message(
+pub(crate) async fn handle_incoming_message<P: WsProtocol>(
     msg: Message,
-    client: &mut KalshiWsLowLevelClient,
-    tracker: &Arc<Mutex<SubscriptionTracker>>,
-    event_tx: &mpsc::Sender<WsEvent>,
+    client: &mut WsLowLevelClient<P>,
+    tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    event_tx: &mpsc::Sender<WsEvent<P::Message>>,
     mode: WsReaderMode,
 ) -> Result<(), KalshiError> {
     match msg {
@@ -117,62 +92,45 @@ pub(crate) async fn handle_incoming_message(
         }
         Message::Pong(_) => Ok(()),
         Message::Close(_) => Err(KalshiError::Ws("websocket closed".to_string())),
-        Message::Text(text) => handle_payload(Bytes::from(text), tracker, event_tx, mode).await,
-        Message::Binary(data) => handle_payload(Bytes::from(data), tracker, event_tx, mode).await,
+        Message::Text(text) => {
+            handle_payload::<P>(Bytes::from(text), tracker, event_tx, mode).await
+        }
+        Message::Binary(data) => {
+            handle_payload::<P>(Bytes::from(data), tracker, event_tx, mode).await
+        }
         _ => Ok(()),
     }
 }
 
-pub(crate) async fn handle_payload(
+pub(crate) async fn handle_payload<P: WsProtocol>(
     bytes: Bytes,
-    tracker: &Arc<Mutex<SubscriptionTracker>>,
-    event_tx: &mpsc::Sender<WsEvent>,
-    mode: WsReaderMode,
+    tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    event_tx: &mpsc::Sender<WsEvent<P::Message>>,
+    _mode: WsReaderMode,
 ) -> Result<(), KalshiError> {
-    match mode {
-        WsReaderMode::Owned => {
-            let msg = WsMessageV2::from_bytes(&bytes)?;
-            {
-                let mut tracker = tracker.lock().await;
-                tracker.handle_message(&msg);
-            }
-            event_tx
-                .send(WsEvent::Message(msg))
-                .await
-                .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
-        }
-        WsReaderMode::Raw => {
-            if let Ok(control) = serde_json::from_slice::<WsControlMessage>(&bytes) {
-                let mut tracker = tracker.lock().await;
-                match control {
-                    WsControlMessage::Subscribed { id, sid, msg } => {
-                        tracker
-                            .handle_subscribed(id, sid.or_else(|| msg.and_then(|value| value.sid)));
-                    }
-                    WsControlMessage::Unsubscribed { sid } => {
-                        tracker.handle_unsubscribed(sid);
-                    }
-                    WsControlMessage::Other => {}
-                }
-            }
-
-            event_tx
-                .send(WsEvent::Raw(WsRawEvent::new(bytes)))
-                .await
-                .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
-        }
+    // Parse control messages for subscription tracking (shared JSON format)
+    if let Ok(Some(action)) = parse_control_message(&bytes) {
+        let mut tracker = tracker.lock().await;
+        tracker.handle_control_action(action);
+        // Fall through to also forward the control message to the user
     }
+
+    let msg = P::parse_message(&bytes)?;
+    event_tx
+        .send(WsEvent::Message(msg))
+        .await
+        .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
 
     Ok(())
 }
 
-pub(crate) async fn handle_reconnect(
-    client: &mut KalshiWsLowLevelClient,
+pub(crate) async fn handle_reconnect<P: WsProtocol>(
+    client: &mut WsLowLevelClient<P>,
     env: &KalshiEnvironment,
     auth: &Option<KalshiAuth>,
     config: &WsReconnectConfig,
-    tracker: &Arc<Mutex<SubscriptionTracker>>,
-    event_tx: &mpsc::Sender<WsEvent>,
+    tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    event_tx: &mpsc::Sender<WsEvent<P::Message>>,
     shutdown_rx: &mut watch::Receiver<bool>,
 ) -> Result<(), KalshiError> {
     let mut attempt: u32 = 0;
@@ -204,7 +162,7 @@ pub(crate) async fn handle_reconnect(
         let reconnect_future = async {
             match auth {
                 Some(auth) => {
-                    KalshiWsLowLevelClient::connect_authenticated(env.clone(), auth.clone()).await
+                    WsLowLevelClient::<P>::connect_authenticated(env.clone(), auth.clone()).await
                 }
                 None => Err(KalshiError::AuthRequired("WebSocket connection")),
             }
@@ -227,7 +185,7 @@ pub(crate) async fn handle_reconnect(
                     };
                     let mut resubscribe_err: Option<KalshiError> = None;
                     for p in params {
-                        match client.subscribe_v2(p.clone()).await {
+                        match client.subscribe(p.clone()).await {
                             Ok(id) => {
                                 let mut tracker = tracker.lock().await;
                                 tracker.record_subscribe_cmd(id, p);
@@ -263,7 +221,7 @@ mod tests {
     use super::*;
     use crate::KalshiEnvironment;
     use crate::auth::tests::load_test_auth;
-    use crate::ws::event::{WsReaderConfig, WsReaderMode};
+    use crate::ws::event::WsReaderConfig;
     use crate::ws::{KalshiWsClient, WsReconnectConfig};
     use futures::SinkExt;
     use serde_json::json;
@@ -319,6 +277,7 @@ mod tests {
         let env = KalshiEnvironment {
             rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
             ws_url: format!("ws://{}", addr),
+            margin_ws_url: format!("ws://{}", addr),
         };
         let mut client =
             KalshiWsClient::connect_authenticated(env, auth, WsReconnectConfig::default())
@@ -372,6 +331,7 @@ mod tests {
         let env = KalshiEnvironment {
             rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
             ws_url: format!("ws://{}", addr),
+            margin_ws_url: format!("ws://{}", addr),
         };
         let config = WsReconnectConfig {
             max_retries: Some(3),

@@ -1,30 +1,27 @@
-use crate::ws::types::{WsMessageV2, WsSubscriptionParamsV2, WsUpdateSubscriptionParamsV2};
+use crate::ws::protocol::ControlAction;
+use crate::ws::types::{WsSubscriptionParamsV2, WsUpdateSubscriptionParamsV2};
 
 use std::collections::HashMap;
 
 #[derive(Default)]
-pub(crate) struct SubscriptionTracker {
-    pending: HashMap<u64, WsSubscriptionParamsV2>,
-    active: HashMap<u64, WsSubscriptionParamsV2>,
+pub(crate) struct SubscriptionTracker<P: Clone = WsSubscriptionParamsV2> {
+    pending: HashMap<u64, P>,
+    active: HashMap<u64, P>,
 }
 
-impl SubscriptionTracker {
-    pub(crate) fn record_subscribe_cmd(&mut self, id: u64, params: WsSubscriptionParamsV2) {
+impl<P: Clone> SubscriptionTracker<P> {
+    pub(crate) fn record_subscribe_cmd(&mut self, id: u64, params: P) {
         self.pending.insert(id, params);
     }
 
-    pub(crate) fn handle_message(&mut self, msg: &WsMessageV2) {
-        match msg {
-            WsMessageV2::Subscribed {
-                id: Some(id),
-                sid: Some(sid),
-            } => {
-                self.handle_subscribed(Some(*id), Some(*sid));
+    pub(crate) fn handle_control_action(&mut self, action: ControlAction) {
+        match action {
+            ControlAction::Subscribed { cmd_id, sid } => {
+                self.handle_subscribed(cmd_id, Some(sid));
             }
-            WsMessageV2::Unsubscribed { sid: Some(sid), .. } => {
-                self.handle_unsubscribed(Some(*sid));
+            ControlAction::Unsubscribed { sid } => {
+                self.handle_unsubscribed(Some(sid));
             }
-            _ => {}
         }
     }
 
@@ -48,6 +45,16 @@ impl SubscriptionTracker {
         self.active.remove(&sid);
     }
 
+    pub(crate) fn prepare_resubscribe(&mut self) -> Vec<P> {
+        let mut params: Vec<P> = self.active.values().cloned().collect();
+        params.extend(self.pending.values().cloned());
+        self.active.clear();
+        self.pending.clear();
+        params
+    }
+}
+
+impl SubscriptionTracker<WsSubscriptionParamsV2> {
     pub(crate) fn apply_update(&mut self, update: &WsUpdateSubscriptionParamsV2) {
         use crate::ws::types::WsUpdateAction;
 
@@ -99,8 +106,6 @@ impl SubscriptionTracker {
             };
 
         if update.action.is_index_action() {
-            // CF Benchmarks index actions only mutate the tracked index set so
-            // that a reconnect resubscribes with the correct indices.
             let incoming_indices = update.index_ids.clone().unwrap_or_default();
             apply_vec(&mut params.index_ids, incoming_indices, update.action);
         } else {
@@ -114,14 +119,6 @@ impl SubscriptionTracker {
         if let Some(value) = update.skip_ticker_ack {
             params.skip_ticker_ack = Some(value);
         }
-    }
-
-    pub(crate) fn prepare_resubscribe(&mut self) -> Vec<WsSubscriptionParamsV2> {
-        let mut params: Vec<WsSubscriptionParamsV2> = self.active.values().cloned().collect();
-        params.extend(self.pending.values().cloned());
-        self.active.clear();
-        self.pending.clear();
-        params
     }
 }
 
@@ -138,10 +135,7 @@ mod tests {
             ..Default::default()
         };
         tracker.record_subscribe_cmd(1, params.clone());
-        tracker.handle_message(&WsMessageV2::Subscribed {
-            id: Some(1),
-            sid: Some(42),
-        });
+        tracker.handle_subscribed(Some(1), Some(42));
 
         assert!(tracker.pending.is_empty());
         assert_eq!(tracker.active.len(), 1);
@@ -156,10 +150,7 @@ mod tests {
             ..Default::default()
         };
         tracker.record_subscribe_cmd(1, params.clone());
-        tracker.handle_message(&WsMessageV2::Subscribed {
-            id: Some(1),
-            sid: Some(42),
-        });
+        tracker.handle_subscribed(Some(1), Some(42));
 
         let params = tracker.prepare_resubscribe();
         assert_eq!(params.len(), 1);
@@ -255,7 +246,7 @@ mod tests {
             action: WsUpdateAction::GetSnapshot,
             sid: Some(10),
             sids: None,
-            market_ticker: Some("B".to_string()),
+            market_ticker: None,
             market_tickers: None,
             market_id: None,
             market_ids: None,
@@ -314,5 +305,60 @@ mod tests {
         let indices = updated.index_ids.as_ref().unwrap();
         assert!(!indices.contains(&"BRTI".to_string()));
         assert!(indices.contains(&"ETHUSD_RR".to_string()));
+    }
+
+    #[test]
+    fn validate_subscription_requires_market_tickers_for_orderbook_delta() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            ..Default::default()
+        };
+        assert!(crate::ws::types::validate_subscription(&params).is_err());
+
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_tickers: Some(vec!["TEST".to_string()]),
+            ..Default::default()
+        };
+        assert!(crate::ws::types::validate_subscription(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_subscription_send_initial_snapshot_only_for_orderbook_delta() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            send_initial_snapshot: Some(true),
+            ..Default::default()
+        };
+        assert!(crate::ws::types::validate_subscription(&params).is_err());
+    }
+
+    #[test]
+    fn validate_subscription_orderbook_delta_rejects_market_ids() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_ids: Some(vec!["mid-1".to_string()]),
+            ..Default::default()
+        };
+        assert!(crate::ws::types::validate_subscription(&params).is_err());
+    }
+
+    #[test]
+    fn validate_subscription_enforces_market_target_exclusivity() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            market_ticker: Some("A".to_string()),
+            market_tickers: Some(vec!["B".to_string()]),
+            ..Default::default()
+        };
+        assert!(crate::ws::types::validate_subscription(&params).is_err());
+
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            market_ticker: Some("A".to_string()),
+            market_id: Some("uuid".to_string()),
+            ..Default::default()
+        };
+        assert!(crate::ws::types::validate_subscription(&params).is_err());
     }
 }

@@ -100,6 +100,7 @@ impl<'a> WsOrderbookDeltaRef<'a> {
             side: self.side,
             client_order_id: self.client_order_id.map(Cow::into_owned),
             subaccount: self.subaccount,
+            #[allow(deprecated)]
             ts: self.ts.map(Cow::into_owned),
             ts_ms: self.ts_ms,
         }
@@ -108,6 +109,7 @@ impl<'a> WsOrderbookDeltaRef<'a> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(deprecated)]
     use super::*;
 
     #[test]

@@ -579,6 +579,7 @@ mod tests {
         KalshiEnvironment {
             rest_origin,
             ws_url: "ws://127.0.0.1/".to_string(),
+            margin_ws_url: "ws://127.0.0.1/".to_string(),
         }
     }
 

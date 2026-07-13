@@ -1,3 +1,4 @@
+use crate::ws::protocol::Channel;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -19,8 +20,20 @@ pub enum WsChannelV2 {
     CfbenchmarksValue,
 }
 
-impl WsChannelV2 {
-    pub fn as_str(self) -> &'static str {
+impl crate::ws::protocol::Channel for WsChannelV2 {
+    fn is_private(&self) -> bool {
+        matches!(
+            self,
+            WsChannelV2::OrderbookDelta
+                | WsChannelV2::Fill
+                | WsChannelV2::MarketPositions
+                | WsChannelV2::Communications
+                | WsChannelV2::OrderGroupUpdates
+                | WsChannelV2::UserOrders
+        )
+    }
+
+    fn as_str(&self) -> &'static str {
         match self {
             WsChannelV2::Ticker => "ticker",
             WsChannelV2::Trade => "trade",
@@ -35,18 +48,6 @@ impl WsChannelV2 {
             WsChannelV2::UserOrders => "user_orders",
             WsChannelV2::CfbenchmarksValue => "cfbenchmarks_value",
         }
-    }
-
-    pub fn is_private(self) -> bool {
-        matches!(
-            self,
-            WsChannelV2::OrderbookDelta
-                | WsChannelV2::Fill
-                | WsChannelV2::MarketPositions
-                | WsChannelV2::Communications
-                | WsChannelV2::OrderGroupUpdates
-                | WsChannelV2::UserOrders
-        )
     }
 }
 
