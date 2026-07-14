@@ -258,6 +258,18 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -468,6 +480,18 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -590,6 +614,16 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -673,6 +707,16 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -764,6 +808,18 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1001,6 +1057,57 @@ mod tests {
                 assert!(msg.fee_multiplier_override.is_none());
             }
             _ => panic!("expected event_fee_update data message"),
+        }
+    }
+
+    #[test]
+    fn ws_message_from_bytes_pyth_value() {
+        let json = r#"{
+            "type":"pyth_value",
+            "sid":11,
+            "seq":1,
+            "msg":{
+                "underlying_ticker":"BTCUSD",
+                "value_usd":"95000.12345678",
+                "source_ts_ms":1700000000000,
+                "received_at":1700000000050
+            }
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "BTCUSD");
+                assert_eq!(msg.value_usd, "95000.12345678");
+            }
+            other => panic!("expected pyth_value data message, got {other:?}"),
+        }
+
+        // Borrowed path must round-trip to the same owned shape.
+        let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match msg_ref.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "BTCUSD");
+            }
+            other => panic!("expected pyth_value data message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ws_message_from_bytes_pyth_value_underlying_list() {
+        let json = r#"{
+            "type":"pyth_value_underlying_list",
+            "sid":11,
+            "seq":2,
+            "msg":{
+                "underlying_tickers":["BTCUSD","ETHUSD"]
+            }
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { msg, .. }) => {
+                assert_eq!(msg.underlying_tickers, vec!["BTCUSD", "ETHUSD"]);
+            }
+            other => panic!("expected pyth_value_underlying_list data message, got {other:?}"),
         }
     }
 

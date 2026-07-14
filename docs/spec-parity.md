@@ -91,6 +91,67 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /events` gained `tickers` (comma-separated event ticker filter) and `min_updated_ts` query
+  parameters, and `EventData` gained a top-level `settlement_sources: Vec<SettlementSource>` field
+  (2026-06-18), mirroring the field already available on `product_metadata`/`Series`.
+
+- `market_lifecycle_v2` `metadata_updated` events now carry `strike_type`, `cap_strike`, and
+  (for custom/structured markets) `custom_strike` at the top level, alongside the existing
+  top-level `floor_strike`/`yes_sub_title` (2026-06-18). `created` and
+  `price_level_structure_updated` events also gained an optional `price_ranges` array (2026-07-02),
+  reusing the REST `PriceRange` type (`{start, end, step}` in fixed-point dollars). Seven new
+  `price_level_structure` string values were introduced (2026-07-23); no crate change was needed
+  since `price_level_structure` is modeled as a raw `Option<String>`, not an enum.
+
+- Kalshi removed several deprecated fields/endpoints from the published OpenAPI/AsyncAPI outright
+  (not just marked deprecated) between 2026-06 and 2026-07: `GET /exchange/announcements`,
+  the multivariate lookup-history endpoint (`GET .../lookup`), `Market.response_price_units`,
+  `Market.fractional_trading_enabled` (REST and the WS `market_lifecycle_v2`
+  `fractional_trading_updated` event/field), and `MarketPosition.resting_orders_count`. These were
+  removed from the crate (not just deprecated) since calling them can no longer succeed; this was
+  the reason for the 0.6.0 → 0.7.0 bump alongside the additions below.
+
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) are absent from the current
+  OpenAPI spec (only `GET /portfolio/orders` and `GET /portfolio/orders/{order_id}` remain), per
+  Kalshi's 2026-06-18/2026-06-25 deprecation announcement. Because it could not be confirmed live
+  whether the server still accepts these requests during a grace period, the methods were marked
+  `#[deprecated]` (pointing to the `_v2` equivalents) rather than removed outright.
+
+- `GET /communications/quotes` no longer supports filtering by `market_ticker` or `event_ticker`
+  (2026-06-20); those `GetQuotesParams` fields are marked `#[deprecated]` (kept for source
+  compatibility, but the server ignores them). `min_ts`/`max_ts` and a new `user_filter` (distinct
+  from `rfq_user_filter`) were added. `GetRFQsParams` gained `user_filter`; `quote_creator_user_id`,
+  `rfq_creator_user_id` (on `GetQuotesParams`), and `creator_user_id` (on `GetRFQsParams`) are
+  `#[deprecated]` (server spec marks them deprecated, but they remain functional).
+
+- RFQ-scoped quote lookup/cancel/accept/confirm endpoints
+  (`/communications/rfqs/{rfq_id}/quotes/{quote_id}[/accept|/confirm]`) were added 2026-06-25/07-09
+  as `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`. The quote-ID-only
+  equivalents (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) are marked
+  `#[deprecated]` in favor of the RFQ-scoped versions.
+
+- `GET /exchange/status` gained `intra_exchange_transfers_active` and a per-index
+  `exchange_index_statuses` breakdown (2026-06-26); `SubaccountBalance`
+  (`GET /portfolio/subaccounts/balances`) gained a required `exchange_index: i64` field
+  (2026-07-02), since a subaccount with funds on multiple exchange indexes now returns one row per
+  index instead of a single combined row. `ApiKey`/`CreateApiKeyRequest`/`GenerateApiKeyRequest`
+  gained an optional `subaccount: Option<u32>` for single-subaccount-restricted API keys
+  (2026-07-02).
+
+- `GET /account/api_usage_level/volume_progress` and `POST /account/api_usage_level/upgrade` were
+  added (2026-06-11/2026-07-02) as `get_account_api_usage_level_volume_progress` and
+  `upgrade_account_api_usage_level`.
+
+- `pyth_value` is a new authenticated AsyncAPI channel (2026-07-13) delivering deduplicated
+  real-time Pyth prices by underlying ticker, closely mirroring the existing `cfbenchmarks_value`
+  channel: it uses `underlying_tickers` (not market tickers) for subscription parameters (pass
+  `["all"]` for every available underlying), and the post-subscribe workflow
+  (`underlying_list` / `subscribe_underlyings` / `unsubscribe_underlyings`) is supported through
+  `update_subscription_v2` via new `WsUpdateAction` variants and an `underlying_tickers` field on
+  `WsUpdateSubscriptionParamsV2`. Messages are modeled as `WsPythValue` / `WsPythUnderlyingList` and
+  routed through the standard `WsDataMessageV2` enum.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

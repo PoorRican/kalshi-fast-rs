@@ -13,6 +13,7 @@ use std::time::Duration;
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test]
+#[allow(deprecated)] // exercises the deprecated v1 order mutation flow
 async fn test_order_lifecycle() {
     common::load_env();
     let auth = common::load_auth();
@@ -137,6 +138,7 @@ async fn test_order_lifecycle() {
 }
 
 #[tokio::test]
+#[allow(deprecated)] // exercises the deprecated v1 batch order mutation flow
 async fn test_batch_order_lifecycle() {
     common::load_env();
     let auth = common::load_auth();

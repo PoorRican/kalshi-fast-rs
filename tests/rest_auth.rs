@@ -126,8 +126,8 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    assert!(resp.read.refill_rate >= 0);
+    assert!(resp.write.refill_rate >= 0);
 }
 
 #[tokio::test]
@@ -311,6 +311,7 @@ async fn test_get_rfqs() {
 }
 
 #[tokio::test]
+#[allow(deprecated)] // exercises deprecated-but-still-functional rfq_creator_user_id
 async fn test_get_quotes() {
     common::load_env();
     let auth = common::load_auth();
@@ -481,6 +482,7 @@ async fn test_get_rfqs_all() {
 }
 
 #[tokio::test]
+#[allow(deprecated)] // exercises deprecated-but-still-functional rfq_creator_user_id
 async fn test_get_quotes_all() {
     common::load_env();
     let auth = common::load_auth();

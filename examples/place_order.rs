@@ -49,6 +49,10 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    // `create_order` (v1) is deprecated in favor of the lower-cost
+    // `create_order_v2` (see KalshiRestClient::create_order_v2), which uses a
+    // single price + BookSide instead of separate yes/no prices.
+    #[allow(deprecated)]
     let created = client.create_order(order).await?;
     println!("order_id: {}", created.order.order_id);
     Ok(())
