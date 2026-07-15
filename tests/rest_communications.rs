@@ -177,13 +177,13 @@ async fn test_quote_lifecycle() {
 
     let quote_id = quote_resp.id.clone();
 
-    // 3. Get the quote and verify
+    // 3. Get the quote (RFQ-scoped) and verify
     let get_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_quote(&quote_id).await
+        client.get_rfq_quote(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")
-    .expect("get_quote failed");
+    .expect("get_rfq_quote failed");
 
     assert_eq!(get_resp.quote.id, quote_id);
     assert_eq!(get_resp.quote.rfq_id, rfq_id);

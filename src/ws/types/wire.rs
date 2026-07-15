@@ -167,6 +167,18 @@ pub(super) enum WsWireMessage {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    #[serde(rename = "pyth_value")]
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    #[serde(rename = "pyth_value_underlying_list")]
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -293,6 +305,12 @@ impl WsWireMessage {
             }
             WsWireMessage::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValueIndexlist { sid, seq, msg })
+            }
+            WsWireMessage::PythValue { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::PythValue { sid, seq, msg })
+            }
+            WsWireMessage::PythValueUnderlyingList { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { sid, seq, msg })
             }
         }
     }
@@ -476,6 +494,20 @@ pub(super) enum WsWireMessageRef<'a> {
         #[serde(borrow)]
         msg: WsCfBenchmarksIndexListRef<'a>,
     },
+    #[serde(rename = "pyth_value")]
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        #[serde(borrow)]
+        msg: WsPythValueRef<'a>,
+    },
+    #[serde(rename = "pyth_value_underlying_list")]
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        #[serde(borrow)]
+        msg: WsPythUnderlyingListRef<'a>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -603,6 +635,12 @@ impl<'a> WsWireMessageRef<'a> {
             }
             WsWireMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg })
+            }
+            WsWireMessageRef::PythValue { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::PythValue { sid, seq, msg })
+            }
+            WsWireMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg })
             }
         }
     }

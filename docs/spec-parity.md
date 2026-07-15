@@ -91,6 +91,40 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /communications/quotes/{quote_id}` (`get_quote`) was deprecated upstream on 2026-07-07 in
+  favor of the RFQ-scoped `GET /communications/rfqs/{rfq_id}/quotes/{quote_id}` (`get_rfq_quote`).
+  `get_quote` carries `#[deprecated]`; `delete_quote` / `accept_quote` / `confirm_quote` still use
+  the quote-ID-only paths (the live spec marks those deprecated too, in favor of RFQ-scoped
+  counterparts, but no RFQ-scoped replacement is modeled for them yet since no changelog entry has
+  called that migration out).
+
+- `lookup_tickers_for_market_in_multivariate_event_collection` (`PUT
+  /multivariate_event_collections/{collection_ticker}/lookup`) is marked `#[deprecated]`: the live
+  OpenAPI spec flags it `deprecated: true` ("predates RFQs, do not use for new integrations"). The
+  sibling GET lookup-history endpoint (`get_multivariate_event_collection_lookup_history`) was
+  removed entirely upstream on 2026-07-02 and has no replacement.
+
+- `price_level_structure` (on `Market` and `WsMarketLifecycleV2`) is intentionally kept as
+  `Option<String>` rather than a closed enum. Kalshi introduced seven new price-level-structure
+  values in July 2026 (piloting the week of 2026-07-27, expanding 2026-08-03); the raw-string
+  modeling means new values round-trip without a crate update. Use the `price_ranges` array (on
+  `Market` and on `market_lifecycle_v2` `created` / `price_level_structure_updated` events) to
+  determine valid order prices rather than hardcoding a tick size per structure name.
+
+- `WsSubscriptionParamsV2::use_yes_price` controls orderbook (`orderbook_delta`) leg pricing:
+  `false` (default, current behavior) reports no-side updates in no-leg pricing; `true` reports them
+  in yes-leg pricing so a single `price_dollars` scale applies to both sides. Kalshi has announced
+  the default will flip to `true` in a future release and the flag will later be removed entirely;
+  integrations relying on the legacy behavior should migrate before the default flip.
+
+- `pyth_value` is a new authenticated AsyncAPI channel (added 2026-07-13) delivering deduplicated
+  real-time Pyth price updates, modeled analogously to `cfbenchmarks_value`: seed
+  `underlying_tickers` on subscribe (or `["all"]` for every underlying), and use
+  `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` with
+  `WsUpdateSubscriptionParamsV2::underlying_tickers` to manage the subscription post-hoc. Unlike
+  `cfbenchmarks_value`, the `pyth_value` payload (`WsPythValue`) has no windowed-average field — just
+  `underlying_ticker`, `value_usd`, `source_ts_ms`, and `received_at`, all required per the spec.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

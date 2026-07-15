@@ -3,6 +3,11 @@
 //! RFQs express interest in a given market and notional. Market makers respond
 //! with quotes that the RFQ creator can accept/confirm to execute a trade.
 //! All endpoints require authentication.
+//!
+//! `GET /communications/quotes/{quote_id}` was deprecated upstream on
+//! 2026-07-07 in favor of the RFQ-scoped `GET
+//! /communications/rfqs/{rfq_id}/quotes/{quote_id}`, modeled here as
+//! [`KalshiRestClient::get_rfq_quote`].
 
 use crate::KalshiError;
 use crate::rest::account::EmptyResponse;
@@ -278,6 +283,11 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Get a quote by ID.
+    ///
+    /// Deprecated upstream (2026-07-07) in favor of the RFQ-scoped
+    /// [`get_rfq_quote`](Self::get_rfq_quote).
+    #[deprecated(note = "use get_rfq_quote instead")]
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -317,6 +327,24 @@ impl KalshiRestClient {
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await
+    }
+
+    /// Get a quote scoped to its RFQ (2026-07-07). Preferred over
+    /// [`get_quote`](Self::get_quote), which is deprecated upstream.
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
     }
 
     /// Create a pager for iterating over RFQs page by page.

@@ -5,12 +5,12 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -620,7 +620,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "yes_bid_size_fp": "10.00",
             "yes_ask_size_fp": "11.00",
             "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
             "notional_value": 100,
             "notional_value_dollars": "1.0000",
             "previous_yes_bid": 50,
@@ -863,7 +862,6 @@ fn get_positions_response_deserializes() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -894,7 +892,6 @@ fn positions_page_from_response() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -1067,19 +1064,31 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
+    assert_eq!(resp.intra_exchange_transfers_active, None);
+    assert!(resp.exchange_index_statuses.is_none());
 }
 
 #[test]
-fn get_exchange_announcements_response_deserializes() {
+fn get_exchange_status_response_deserializes_per_index() {
     let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "exchange_active": true,
+                "trading_active": true,
+                "intra_exchange_transfers_active": true
+            }
         ]
     }"#;
 
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    let statuses = resp.exchange_index_statuses.unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].exchange_index, 0);
 }
 
 #[test]
@@ -1235,11 +1244,12 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
 }
 
@@ -1802,7 +1812,7 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
 }
 
 #[test]
-fn multivariate_collections_and_lookup_responses_deserialize_typed() {
+fn multivariate_collections_response_deserializes_typed() {
     let json = r#"{
         "multivariate_contracts": [{
             "collection_ticker": "COL-1",
@@ -1833,23 +1843,6 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
-
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
 }
 
 #[test]
@@ -2026,4 +2019,54 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn ws_market_lifecycle_v2_deserializes_price_ranges() {
+    let json = r#"{
+        "market_ticker": "MKT-1",
+        "event_type": "price_level_structure_updated",
+        "price_level_structure": "center_half_edge_deci_cent",
+        "price_ranges": [
+            {"start": "0.0000", "end": "0.5000", "step": "0.0050"},
+            {"start": "0.5000", "end": "1.0000", "step": "0.0010"}
+        ]
+    }"#;
+
+    let msg: kalshi_fast::WsMarketLifecycleV2 = serde_json::from_str(json).unwrap();
+    assert_eq!(msg.market_ticker, "MKT-1");
+    assert!(matches!(
+        msg.event_type,
+        Some(kalshi_fast::WsMarketLifecycleEventType::PriceLevelStructureUpdated)
+    ));
+    assert_eq!(
+        msg.price_level_structure.as_deref(),
+        Some("center_half_edge_deci_cent")
+    );
+    let ranges = msg.price_ranges.expect("price_ranges");
+    assert_eq!(ranges.len(), 2);
+    assert_eq!(ranges[0].start, "0.0000");
+    assert_eq!(ranges[1].step, "0.0010");
+}
+
+#[test]
+fn ws_pyth_value_and_underlying_list_deserialize() {
+    let value_json = r#"{
+        "underlying_ticker": "Crypto.BTC/USD",
+        "value_usd": "65000.12340000",
+        "source_ts_ms": 1750000000000,
+        "received_at": 1750000000050
+    }"#;
+    let value: kalshi_fast::WsPythValue = serde_json::from_str(value_json).unwrap();
+    assert_eq!(value.underlying_ticker, "Crypto.BTC/USD");
+    assert_eq!(value.value_usd, "65000.12340000");
+    assert_eq!(value.source_ts_ms, 1750000000000);
+    assert_eq!(value.received_at, 1750000000050);
+
+    let list_json = r#"{
+        "underlying_tickers": ["Crypto.BTC/USD", "Crypto.ETH/USD"]
+    }"#;
+    let list: kalshi_fast::WsPythUnderlyingList = serde_json::from_str(list_json).unwrap();
+    assert_eq!(list.underlying_tickers.len(), 2);
+    assert_eq!(list.underlying_tickers[0], "Crypto.BTC/USD");
 }
