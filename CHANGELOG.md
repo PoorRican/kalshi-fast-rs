@@ -8,6 +8,121 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-07-16
+
+### Compatibility
+
+- Docs snapshot: 2026-07-16
+- OpenAPI: 3.24.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-07-13
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Per-index subaccount balances (2026-06-24) | Added `SubaccountBalance.exchange_index` (now required) |
+| Per-index exchange status (2026-06-26) | Added `ExchangeIndexStatus`, `GetExchangeStatusResponse.intra_exchange_transfers_active` / `.exchange_index_statuses` |
+| Margin risk per-market metrics limited (2026-06-27) | No code change — margin risk/positions not modeled in crate |
+| Margin positions `margin_used` omitted for jointly-margined positions (2026-06-29/30) | No code change — margin positions not modeled in crate |
+| `price_ranges` added to `market_lifecycle_v2` events (2026-06-30) | Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` / `Ref` |
+| Trade-scoped API key permissions (2026-06-30) | No code change — scopes stored as `Vec<String>` already |
+| Margin positions `is_portfolio` flag (2026-07-01/02) | No code change — margin positions not modeled in crate |
+| Multivariate lookup history endpoints fully deprecated (2026-07-02) | Marked `get_multivariate_event_collection_lookup_history` `#[deprecated]`; also deprecated the PUT ticker-pair lookup, which the live OpenAPI separately marks `deprecated: true` |
+| Margin orders identify system order reasons (2026-07-02) | No code change — margin orders not modeled in crate |
+| New price level structures, no new fields (2026-07-07 / rollout starting the week of 2026-07-27) | No code change — `price_level_structure` / `price_ranges` are already untyped string/array pass-throughs |
+| RFQ-scoped quote lookup endpoint (2026-07-07) | Added `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`; deprecated the quote-ID-only equivalents |
+| Deprecated Predictions REST schema fields removed (2026-07-03/09) | **Breaking** — removed `Market.response_price_units`, `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count` |
+| Exchange announcements endpoint removed (2026-07-04) | **Breaking** — removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus` |
+| FIX Tag 2446 on Incremental Refresh (2026-07-09) | No code change — FIX protocol out of scope for this crate |
+| Pyth value WebSocket channel (2026-07-13) | Added full `pyth_value` channel support |
+
+**Additional drift found via direct YAML review (not surfaced by the changelog window above):**
+
+| Finding | Action |
+|---|---|
+| `fractional_trading_updated` WS event type and `fractional_trading_enabled` field were removed from the `market_lifecycle_v2` AsyncAPI schema upstream on 2026-04-17, predating this crate's 0.6.0 refresh watermark | **Breaking** — removed `WsMarketLifecycleEventType::FractionalTradingUpdated` and `WsMarketLifecycleV2` / `Ref` `.fractional_trading_enabled` field, which had no remaining AsyncAPI basis |
+| `cfbenchmarks_value` requires authentication per AsyncAPI but was missing from `WsChannelV2::is_private()` | Fixed — `is_private()` now returns `true` for `CfbenchmarksValue`, matching `PythValue` |
+
+### Added
+
+- [Rust API] Added `exchange_index: i64` (required) to `SubaccountBalance`, matching the per-index
+  subaccount balances added 2026-06-24.
+- [Rust API] Added `ExchangeIndexStatus` struct and `intra_exchange_transfers_active: Option<bool>` /
+  `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` fields to `GetExchangeStatusResponse`,
+  matching the per-index exchange status added 2026-06-26.
+- [Rust API] Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` /
+  `WsMarketLifecycleV2Ref` (new borrowed `WsPriceRangeRef` type), matching the field added to
+  `market_lifecycle_v2` `created` / `price_level_structure_updated` events on 2026-06-30.
+- [Rust API] Added RFQ-scoped quote methods `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`,
+  `confirm_rfq_quote` (`rfq_id` + `quote_id`), matching the endpoints added 2026-07-07.
+- [Rust API] Added full `pyth_value` WebSocket channel support (added 2026-07-13, requires auth):
+  `WsChannelV2::PythValue`; `WsMsgType::PythValue` / `PythValueUnderlyingList`; new types
+  `WsPythValue`, `WsPythValueRef`, `WsPythUnderlyingList`, `WsPythUnderlyingListRef` in
+  `ws::types::messages::pyth`; `WsDataMessageV2::PythValue` / `PythValueUnderlyingList` and
+  `WsDataMessageRef` equivalents; `underlying_tickers: Option<Vec<String>>` on
+  `WsSubscriptionParamsV2` / `WsUpdateSubscriptionParamsV2`; and `WsUpdateAction::SubscribeUnderlyings`
+  / `UnsubscribeUnderlyings` / `UnderlyingList`. The subscription tracker folds underlying add/remove
+  updates into the resubscribe state, and `validate_update` enforces that underlying actions carry no
+  market targets and that `subscribe_underlyings` / `unsubscribe_underlyings` include
+  `underlying_tickers`.
+
+### Fixed
+
+- [Rust API] `WsChannelV2::is_private()` now returns `true` for `CfbenchmarksValue`. The AsyncAPI
+  marks `cfbenchmarks_value` as requiring authentication, but the check was missing it, so an
+  unauthenticated client would previously reach the server before being rejected instead of failing
+  fast client-side.
+
+### Deprecated
+
+- [Rust API] `get_quote`, `delete_quote`, `accept_quote`, and `confirm_quote` (quote-ID-only) are
+  `#[deprecated]` in favor of `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, and
+  `confirm_rfq_quote`, matching the upstream deprecation on 2026-07-07.
+- [Rust API] `get_multivariate_event_collection_lookup_history` is `#[deprecated]`: multivariate
+  lookup history endpoints are fully deprecated upstream (2026-07-02) and no longer documented in the
+  OpenAPI spec.
+- [Rust API] `lookup_tickers_for_market_in_multivariate_event_collection` is `#[deprecated]`: the live
+  OpenAPI marks this operation `deprecated: true` ("predates RFQs and should not be used for new
+  integrations").
+
+### Removed
+
+- [Rust API] Removed `get_exchange_announcements()`, `GetExchangeAnnouncementsResponse`,
+  `Announcement`, `AnnouncementType`, and `AnnouncementStatus`. `GET /exchange/announcements` was
+  removed from the Predictions REST API on 2026-07-04.
+- [Rust API] Removed `Market.response_price_units` and `Market.fractional_trading_enabled`. Both
+  fields were removed from the Predictions REST API schema on 2026-07-03/09.
+- [Rust API] Removed `MarketPosition.resting_orders_count` (and the corresponding field on the
+  WebSocket zero-copy `MarketPositionRef`). The field was removed from the Predictions REST API
+  schema on 2026-07-03/09.
+- [Rust API] Removed `WsMarketLifecycleEventType::FractionalTradingUpdated` and the
+  `fractional_trading_enabled` field from `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref`. Kalshi
+  removed the `fractional_trading_updated` `market_lifecycle_v2` event and deprecated the field on
+  2026-04-17 (fractional trading is now unconditional); neither has any remaining basis in the
+  current AsyncAPI schema.
+
+### Breaking
+
+- [Rust API] `SubaccountBalance` gained a new required `exchange_index: i64` field. Downstream struct
+  literals or exhaustive destructuring must be updated.
+- [Rust API] `Market.response_price_units` and `Market.fractional_trading_enabled` no longer exist;
+  downstream field access will not compile.
+- [Rust API] `MarketPosition.resting_orders_count` no longer exists; downstream field access will not
+  compile.
+- [Rust API] `WsMarketLifecycleEventType::FractionalTradingUpdated` no longer exists, and
+  `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` no longer have a `fractional_trading_enabled`
+  field. Downstream exhaustive matches and field access must be updated.
+- [Rust API] `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, and `AnnouncementStatus` no longer exist.
+- [Rust API] `WsChannelV2` gained a `PythValue` variant; `WsMsgType` gained `PythValue` and
+  `PythValueUnderlyingList`; `WsUpdateAction` gained `SubscribeUnderlyings`, `UnsubscribeUnderlyings`,
+  and `UnderlyingList`; `WsDataMessageV2` / `WsDataMessageRef` gained `PythValue` /
+  `PythValueUnderlyingList` variants; `WsSubscriptionParamsV2` / `WsUpdateSubscriptionParamsV2` gained
+  an `underlying_tickers` field. Downstream exhaustive matches or struct-literal construction over
+  these types must be updated.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
