@@ -22,6 +22,8 @@
 //! | [`WsChannelV2::Communications`] | Yes | RFQs and quotes |
 //! | [`WsChannelV2::OrderGroupUpdates`] | Yes | Order-group lifecycle |
 //! | [`WsChannelV2::UserOrders`] | Yes | User order lifecycle updates |
+//! | [`WsChannelV2::CfbenchmarksValue`] | Yes | CF Benchmarks reference index values |
+//! | [`WsChannelV2::PythValue`] | Yes | Deduplicated real-time Pyth prices |
 //!
 //! # Quick Start — Public Ticker
 //!

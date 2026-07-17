@@ -278,6 +278,11 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Get a quote by ID.
+    ///
+    /// Deprecated by Kalshi (still present in the OpenAPI spec, `deprecated: true`) in favor of
+    /// [`get_rfq_quote`](Self::get_rfq_quote), which scopes the lookup to its RFQ.
+    #[deprecated(note = "use get_rfq_quote instead")]
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,6 +295,8 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated by Kalshi in favor of [`delete_rfq_quote`](Self::delete_rfq_quote).
+    #[deprecated(note = "use delete_rfq_quote instead")]
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -302,6 +309,8 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated by Kalshi in favor of [`accept_rfq_quote`](Self::accept_rfq_quote).
+    #[deprecated(note = "use accept_rfq_quote instead")]
     pub async fn accept_quote(
         &self,
         quote_id: &str,
@@ -312,8 +321,76 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated by Kalshi in favor of [`confirm_rfq_quote`](Self::confirm_rfq_quote).
+    #[deprecated(note = "use confirm_rfq_quote instead")]
     pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Get a quote scoped to its RFQ. Added 2026-07-07; replaces the deprecated
+    /// quote-ID-only [`get_quote`](Self::get_quote).
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Delete a quote scoped to its RFQ, which means it can no longer be accepted. Added
+    /// 2026-07-07; replaces the deprecated quote-ID-only [`delete_quote`](Self::delete_quote).
+    pub async fn delete_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Accept a quote scoped to its RFQ. This will require the quoter to confirm. Added
+    /// 2026-07-07; replaces the deprecated quote-ID-only [`accept_quote`](Self::accept_quote).
+    pub async fn accept_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/accept"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote scoped to its RFQ. This will start a timer for order execution. Added
+    /// 2026-07-07; replaces the deprecated quote-ID-only [`confirm_quote`](Self::confirm_quote).
+    pub async fn confirm_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm"
+        ));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await

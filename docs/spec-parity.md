@@ -91,6 +91,55 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/announcements` was removed from the OpenAPI spec (2026-07-04). `get_exchange_announcements`,
+  `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, and `AnnouncementStatus` were removed from
+  the crate accordingly (0.6.0 → 0.7.0, breaking).
+
+- `GET /exchange/status` (`GetExchangeStatusResponse`) gained an optional per-index breakdown (2026-06-26):
+  `intra_exchange_transfers_active: Option<bool>` and `exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>`.
+  The top-level fields still reflect the default exchange index (`0`); the per-index array is absent when the
+  breakdown is unavailable. `ExchangeIndexStatus.exchange_index` is `i64` (the OpenAPI `ExchangeIndex` schema is a
+  bare integer, not an enum — only `0` is documented as supported today).
+
+- `market.response_price_units`, `market.fractional_trading_enabled`, and `market_positions.resting_orders_count`
+  were removed from the Predictions REST OpenAPI schema (2026-07-03) and deleted from `Market` and `MarketPosition`
+  (REST and the WS `market_position`-shaped mirror in `ws::types`) rather than kept as stale `Option` fields, per the
+  refresh policy for confirmed-removed schema. Same for the WS `market_lifecycle_v2` `fractional_trading_enabled`
+  field and the `fractional_trading_updated` event type, both absent from the current AsyncAPI (0.6.0 → 0.7.0,
+  breaking).
+
+- `price_ranges` (array of `{start, end, step}` fixed-point-dollar strings, reusing the REST `PriceRange` shape) was
+  added to the WS `market_lifecycle_v2` payload (2026-06-30). It is emitted alongside `price_level_structure` on
+  `created` and `price_level_structure_updated` events.
+
+- Seven additional `price_level_structure` values (center/edge tick combinations) were introduced upstream
+  (2026-07-07, rolling out July 27 – August 3). No crate change was needed: `price_level_structure` is already
+  modeled as `Option<String>` on both `Market` and the WS lifecycle payload precisely so new values round-trip
+  without a release.
+
+- `GET /communications/rfqs/{rfq_id}/quotes/{quote_id}` (plus `DELETE`, `PUT .../accept`, `PUT .../confirm`) were
+  added as the RFQ-scoped replacements for the quote-ID-only endpoints (2026-07-07). `get_rfq_quote`,
+  `delete_rfq_quote`, `accept_rfq_quote`, and `confirm_rfq_quote` were added; `get_quote`, `delete_quote`,
+  `accept_quote`, and `confirm_quote` are marked `#[deprecated]` (the OpenAPI spec marks all four `deprecated: true`
+  but keeps them present, so they are not removed).
+
+- `GET /multivariate_event_collections/{ticker}/lookup` was removed from the OpenAPI spec entirely (only the `PUT`
+  on the same path remains, now `deprecated: true` — "predates RFQs, do not use for new integrations").
+  `get_multivariate_event_collection_lookup_history`, `GetMultivariateEventCollectionLookupHistoryParams`/
+  `Response`, and `LookupPoint` were removed; `lookup_tickers_for_market_in_multivariate_event_collection` is marked
+  `#[deprecated]` (0.6.0 → 0.7.0, breaking).
+
+- `pyth_value` is a new authenticated AsyncAPI channel (added 2026-07-13) delivering deduplicated real-time Pyth
+  price updates, modeled as `WsPythValue` (`underlying_ticker`, `value_usd`, `source_ts_ms`, `received_at`). The
+  companion `pyth_value_underlying_list` message (`WsPythUnderlyingList`) lists underlyings observed in the last two
+  hours. Subscribe by seeding `underlying_tickers` (use `["all"]` for every underlying) and manage the set post-hoc
+  via `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList`, mirroring the
+  `cfbenchmarks_value` / `index_ids` pattern.
+
+- `WsChannelV2::is_private()` was missing `CfbenchmarksValue` even though its AsyncAPI channel description states
+  "Requires authentication" — a pre-existing gap from the 0.6.0 `cfbenchmarks_value` addition, fixed alongside the
+  new `PythValue` channel (both now correctly force an authenticated connection when subscribed).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -258,6 +258,18 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -468,6 +480,18 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -590,6 +614,16 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -673,6 +707,16 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -764,6 +808,18 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1001,6 +1057,39 @@ mod tests {
                 assert!(msg.fee_multiplier_override.is_none());
             }
             _ => panic!("expected event_fee_update data message"),
+        }
+    }
+
+    #[test]
+    fn ws_envelope_into_message_pyth_value() {
+        let json = r#"{
+            "type":"pyth_value",
+            "sid":11,
+            "seq":12,
+            "msg":{
+                "underlying_ticker":"BTCUSD",
+                "value_usd":"68123.45000000",
+                "source_ts_ms":1752345600123,
+                "received_at":1752345600200
+            }
+        }"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        let msg = env.into_message().unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { sid, seq, msg }) => {
+                assert_eq!(sid, Some(11));
+                assert_eq!(seq, Some(12));
+                assert_eq!(msg.underlying_ticker, "BTCUSD");
+            }
+            _ => panic!("expected pyth_value data message"),
+        }
+
+        let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match msg_ref.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.value_usd, "68123.45000000");
+            }
+            _ => panic!("expected pyth_value data message"),
         }
     }
 

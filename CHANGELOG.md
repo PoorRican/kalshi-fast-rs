@@ -8,6 +8,82 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-07-17
+
+### Compatibility
+
+- Docs snapshot: 2026-07-17
+- OpenAPI: 3.25.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-07-17
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Per-index exchange status (2026-06-26) | Added `intra_exchange_transfers_active`, `exchange_index_statuses` to `GetExchangeStatusResponse`; added `ExchangeIndexStatus` |
+| Margin risk per-market metrics limited (2026-06-27) | No code change — margin risk types not in crate |
+| Margin positions `margin_used` omitted for jointly-margined portfolios (2026-06-30) | No code change — margin position types not in crate |
+| `price_ranges` added to `market_lifecycle_v2` events (2026-06-30) | Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` |
+| Trade-scoped API key permissions (2026-06-30) | No code change — scopes stored as `Vec<String>` already |
+| Margin positions `is_portfolio` flag (2026-07-01) | No code change — margin position types not in crate |
+| Multivariate lookup-history endpoint fully deprecated (2026-07-02) | **Breaking** — GET removed from OpenAPI entirely; removed `get_multivariate_event_collection_lookup_history`, `GetMultivariateEventCollectionLookupHistoryParams`/`Response`, `LookupPoint`; deprecated `lookup_tickers_for_market_in_multivariate_event_collection` |
+| Margin orders identify system order reasons (2026-07-02) | No code change — margin order types not in crate |
+| New price level structures, 7 new values (2026-07-07, rolling out July 27 – Aug 3) | No code change — `price_level_structure` already `Option<String>` on `Market` and WS lifecycle |
+| RFQ-scoped quote lookup endpoint (2026-07-07) | Added `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`; deprecated `get_quote`/`delete_quote`/`accept_quote`/`confirm_quote` |
+| Exchange announcements endpoint removed (2026-07-04) | **Breaking** — removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus` |
+| Deprecated Predictions REST schema fields removed (2026-07-03) | **Breaking** — removed `Market.response_price_units`, `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count`; also removed the corresponding WS `market_lifecycle_v2` `fractional_trading_enabled` field and `fractional_trading_updated` event type (absent from the current AsyncAPI) |
+| RFQ-scoped quote lookup endpoint, FIX tag 2446, subaccount-restricted RFQ FIX quoting (2026-07-07/09/17) | No code change beyond the REST endpoints above — FIX protocol sessions are out of scope for this crate |
+| Pyth value WebSocket channel (2026-07-13) | Added `pyth_value` channel: `WsPythValue`, `WsPythUnderlyingList`, `WsUpdateAction::SubscribeUnderlyings`/`UnsubscribeUnderlyings`/`UnderlyingList`, `underlying_tickers` subscription field |
+
+### Added
+
+- [Rust API] Added `intra_exchange_transfers_active: Option<bool>` and `exchange_index_statuses:
+  Option<Vec<ExchangeIndexStatus>>` to `GetExchangeStatusResponse` (2026-06-26). `ExchangeIndexStatus` holds
+  `exchange_index: i64`, `exchange_active`, `trading_active`, `intra_exchange_transfers_active`.
+- [Rust API] Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` (and its borrowed `Ref`
+  counterpart), emitted alongside `price_level_structure` on `created` and `price_level_structure_updated` events
+  (2026-06-30).
+- [Rust API] Added `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote` for the RFQ-scoped
+  `/communications/rfqs/{rfq_id}/quotes/{quote_id}` endpoints (2026-07-07).
+- [Rust API] Added the `pyth_value` WebSocket channel: `WsChannelV2::PythValue`, message types `WsPythValue` /
+  `WsPythUnderlyingList` (plus borrowed `Ref` variants), the `underlying_tickers` subscription field, and
+  `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` for post-subscribe management
+  (2026-07-13).
+- [Tests] Added coverage for the new `GetExchangeStatusResponse` fields, `price_ranges` on `market_lifecycle_v2`,
+  and the `pyth_value` channel (message parsing, subscription validation, subscription-tracker updates).
+
+### Changed
+
+- [Rust API] Marked `get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`, and
+  `lookup_tickers_for_market_in_multivariate_event_collection` `#[deprecated]`, matching `deprecated: true` in the
+  current OpenAPI spec. All remain callable; the RFQ-scoped or scoped-endpoint replacements above should be
+  preferred for new code.
+- [Rust API] Fixed `WsChannelV2::is_private()` to include `CfbenchmarksValue` (a pre-existing gap from the 0.6.0
+  `cfbenchmarks_value` addition — its AsyncAPI channel description requires authentication) alongside the new
+  `PythValue` channel, so subscribing to either now correctly forces an authenticated connection.
+
+### Removed
+
+- [Upstream] `GET /exchange/announcements` was removed from the OpenAPI spec (2026-07-04). Removed
+  `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`,
+  `AnnouncementStatus`.
+- [Upstream] `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Predictions REST OpenAPI schema (2026-07-03) and
+  deleted from the crate rather than kept as stale `Option` fields.
+- [Upstream] `GET /multivariate_event_collections/{ticker}/lookup` was removed from the OpenAPI spec (only `PUT`
+  remains, now deprecated). Removed `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`/`Response`, `LookupPoint`.
+- [Upstream] The WS `market_lifecycle_v2` `fractional_trading_enabled` field and `fractional_trading_updated` event
+  type are absent from the current AsyncAPI; removed from `WsMarketLifecycleV2` and `WsMarketLifecycleEventType`.
+
+### Breaking
+
+- Removing the fields/types above is a breaking change to the public Rust API of this crate even though most of it
+  tracks upstream schema removals. Per `VERSIONING.md`, any breaking pre-1.0 Rust API change is a **minor** bump:
+  `0.6.0` → `0.7.0`.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
