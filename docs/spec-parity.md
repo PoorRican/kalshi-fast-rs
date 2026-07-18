@@ -91,6 +91,46 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The following fields were removed from the live OpenAPI/AsyncAPI on 2026-07-09 and are removed
+  from the public Rust API rather than kept as compatibility shims: `Market.response_price_units`,
+  `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count`. The corresponding
+  WebSocket `market_lifecycle_v2` `fractional_trading_enabled` field and
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` event type were removed from the AsyncAPI
+  in the same window and are removed here too.
+- `metadata_updated` events on `market_lifecycle_v2` gained top-level `strike_type`, `cap_strike`,
+  and `custom_strike` (2026-06-18), alongside the existing top-level `floor_strike` /
+  `yes_sub_title`. `created` and `price_level_structure_updated` events gained a top-level
+  `price_ranges` array (2026-07-02), reusing the REST `PriceRange` shape (`{start, end, step}` in
+  fixed-point dollars).
+- `GET /communications/quotes` dropped `market_ticker`/`event_ticker` filters (2026-06-20,
+  breaking) in favor of `min_ts`/`max_ts`/`user_filter`/`rfq_id`/etc. The quote-ID-only lookup,
+  delete, accept, and confirm endpoints (`get_quote`, `delete_quote`, `accept_quote`,
+  `confirm_quote`) are marked `#[deprecated]` in favor of the RFQ-scoped equivalents
+  (`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`) added 2026-06-25,
+  matching the OpenAPI `deprecated: true` flags on the legacy paths.
+- `GET /multivariate_event_collections/{ticker}/lookup` (history variant, `GET`) was fully removed
+  from the OpenAPI (2026-07-02) and is removed from the crate. The `PUT` variant (ticker-pair
+  lookup) remains but is now marked `deprecated: true` upstream; the crate method is annotated
+  `#[deprecated]` accordingly.
+- `GET /exchange/announcements` was removed from the OpenAPI (2026-07-04); `get_exchange_announcements`
+  and the `Announcement`/`AnnouncementType`/`AnnouncementStatus`/`GetExchangeAnnouncementsResponse`
+  types are removed from the crate.
+- A broad "exchange index" (multi-shard) rollout is underway across the OpenAPI (currently only
+  index `0` is live in production). This crate models it only where the changelog calls out a
+  concrete field: `ExchangeStatus.exchange_index_statuses`/`intra_exchange_transfers_active`
+  (2026-07-02) and `SubaccountBalance.exchange_index` (now required, 2026-07-02). Other
+  `exchange_index` occurrences across the spec are not yet modeled.
+- API keys can be restricted to a single sub-account (0-63) via `subaccount` on
+  `POST /api_keys` / `POST /api_keys/generate` (2026-07-02); `ApiKey.subaccount` reflects the
+  restriction (`None` = unrestricted).
+- `pyth_value` is a new authenticated AsyncAPI channel (2026-07-23) delivering deduplicated Pyth
+  prices by underlying ticker, modeled the same way as `cfbenchmarks_value`: seed
+  `underlying_tickers` on subscribe (`["all"]` for every underlying), and use
+  `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` via
+  `update_subscription_v2` to manage the set post-subscribe. `validate_update` rejects mixing
+  underlying actions with market targets and requires `underlying_tickers` for the add/remove
+  actions, mirroring the CF Benchmarks index-action validation.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
