@@ -91,6 +91,50 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `pyth_value` is a new AsyncAPI channel (introduced 2026-07-13) that delivers deduplicated Pyth
+  price updates by underlying ticker. Unlike `cfbenchmarks_value`, it requires authentication. It
+  uses `underlying_tickers` (not market tickers) for subscription parameters; pass `["all"]` to
+  track every available underlying. The channel emits `pyth_value` (per-underlying value) and
+  `pyth_value_underlying_list` (recently streamed underlyings), modeled as `WsPythValue` /
+  `WsPythUnderlyingList` and routed through the standard `WsDataMessageV2` enum. The documented
+  post-subscribe workflow (discover underlyings via `underlying_list`, then add/remove with
+  `subscribe_underlyings` / `unsubscribe_underlyings`) is supported through
+  `update_subscription_v2` using the `WsUpdateAction::SubscribeUnderlyings` /
+  `UnsubscribeUnderlyings` / `UnderlyingList` actions plus the `underlying_tickers` field on
+  `WsUpdateSubscriptionParamsV2`, mirroring the `cfbenchmarks_value` index-action pattern.
+
+- `market_lifecycle_v2`'s `created` and `price_level_structure_updated` events now emit an optional
+  `price_ranges` array (added 2026-06-30) alongside `price_level_structure`. It reuses the existing
+  REST `PriceRange` struct (`{start, end, step}` in fixed-point dollars) rather than a new type,
+  since the shape is identical to the REST market object's field.
+
+- The Predictions REST/AsyncAPI 2026-07-03 cleanup fully removed three previously-optional fields
+  with no replacement: `Market.response_price_units`, `Market.fractional_trading_enabled` (REST and
+  the `market_lifecycle_v2` WS messages, including the `fractional_trading_updated` event type),
+  and `MarketPosition.resting_orders_count` (REST and WS). All three are deleted from the crate
+  rather than kept as compatibility shims, per this repo's removal policy; any stray payload keys
+  are absorbed by the existing `extra` flatten fields where present.
+
+- `GET /exchange/announcements` was removed from the Predictions REST API (2026-07-04) with no
+  replacement (exchange schedule remains available via `GET /exchange/schedule`). The crate's
+  `get_exchange_announcements` method and its `Announcement`/`AnnouncementType`/
+  `AnnouncementStatus`/`GetExchangeAnnouncementsResponse` types were deleted accordingly.
+
+- The multivariate lookup-*history* endpoint (`GET
+  /multivariate_event_collections/{collection_ticker}/lookup`) was removed from the OpenAPI
+  entirely (2026-07-02); `get_multivariate_event_collection_lookup_history` and its params/response/
+  `LookupPoint` types were deleted. The sibling lookup *write* endpoint (`PUT` on the same path,
+  `lookup_tickers_for_market_in_multivariate_event_collection`) still exists but is marked
+  `deprecated: true` in the OpenAPI (it predates RFQs); the crate now marks it `#[deprecated]`
+  too rather than removing it, since it has no direct replacement — RFQs are the recommended flow.
+
+- RFQ quote lookup/delete/accept/confirm gained RFQ-scoped equivalents
+  (`get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`, targeting
+  `/communications/rfqs/{rfq_id}/quotes/{quote_id}[/accept|/confirm]`). The OpenAPI now marks the
+  original quote-ID-only endpoints (`get_quote`/`delete_quote`/`accept_quote`/`confirm_quote`)
+  `deprecated: true`, so the crate mirrors that with `#[deprecated]` rather than removing them
+  outright, since they remain live endpoints for now.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

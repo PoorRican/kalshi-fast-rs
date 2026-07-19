@@ -8,6 +8,102 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-07-19
+
+### Compatibility
+
+- Docs snapshot: 2026-07-19
+- OpenAPI: 3.25.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-07-17
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Subaccount-restricted API keys can open WebSocket sessions (2026-07-17) | No code change — session-level auth behavior; no new fields introduced per the changelog, and existing `subaccount` fields on private WS messages already model the per-order annotation |
+| Subaccount-restricted API keys can quote on RFQ FIX sessions (2026-07-17) | No code change — FIX protocol is not implemented by this crate |
+| Pyth value WebSocket channel (2026-07-13) | **Breaking** — added full `pyth_value` channel support (mirrors the existing `cfbenchmarks_value` pattern) |
+| Support for FIX Tag 2446 on Incremental Refresh (2026-07-09) | No code change — FIX protocol is not implemented by this crate |
+| RFQ-scoped quote lookup endpoint (2026-07-07) | Added `get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`; deprecated the quote-ID-only `get_quote`/`delete_quote`/`accept_quote`/`confirm_quote` methods to match the OpenAPI, which now marks all four legacy operations `deprecated: true` |
+| New price level structures (2026-07-07) | No code change — `Market.price_level_structure` / `WsMarketLifecycleV2.price_level_structure` are already modeled as raw `String`, so the seven new enum values pass through losslessly |
+| Margin orders now identify system order reasons (2026-07-02) | No code change — margin order types are not modeled in this crate |
+| Multivariate lookup history endpoints are fully deprecated (2026-07-02) | **Breaking** — the lookup-history endpoint was removed from the OpenAPI spec entirely; removed `get_multivariate_event_collection_lookup_history`, `GetMultivariateEventCollectionLookupHistoryParams`, `GetMultivariateEventCollectionLookupHistoryResponse`, `LookupPoint`. Deprecated `lookup_tickers_for_market_in_multivariate_event_collection` to match the OpenAPI's `deprecated: true` |
+| Deprecated Predictions REST schema fields removed (2026-07-03) | **Breaking** — removed `Market.response_price_units`, `Market.fractional_trading_enabled` (REST and WS lifecycle messages, plus the now-absent `WsMarketLifecycleEventType::FractionalTradingUpdated` variant), and `MarketPosition.resting_orders_count` (REST and WS) |
+| Exchange announcements endpoint removed (2026-07-04) | **Breaking** — removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus`; exchange schedule remains available via `get_exchange_schedule` |
+| Margin positions now include an `is_portfolio` flag (2026-07-01) | No code change — margin position types are not modeled in this crate |
+| Trade-scoped API key permissions (2026-06-30) | No code change — scopes are already stored as `Vec<String>` |
+| `price_ranges` added to `market_lifecycle_v2` events (2026-06-30) | Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref`, reusing the existing REST `PriceRange` type |
+| Margin positions `margin_used` omitted for jointly-margined portfolio positions (2026-06-30) | No code change — margin position types are not modeled in this crate |
+| Margin risk per-market metrics limited to single-position subaccounts and gross margin markets (2026-06-26) | No code change — margin risk types are not modeled in this crate |
+
+### Added
+
+- [Rust API] Added full `pyth_value` channel support (authenticated, deduplicated Pyth price
+  updates by underlying ticker):
+  - `WsChannelV2::PythValue` variant (private/authenticated)
+  - `underlying_tickers: Option<Vec<String>>` parameter on `WsSubscriptionParamsV2` (use `["all"]`
+    for every available underlying)
+  - `WsMsgType::PythValue` and `WsMsgType::PythValueUnderlyingList` variants
+  - New types `WsPythValue`, `WsPythValueRef`, `WsPythUnderlyingList`, `WsPythUnderlyingListRef` in
+    `ws::types::messages::pyth`
+  - `WsDataMessageV2::PythValue` and `WsDataMessageV2::PythValueUnderlyingList` variants routed
+    through both the wire and envelope parse paths
+  - `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` variants
+    and an `underlying_tickers: Option<Vec<String>>` field on `WsUpdateSubscriptionParamsV2`; the
+    subscription tracker folds underlying add/remove updates into the resubscribe state, and
+    `validate_update` enforces that underlying actions carry no market targets and that
+    `subscribe_underlyings` / `unsubscribe_underlyings` include `underlying_tickers`
+- [Rust API] Added `price_ranges: Option<Vec<PriceRange>>` to `WsMarketLifecycleV2` and
+  `WsMarketLifecycleV2Ref` (`created` and `price_level_structure_updated` events), reusing the
+  existing REST `PriceRange` struct (`{start, end, step}` in fixed-point dollars).
+- [Rust API] Added RFQ-scoped quote endpoints: `get_rfq_quote`, `delete_rfq_quote`,
+  `accept_rfq_quote`, `confirm_rfq_quote` on `KalshiRestClient`, targeting
+  `/communications/rfqs/{rfq_id}/quotes/{quote_id}` (and `/accept`, `/confirm`).
+
+### Deprecated
+
+- [Rust API] `get_quote`, `delete_quote`, `accept_quote`, `confirm_quote` are `#[deprecated]` —
+  use the RFQ-scoped equivalents (`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`,
+  `confirm_rfq_quote`) instead. The OpenAPI now marks all four legacy operations
+  `deprecated: true`.
+- [Rust API] `lookup_tickers_for_market_in_multivariate_event_collection` is `#[deprecated]` —
+  it predates RFQs and has no replacement; use RFQs instead. Matches the OpenAPI's
+  `deprecated: true` on this operation.
+
+### Removed
+
+- [Rust API] **Breaking.** Removed `get_exchange_announcements`,
+  `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, `AnnouncementStatus`.
+  `GET /exchange/announcements` was removed from the Predictions REST API (2026-07-04); exchange
+  schedule remains available via `get_exchange_schedule`.
+- [Rust API] **Breaking.** Removed `Market.response_price_units` and
+  `Market.fractional_trading_enabled` (both fields were removed from the OpenAPI schema,
+  2026-07-03). Also removed `fractional_trading_enabled` from `WsMarketLifecycleV2` /
+  `WsMarketLifecycleV2Ref` and the `WsMarketLifecycleEventType::FractionalTradingUpdated` variant,
+  since both are absent from the current AsyncAPI (payloads carrying either field, if any, are
+  preserved via the existing `extra` flatten / `Unknown` catch-all).
+- [Rust API] **Breaking.** Removed `MarketPosition.resting_orders_count` (REST) and the
+  corresponding field on the WS `MarketPositionRef` borrowed view — the field was removed from
+  the OpenAPI schema with no replacement (2026-07-03).
+- [Rust API] **Breaking.** Removed `get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`,
+  `GetMultivariateEventCollectionLookupHistoryResponse`, `LookupPoint` — the lookup-history
+  endpoint was removed from the OpenAPI spec entirely (2026-07-02), with no replacement.
+
+### Breaking
+
+- [Rust API] See the `Removed` section above: five public types/endpoints were removed
+  (`get_exchange_announcements` and its response/enum types, `Market.response_price_units`,
+  `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count`, and the multivariate
+  lookup-history endpoint/types). Downstream code referencing any of these must be updated.
+- [Rust API] `WsChannelV2`, `WsMsgType`, `WsDataMessageV2`/`WsDataMessageRef`, and `WsUpdateAction`
+  each gained new variants (`PythValue`, `PythValueUnderlyingList`, `SubscribeUnderlyings`,
+  `UnsubscribeUnderlyings`, `UnderlyingList`), and `WsSubscriptionParamsV2` /
+  `WsUpdateSubscriptionParamsV2` each gained an `underlying_tickers` field. Downstream code with
+  exhaustive matches or struct-literal construction over these types must be updated.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

@@ -1,8 +1,10 @@
 //! Multivariate event collection endpoints.
 //!
 //! Collections group together related events into a single multi-leg market.
-//! This module exposes the CRUD endpoints, the ticker-pair lookup helpers, and
-//! the lookup history feed.
+//! This module exposes the CRUD endpoints and the ticker-pair lookup helper.
+//! The lookup helper predates RFQs and is deprecated upstream; the lookup
+//! *history* endpoint it used to pair with was removed from the OpenAPI spec
+//! entirely (2026-07-02) and has no replacement.
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
@@ -103,28 +105,6 @@ pub struct CreateMarketInMultivariateEventCollectionResponse {
     pub extra: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct GetMultivariateEventCollectionLookupHistoryParams {
-    pub lookback_seconds: u32,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetMultivariateEventCollectionLookupHistoryResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub lookup_points: Vec<LookupPoint>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LookupPoint {
-    pub event_ticker: String,
-    pub market_ticker: String,
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub selected_markets: Vec<TickerPair>,
-    pub last_queried_ts: String,
-    #[serde(default, flatten)]
-    pub extra: Map<String, Value>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct LookupTickersForMarketInMultivariateEventCollectionRequest {
     pub selected_markets: Vec<TickerPair>,
@@ -183,24 +163,12 @@ impl KalshiRestClient {
             .await
     }
 
-    pub async fn get_multivariate_event_collection_lookup_history(
-        &self,
-        collection_ticker: &str,
-        params: GetMultivariateEventCollectionLookupHistoryParams,
-    ) -> Result<GetMultivariateEventCollectionLookupHistoryResponse, KalshiError> {
-        let path = Self::full_path(&format!(
-            "/multivariate_event_collections/{collection_ticker}/lookup"
-        ));
-        self.send(
-            Method::GET,
-            &path,
-            Some(&params),
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
+    /// Look up tickers for a market in a multivariate event collection.
+    ///
+    /// **Deprecated upstream** (predates RFQs; not recommended for new
+    /// integrations). No replacement endpoint exists — RFQs are the
+    /// recommended flow instead.
+    #[deprecated(note = "predates RFQs and is deprecated upstream; use RFQs instead")]
     pub async fn lookup_tickers_for_market_in_multivariate_event_collection(
         &self,
         collection_ticker: &str,
