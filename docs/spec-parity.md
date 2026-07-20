@@ -91,6 +91,63 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` (and its WS mirror `MarketPositionRef.resting_orders_count`)
+  were removed from the OpenAPI schema on 2026-07-09. They are kept as `#[deprecated]` `Option`
+  fields — the exchange no longer populates them, but older cached payloads and downstream code that
+  still reads them continue to compile and parse without error.
+
+- `GetQuotesParams.market_ticker`/`.event_ticker` are `#[deprecated]` and no longer filter results:
+  the server stopped honoring them on 2026-06-20 (`GET /communications/quotes` requests should
+  filter by user, RFQ, status, or update time instead). The fields are kept, not removed, so
+  existing call sites still compile.
+
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) are `#[deprecated]`. Their
+  operationIds were removed from the OpenAPI spec between 2026-06-18 and 2026-06-25 in favor of the
+  V2 event-order endpoints (`create_order_v2`, `cancel_order_v2`, etc., under
+  `/portfolio/events/orders/*`). The read-only `get_orders`/`get_order` methods are unaffected — the
+  OpenAPI spec still documents `GetOrders`/`GetOrder` on `/portfolio/orders`.
+
+- The quote-ID-only communications endpoints (`get_quote`, `delete_quote`, `accept_quote`,
+  `confirm_quote`) are `#[deprecated]` in favor of the RFQ-scoped variants (`get_rfq_quote`,
+  `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`), added 2026-06-25. The OpenAPI spec
+  marks the quote-ID-only paths deprecated but still routable.
+
+- `lookup_tickers_for_market_in_multivariate_event_collection` (`PUT
+  /multivariate_event_collections/{ticker}/lookup`) is `#[deprecated]` — the OpenAPI spec marks it
+  deprecated as predating RFQs. Its sibling GET lookup-history endpoint was fully removed from the
+  spec (2026-07-02) and the corresponding Rust method/types
+  (`get_multivariate_event_collection_lookup_history`,
+  `GetMultivariateEventCollectionLookupHistoryParams`/`Response`, `LookupPoint`) were deleted
+  outright rather than deprecated, since calling a nonexistent endpoint has no useful fallback
+  behavior.
+
+- `GET /exchange/announcements` was removed from the Predictions REST API on 2026-07-04.
+  `get_exchange_announcements()` and its response types (`GetExchangeAnnouncementsResponse`,
+  `Announcement`, `AnnouncementType`, `AnnouncementStatus`) were deleted rather than deprecated, for
+  the same reason as the multivariate lookup-history removal above.
+
+- `SubaccountBalance.exchange_index` is `Option<i32>` even though the OpenAPI spec marks it
+  required (2026-07-02: a subaccount with funds on multiple exchange indexes now returns one row
+  per index instead of one combined row). `Option` tolerates payloads captured before the field
+  existed.
+
+- `price_level_structure` (on both the REST `Market` object and the WS `market_lifecycle_v2`
+  `created`/`price_level_structure_updated` events) is modeled as an untyped `String` rather than an
+  enum. The AsyncAPI spec added seven new values in 2026-07 (`center_*_edge_*_cent` variants
+  describing finer tick-size bands); the OpenAPI spec does not constrain the field to an enum at
+  all. Consumers should treat `price_ranges` (the `{start, end, step}` bands) as the source of truth
+  for a market's valid prices rather than branching on the `price_level_structure` label.
+
+- The `pyth_value` WebSocket channel requires an authenticated connection (`WsChannelV2::PythValue`
+  returns `true` from `is_private()`), unlike the public `cfbenchmarks_value` channel it otherwise
+  mirrors. Subscription/update parameters use `underlying_tickers` (not `index_ids`), and the
+  update-subscription actions are `subscribe_underlyings` / `unsubscribe_underlyings` /
+  `underlying_list` (not `indexlist`) — modeled as separate `WsUpdateAction` variants with their own
+  `is_underlying_action()` validation, parallel to but independent from the CF Benchmarks index
+  actions.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

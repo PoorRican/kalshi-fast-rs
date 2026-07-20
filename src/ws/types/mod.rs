@@ -34,6 +34,9 @@ pub struct MarketPositionRef<'a> {
     pub market_exposure_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
     pub realized_pnl_dollars: FixedPointDollarsRef<'a>,
+    /// Mirrors `MarketPosition::resting_orders_count`, removed from the
+    /// OpenAPI schema 2026-07-09. Kept as `Option` for older payloads.
+    #[deprecated(note = "removed from the Predictions REST API schema 2026-07-09")]
     #[serde(default)]
     pub resting_orders_count: Option<i32>,
     #[serde(borrow)]

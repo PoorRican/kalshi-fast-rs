@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, SettlementSource};
+use crate::types::{EventStatus, deserialize_null_as_empty_vec, serialize_csv_opt};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,16 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events metadata updated after this Unix timestamp (seconds).
+    /// Useful for efficiently polling for changes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
+    /// Filter by specific event tickers (comma-separated on the wire). Added 2026-06-18.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub tickers: Option<Vec<String>>,
 }
 
 impl GetEventsParams {
@@ -104,6 +114,19 @@ pub struct EventData {
     pub category: Option<String>,
     #[serde(default)]
     pub available_on_brokers: Option<bool>,
+    /// Official sources used for the determination of markets within this
+    /// event, mirroring the field already present on `Series`. Added 2026-06-18.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    /// Fee type override for this event; takes precedence over the
+    /// series-level fee for this event's markets.
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
+    /// Exchange shard this event trades on. Defaults to 0 if unspecified.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default)]
     pub strike_date: Option<String>,
     #[serde(default)]

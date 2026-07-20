@@ -90,6 +90,9 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
+    /// Removed from the OpenAPI schema 2026-07-09. Kept as `Option` so older
+    /// cached payloads still parse; the exchange no longer populates it.
+    #[deprecated(note = "removed from the Predictions REST API schema 2026-07-09")]
     #[serde(default)]
     pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,

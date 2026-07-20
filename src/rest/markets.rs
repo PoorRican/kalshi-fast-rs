@@ -206,6 +206,9 @@ pub struct Market {
     pub series_id: Option<i64>,
     #[serde(default)]
     pub event_id: Option<i64>,
+    /// Removed from the OpenAPI schema 2026-07-09. Kept as `Option` so older
+    /// cached payloads still parse; the exchange no longer populates it.
+    #[deprecated(note = "removed from the Predictions REST API schema 2026-07-09")]
     #[serde(default)]
     pub response_price_units: Option<String>,
     #[serde(default)]
@@ -282,6 +285,9 @@ pub struct Market {
     pub open_interest: Option<i64>,
     #[serde(default)]
     pub open_interest_fp: Option<String>,
+    /// Removed from the OpenAPI schema 2026-07-09. Kept as `Option` so older
+    /// cached payloads still parse; the exchange no longer populates it.
+    #[deprecated(note = "removed from the Predictions REST API schema 2026-07-09")]
     #[serde(default)]
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]
