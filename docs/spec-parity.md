@@ -91,6 +91,81 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /exchange/announcements` was removed from the OpenAPI spec (2026-07-04). The crate's
+  `get_exchange_announcements` method and its `Announcement`/`AnnouncementType`/`AnnouncementStatus`/
+  `GetExchangeAnnouncementsResponse` types were removed accordingly.
+
+- The multivariate lookup-history endpoint (`GET /multivariate_event_collections/{ticker}/lookup`)
+  was fully removed from the OpenAPI spec (2026-07-02); only the `PUT` ticker-lookup endpoint at the
+  same path remains. The crate's `get_multivariate_event_collection_lookup_history` method and its
+  `GetMultivariateEventCollectionLookupHistoryParams`/`Response`/`LookupPoint` types were removed.
+
+- `Market.response_price_units` and `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count`, were removed from the OpenAPI schema (2026-07-09) and
+  dropped from the crate's `Market`/`MarketPosition` structs (breaking).
+
+- The `fractional_trading_updated` event on the `market_lifecycle_v2` WebSocket channel, and the
+  top-level `fractional_trading_enabled` field on `WsMarketLifecycleV2`, were removed from the
+  AsyncAPI spec on 2026-04-17 (fractional trading is now unconditional) but were never previously
+  reconciled in this crate. This refresh removes
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` and `WsMarketLifecycleV2.fractional_trading_enabled`
+  to match the current spec (breaking). Found via spec grep, not the recent changelog window — the
+  YAML is authoritative for shape even when the triggering changelog entry predates the tracked
+  watermark.
+
+- Legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were dropped from the OpenAPI spec
+  entirely (2026-06-18 to 2026-06-25 deprecation window), while the Kalshi changelog describes them
+  as merely deprecated — calls still succeed but the exchange nudges callers toward the V2 endpoints.
+  Per the deprecated-but-still-present convention, these methods are kept and marked `#[deprecated]`
+  (pointing at their `*_v2` replacements) rather than removed, since removal would sever a still-
+  working path with no upstream-mandated removal date.
+
+- Communications RFQ/quote endpoints were restructured to be RFQ-scoped (2026-06-25 / 2026-07-09):
+  `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, and `confirm_rfq_quote` take both
+  `rfq_id` and `quote_id`. The quote-ID-only endpoints (`get_quote`, `delete_quote`, `accept_quote`,
+  `confirm_quote`) remain supported but are marked `#[deprecated]`. Quotes are no longer guaranteed
+  queryable unless in a post-acceptance state (`accepted`/`confirmed`/`executed`); callers should not
+  treat open/cancelled quotes as durable records.
+
+- `GetQuotesParams` dropped the `market_ticker`/`event_ticker` filters (removed upstream 2026-06-20,
+  breaking) and gained `min_ts`/`max_ts`/`user_filter` (added 2026-06-18).
+
+- `GetEventsParams` gained `tickers` (comma-separated event tickers, added 2026-06-18) and
+  `min_updated_ts` (added 2026-07, found via spec grep — poll for event metadata changes
+  efficiently). Unlike `GetMarketsParams.min_updated_ts`, the OpenAPI spec states no mutual-exclusion
+  constraint for the events variant, so no extra validation was added.
+
+- `exchange_index` (defaults to `0`; only `0` is currently live) was added to `Market`, `EventData`,
+  `SubaccountBalance` (required), and `GetExchangeStatusResponse` (via the new
+  `exchange_index_statuses: Vec<ExchangeIndexStatus>` array plus `intra_exchange_transfers_active`),
+  as part of an in-progress multi-exchange-index rollout (2026-06/07). All are `Option` except
+  `SubaccountBalance.exchange_index`, which the OpenAPI spec marks required for that response.
+
+- API keys can now be restricted to a single sub-account (2026-07-02): `subaccount: Option<u32>` was
+  added to `ApiKey`, `CreateApiKeyRequest`, and `GenerateApiKeyRequest`.
+
+- Two new account endpoints were added: `get_account_api_usage_level_volume_progress` (trailing
+  30-day volume progress toward volume-based tiers) and `upgrade_account_api_usage_level`
+  (self-serve Advanced-tier upgrade, added 2026-06-11).
+
+- `pyth_value` is a new authenticated AsyncAPI channel (added 2026-07-23) delivering deduplicated
+  Pyth price updates by underlying ticker, modeled the same way as `cfbenchmarks_value`:
+  `underlying_tickers` seeds the initial subscribe (`["all"]` for every underlying), and
+  `WsUpdateAction::SubscribeUnderlyings`/`UnsubscribeUnderlyings`/`UnderlyingList` manage the
+  subscription via `update_subscription_v2`. Unlike `cfbenchmarks_value`, this channel requires
+  authentication (`WsChannelV2::PythValue.is_private()` is `true`).
+
+- `market_lifecycle_v2` gained `price_ranges` (on `created`/`price_level_structure_updated` events,
+  added 2026-07-02) and top-level `strike_type`/`cap_strike`/`custom_strike` on `metadata_updated`
+  events (added 2026-06-18), alongside the pre-existing top-level `floor_strike`/`yes_sub_title`.
+  `price_ranges` reuses the REST `PriceRange` type since the shapes are identical.
+
+- Seven new `price_level_structure` values were introduced (2026-07-23, rolling out through early
+  August). No crate change was needed: the crate already models `price_level_structure` as a plain
+  `String` (both on `Market` and on `market_lifecycle_v2` messages) rather than a closed enum, so new
+  values pass through without a release.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

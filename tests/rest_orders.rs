@@ -1,4 +1,8 @@
 #![cfg(feature = "live-tests")]
+// This file deliberately exercises the deprecated V1 order-mutation
+// endpoints, which remain operational upstream alongside the newer,
+// lower-cost V2 event-order endpoints.
+#![allow(deprecated)]
 
 mod common;
 

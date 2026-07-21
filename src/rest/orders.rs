@@ -742,6 +742,11 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    ///
+    /// Deprecated by Kalshi in favor of the lower-cost V2 event-order
+    /// endpoints (deprecation window 2026-06-18 to 2026-06-25). Still
+    /// operational for now; see [`Self::create_order_v2`].
+    #[deprecated(note = "use create_order_v2 instead")]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +760,11 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    ///
+    /// Deprecated by Kalshi in favor of the lower-cost V2 event-order
+    /// endpoints (deprecation window 2026-06-18 to 2026-06-25). Still
+    /// operational for now; see [`Self::cancel_order_v2`].
+    #[deprecated(note = "use cancel_order_v2 instead")]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +781,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated by Kalshi in favor of the lower-cost V2 event-order
+    /// endpoints (deprecation window 2026-06-18 to 2026-06-25). Still
+    /// operational for now; see [`Self::amend_order_v2`].
+    #[deprecated(note = "use amend_order_v2 instead")]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +795,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated by Kalshi in favor of the lower-cost V2 event-order
+    /// endpoints (deprecation window 2026-06-18 to 2026-06-25). Still
+    /// operational for now; see [`Self::decrease_order_v2`].
+    #[deprecated(note = "use decrease_order_v2 instead")]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +821,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated by Kalshi in favor of the lower-cost V2 event-order
+    /// endpoints (deprecation window 2026-06-18 to 2026-06-25). Still
+    /// operational for now; see [`Self::batch_create_orders_v2`].
+    #[deprecated(note = "use batch_create_orders_v2 instead")]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +834,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated by Kalshi in favor of the lower-cost V2 event-order
+    /// endpoints (deprecation window 2026-06-18 to 2026-06-25). Still
+    /// operational for now; see [`Self::batch_cancel_orders_v2`].
+    #[deprecated(note = "use batch_cancel_orders_v2 instead")]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
