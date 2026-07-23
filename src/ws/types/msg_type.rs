@@ -31,6 +31,8 @@ pub enum WsMsgType {
     UserOrder,
     CfbenchmarksValue,
     CfbenchmarksValueIndexlist,
+    PythValue,
+    PythValueUnderlyingList,
     Unknown(String),
 }
 
@@ -64,6 +66,8 @@ impl WsMsgType {
             WsMsgType::UserOrder => "user_order",
             WsMsgType::CfbenchmarksValue => "cfbenchmarks_value",
             WsMsgType::CfbenchmarksValueIndexlist => "cfbenchmarks_value_indexlist",
+            WsMsgType::PythValue => "pyth_value",
+            WsMsgType::PythValueUnderlyingList => "pyth_value_underlying_list",
             WsMsgType::Unknown(value) => value.as_str(),
         }
     }
@@ -97,6 +101,8 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
             _ => return None,
         })
     }
@@ -130,6 +136,8 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
             _ => WsMsgType::Unknown(value),
         }
     }

@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, SettlementSource};
+use crate::types::{EventStatus, deserialize_null_as_empty_vec, serialize_csv_opt};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,16 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter to specific event tickers. Added 2026-06-18.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub tickers: Option<Vec<String>>,
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    /// Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
@@ -100,6 +110,8 @@ pub struct EventData {
     pub title: Option<String>,
     #[serde(default)]
     pub sub_title: Option<String>,
+    /// Deprecated by the exchange; use the series-level category instead.
+    #[deprecated(note = "spec marks this deprecated. use series-level category instead")]
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
@@ -111,41 +123,23 @@ pub struct EventData {
     #[serde(default)]
     pub last_updated_ts: Option<String>,
     #[serde(default)]
-    pub occurrence_datetime: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub status: Option<String>,
-    #[serde(default)]
-    pub can_trade: Option<bool>,
-    #[serde(default)]
-    pub can_settle: Option<bool>,
-    #[serde(default)]
-    pub start_ts: Option<i64>,
-    #[serde(default)]
-    pub close_ts: Option<i64>,
-    #[serde(default)]
-    pub settled_ts: Option<i64>,
-    #[serde(default)]
-    pub series_id: Option<i64>,
-    #[serde(default)]
-    pub mutual_exclusive_group_id: Option<String>,
-    #[serde(default)]
-    pub mutual_exclusive_group_ids: Option<Vec<String>>,
-    #[serde(default)]
-    pub event_delta: Option<i64>,
-    #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default)]
-    pub volume_fp: Option<String>,
-    #[serde(default)]
     pub markets: Option<Vec<Market>>,
     #[serde(default)]
-    pub milestones: Option<Vec<Milestone>>,
-    #[serde(default)]
-    pub custom_strike: Option<Map<String, Value>>,
-    #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// The official sources used for the determination of markets within this
+    /// event. Added 2026-06-18.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    /// Fee type override for this event; takes precedence over the
+    /// series-level fee when present.
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Fee multiplier override for this event; paired with `fee_type_override`.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
+    /// Exchange shard identifier; defaults to `0`. Added 2026-07 (multi-index rollout).
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

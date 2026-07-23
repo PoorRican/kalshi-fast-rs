@@ -220,16 +220,14 @@ async fn test_get_events_with_milestones_flag() {
     .expect("timeout")
     .expect("request failed");
 
-    for event in &resp.events {
-        if let Some(ms) = &event.milestones {
-            for milestone in ms {
-                // Each milestone should carry at least one identifying field.
-                assert!(
-                    milestone.id.is_some() || milestone.title.is_some() || milestone.name.is_some(),
-                    "milestone lacks any identifier: {:?}",
-                    milestone
-                );
-            }
-        }
+    // `with_milestones=true` returns related milestones as a response-level
+    // sibling array (`GetEventsResponse.milestones`), not nested per event.
+    for milestone in &resp.milestones {
+        // Each milestone should carry at least one identifying field.
+        assert!(
+            milestone.id.is_some() || milestone.title.is_some() || milestone.name.is_some(),
+            "milestone lacks any identifier: {:?}",
+            milestone
+        );
     }
 }

@@ -171,17 +171,17 @@ pub struct Market {
     #[serde(default)]
     pub event_ticker: Option<String>,
     #[serde(default)]
-    pub market_id: Option<String>,
-    #[serde(default)]
     pub status: Option<MarketStatus>,
     #[serde(default)]
     pub market_type: Option<String>,
+    /// Deprecated by the exchange; kept `Option` so old and new payloads both parse.
+    #[deprecated(note = "spec marks this deprecated with no replacement field")]
     #[serde(default)]
     pub title: Option<String>,
+    /// Deprecated by the exchange; kept `Option` so old and new payloads both parse.
+    #[deprecated(note = "spec marks this deprecated with no replacement field")]
     #[serde(default)]
     pub subtitle: Option<String>,
-    #[serde(default)]
-    pub event_title: Option<String>,
     #[serde(default)]
     pub yes_sub_title: Option<String>,
     #[serde(default)]
@@ -191,73 +191,33 @@ pub struct Market {
     #[serde(default)]
     pub rules_secondary: Option<String>,
     #[serde(default)]
-    pub resolution_source: Option<String>,
-    #[serde(default)]
     pub result: Option<String>,
     #[serde(default)]
-    pub can_trade: Option<bool>,
-    #[serde(default)]
-    pub can_settle: Option<bool>,
-    #[serde(default)]
     pub can_close_early: Option<bool>,
-    #[serde(default)]
-    pub series_ticker: Option<String>,
-    #[serde(default)]
-    pub series_id: Option<i64>,
-    #[serde(default)]
-    pub event_id: Option<i64>,
-    #[serde(default)]
-    pub response_price_units: Option<String>,
     #[serde(default)]
     pub settlement_timer_seconds: Option<i64>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
-    #[serde(default)]
-    pub open_ts: Option<i64>,
-    #[serde(default)]
-    pub close_ts: Option<i64>,
-    #[serde(default)]
-    pub settled_ts: Option<i64>,
-    #[serde(default)]
-    pub expiration_ts: Option<i64>,
     #[serde(default)]
     pub open_time: Option<String>,
     #[serde(default)]
     pub close_time: Option<String>,
     #[serde(default)]
     pub expected_expiration_time: Option<String>,
+    /// Deprecated by the exchange; use `latest_expiration_time` instead.
+    #[deprecated(note = "spec marks this deprecated. use latest_expiration_time instead")]
     #[serde(default)]
     pub expiration_time: Option<String>,
     #[serde(default)]
     pub latest_expiration_time: Option<String>,
     #[serde(default)]
-    pub created_ts: Option<i64>,
-    #[serde(default)]
-    pub updated_ts: Option<i64>,
-    #[serde(default)]
     pub created_time: Option<String>,
     #[serde(default)]
     pub updated_time: Option<String>,
     #[serde(default)]
-    pub floor_price: Option<i64>,
-    #[serde(default)]
-    pub cap_price: Option<i64>,
-    #[serde(default)]
-    pub yes_bid: Option<i64>,
-    #[serde(default)]
     pub yes_bid_size_fp: Option<FixedPointCount>,
     #[serde(default)]
-    pub yes_ask: Option<i64>,
-    #[serde(default)]
     pub yes_ask_size_fp: Option<FixedPointCount>,
-    #[serde(default)]
-    pub no_bid: Option<i64>,
-    #[serde(default)]
-    pub no_ask: Option<i64>,
-    #[serde(default)]
-    pub price: Option<i64>,
-    #[serde(default)]
-    pub last_price: Option<i64>,
     #[serde(default)]
     pub yes_bid_dollars: Option<FixedPointDollars>,
     #[serde(default)]
@@ -269,51 +229,27 @@ pub struct Market {
     #[serde(default)]
     pub last_price_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub price_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default)]
     pub volume_fp: Option<String>,
-    #[serde(default)]
-    pub volume_24h: Option<i64>,
     #[serde(default)]
     pub volume_24h_fp: Option<String>,
     #[serde(default)]
-    pub open_interest: Option<i64>,
-    #[serde(default)]
     pub open_interest_fp: Option<String>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
-    pub notional_value: Option<i64>,
     #[serde(default)]
     pub notional_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub previous_yes_bid: Option<i64>,
-    #[serde(default)]
     pub previous_yes_bid_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub previous_yes_ask: Option<i64>,
     #[serde(default)]
     pub previous_yes_ask_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub previous_price: Option<i64>,
-    #[serde(default)]
     pub previous_price_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub liquidity: Option<i64>,
-    #[serde(default)]
-    pub liquidity_fp: Option<String>,
+    /// Deprecated by the exchange; always returns `"0.0000"`.
+    #[deprecated(note = "spec marks this deprecated. always returns \"0.0000\"")]
     #[serde(default)]
     pub liquidity_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]
     pub occurrence_datetime: Option<String>,
-    #[serde(default)]
-    pub tick_size: Option<i64>,
-    #[serde(default)]
-    pub settlement_value: Option<i64>,
     #[serde(default)]
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
@@ -342,6 +278,9 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    /// Exchange shard identifier; defaults to `0`. Added 2026-07 (multi-index rollout).
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

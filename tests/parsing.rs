@@ -5,12 +5,12 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -502,7 +502,6 @@ fn get_markets_response_deserializes() {
             {
                 "ticker": "MKT-1",
                 "event_ticker": "EVT-1",
-                "series_ticker": "SERIES-1",
                 "status": "active",
                 "volume_fp": "125.50",
                 "volume_24h_fp": "101.25",
@@ -517,7 +516,6 @@ fn get_markets_response_deserializes() {
     let resp: kalshi_fast::GetMarketsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.markets.len(), 2);
     assert_eq!(resp.markets[0].event_ticker.as_deref(), Some("EVT-1"));
-    assert_eq!(resp.markets[0].series_ticker.as_deref(), Some("SERIES-1"));
     assert_eq!(
         resp.markets[0].status,
         Some(kalshi_fast::MarketStatus::Active)
@@ -596,6 +594,7 @@ fn get_events_response_deserializes_with_milestones() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn get_event_response_deserializes_rich_schema_fields() {
     let json = r#"{
         "event": {
@@ -1070,19 +1069,6 @@ fn get_exchange_status_response_deserializes() {
 }
 
 #[test]
-fn get_exchange_announcements_response_deserializes() {
-    let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
-        ]
-    }"#;
-
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
-}
-
-#[test]
 fn get_exchange_schedule_response_deserializes() {
     let json = r#"{
         "schedule": {
@@ -1235,11 +1221,12 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
 }
 
@@ -1711,6 +1698,7 @@ fn get_event_response_deserializes_nested_event_markets() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn get_event_response_deserializes_without_removed_cent_fields() {
     let json = r#"{
         "event": {
@@ -1733,11 +1721,10 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
 
     let resp: kalshi_fast::GetEventResponse = serde_json::from_str(json).unwrap();
     let market = &resp.event.markets.as_ref().unwrap()[0];
-    assert_eq!(market.yes_bid, None);
-    assert_eq!(market.yes_ask, None);
-    assert_eq!(market.notional_value, None);
     assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
     assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
+    // Legacy cent-integer fields (yes_bid, yes_ask, notional_value, etc.) are no
+    // longer part of the public Market struct at all.
 }
 
 #[test]
@@ -1833,23 +1820,6 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
-
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
 }
 
 #[test]

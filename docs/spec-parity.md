@@ -91,6 +91,56 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market` and `EventData` had accumulated a large amount of legacy REST cruft (integer cent
+  fields, `market_id`/`series_id`/`event_id`, non-fixed-point counts, per-event lifecycle
+  timestamps, etc.) that predates this refresh and was never removed even though the current
+  OpenAPI schema had already dropped it. This refresh removed all of it in one pass rather than
+  carrying it forward as a silent compatibility shim, alongside the changelog-flagged removals
+  (`Market.response_price_units`, `Market.fractional_trading_enabled`,
+  `MarketPosition.resting_orders_count`, 2026-07-09). `EventData.milestones` was also removed —
+  `with_milestones=true` returns milestones as a response-level sibling array
+  (`GetEventsResponse.milestones`), never nested per event.
+- Fields the OpenAPI spec still marks `deprecated: true` but keeps present (`Market.title`,
+  `Market.subtitle`, `Market.expiration_time`, `Market.liquidity_dollars` — always `"0.0000"` —
+  and `EventData.category`) are kept as `Option` fields annotated with Rust's `#[deprecated]`
+  attribute, so `cargo build` surfaces a compiler warning at every read site without breaking
+  parsing of payloads that still send them.
+- `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref`: `fractional_trading_enabled` and the
+  `FractionalTradingUpdated` event-type variant were removed — neither appears in the AsyncAPI
+  `market_lifecycle_v2` schema anymore. The `metadata_updated` event gained top-level
+  `strike_type` / `cap_strike` / `custom_strike` (2026-06-18), and `created` /
+  `price_level_structure_updated` gained `price_ranges` (2026-07-02, same `PriceRange` shape as
+  the REST `Market.price_ranges`).
+- `price_level_structure` (REST `Market` and the WS `market_lifecycle_v2` payload) is kept as an
+  untyped `String` rather than an enum, so the seven new `center_*_edge_*_cent` values added
+  2026-07-23 need no crate change — the source of truth for valid prices is always `price_ranges`.
+- `GET /communications/quotes`: `market_ticker` / `event_ticker` filters were removed 2026-06-20
+  (breaking); `min_ts` / `max_ts` were added 2026-06-18. RFQ-scoped quote action/lookup endpoints
+  (`.../rfqs/{rfq_id}/quotes/{quote_id}[/accept|/confirm]`) were added 2026-06-25 / 2026-07-09 as
+  `get_rfq_quote` / `delete_rfq_quote` / `accept_rfq_quote` / `confirm_rfq_quote`. The original
+  quote-ID-only methods (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) remain but
+  are documented as deprecated: quotes that haven't reached a post-acceptance state are no longer
+  guaranteed queryable through them.
+- `GET /exchange/announcements` was removed from the OpenAPI spec 2026-07-04. `get_exchange_announcements`
+  and the `Announcement`/`AnnouncementType`/`AnnouncementStatus`/`GetExchangeAnnouncementsResponse`
+  types were removed rather than kept as a dead code path.
+- The multivariate lookup-history feed (`GET /multivariate_event_collections/{ticker}/lookup`) was
+  fully removed from the OpenAPI spec 2026-07-02 (only the deprecated `PUT` ticker-pair lookup
+  remains). `get_multivariate_event_collection_lookup_history` and its
+  `GetMultivariateEventCollectionLookupHistoryParams` / `...Response` / `LookupPoint` types were removed.
+- `exchange_index` (defaults to `0`, multi-index rollout) was added as an `Option<i64>` /
+  `i64` field on `Market`, `EventData`, `GetExchangeStatusResponse` (plus the new
+  `ExchangeIndexStatus.exchange_index`), and `SubaccountBalance` — the latter is now `i64`
+  (required per spec) since `GET /portfolio/subaccounts/balances` returns one entry per
+  exchange index per subaccount as of 2026-07-02, instead of one entry per subaccount.
+- `pyth_value` is a new authenticated-only AsyncAPI channel (2026-07-23) that mirrors the
+  `cfbenchmarks_value` pattern: seed `underlying_tickers` on subscribe (`["all"]` for every
+  underlying), and use `update_subscription` with `WsUpdateAction::SubscribeUnderlyings` /
+  `UnsubscribeUnderlyings` / `UnderlyingList` (mirroring `SubscribeIndices` / `UnsubscribeIndices`
+  / `Indexlist`) to manage it afterward. Modeled as `WsPythValue` / `WsPythUnderlyingList`, routed
+  through `WsDataMessageV2`. Unlike `cfbenchmarks_value`, `pyth_value` requires authentication, so
+  `WsChannelV2::PythValue` is included in `is_private()`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

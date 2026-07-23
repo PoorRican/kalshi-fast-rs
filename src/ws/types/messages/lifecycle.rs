@@ -1,3 +1,4 @@
+use crate::rest::PriceRange;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -24,14 +25,28 @@ pub struct WsMarketLifecycleV2 {
     #[serde(default)]
     pub is_deactivated: Option<bool>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// Emitted alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events and is distinct from
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level updated cap strike; present only on `metadata_updated` events.
+    /// Added 2026-06-18.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level strike type; present only on `metadata_updated` events.
+    /// Added 2026-06-18.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Top-level custom strike map; present only on `metadata_updated` events
+    /// for custom/structured strike types. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events.
     #[serde(default)]
@@ -54,7 +69,6 @@ pub enum WsMarketLifecycleEventType {
     CloseDateUpdated,
     Determined,
     Settled,
-    FractionalTradingUpdated,
     PriceLevelStructureUpdated,
     /// Fires when market metadata (name, title, subtitles, etc.) changes. Added 2026-05-11.
     MetadataUpdated,
@@ -143,13 +157,27 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub settled_ts: Option<i64>,
     #[serde(default)]
     pub is_deactivated: Option<bool>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    /// Emitted alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level updated cap strike; present only on `metadata_updated` events.
+    /// Added 2026-06-18.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level strike type; present only on `metadata_updated` events.
+    /// Added 2026-06-18.
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
+    /// Top-level custom strike map; present only on `metadata_updated` events
+    /// for custom/structured strike types. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
@@ -172,9 +200,12 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             settlement_value: self.settlement_value.map(Cow::into_owned),
             settled_ts: self.settled_ts,
             is_deactivated: self.is_deactivated,
-            fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges,
             floor_strike: self.floor_strike,
+            cap_strike: self.cap_strike,
+            strike_type: self.strike_type.map(Cow::into_owned),
+            custom_strike: self.custom_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
