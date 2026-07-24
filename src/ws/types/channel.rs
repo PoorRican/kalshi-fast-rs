@@ -17,6 +17,8 @@ pub enum WsChannelV2 {
     UserOrders,
     /// CF Benchmarks reference index value feed. Added 2026-06-08 (AsyncAPI 2.0.0).
     CfbenchmarksValue,
+    /// Deduplicated Pyth price feed by underlying ticker. Requires authentication. Added 2026-07-23.
+    PythValue,
 }
 
 impl WsChannelV2 {
@@ -34,6 +36,7 @@ impl WsChannelV2 {
             WsChannelV2::OrderGroupUpdates => "order_group_updates",
             WsChannelV2::UserOrders => "user_orders",
             WsChannelV2::CfbenchmarksValue => "cfbenchmarks_value",
+            WsChannelV2::PythValue => "pyth_value",
         }
     }
 
@@ -46,6 +49,7 @@ impl WsChannelV2 {
                 | WsChannelV2::Communications
                 | WsChannelV2::OrderGroupUpdates
                 | WsChannelV2::UserOrders
+                | WsChannelV2::PythValue
         )
     }
 }
