@@ -34,6 +34,9 @@ pub struct MarketPositionRef<'a> {
     pub market_exposure_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
     pub realized_pnl_dollars: FixedPointDollarsRef<'a>,
+    #[deprecated(
+        note = "Removed from the OpenAPI schema 2026-07-09; the exchange no longer sends this field."
+    )]
     #[serde(default)]
     pub resting_orders_count: Option<i32>,
     #[serde(borrow)]
@@ -43,6 +46,7 @@ pub struct MarketPositionRef<'a> {
 }
 
 impl<'a> MarketPositionRef<'a> {
+    #[allow(deprecated)]
     pub fn into_owned(self) -> MarketPosition {
         MarketPosition {
             ticker: self.ticker.into_owned(),

@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -49,6 +49,40 @@ pub struct GetAccountApiLimitsResponse {
     pub grants: Vec<ApiUsageLevelGrant>,
 }
 
+/// One volume-based API usage tier's earn/keep thresholds. Part of
+/// `GET /account/api_usage_level/volume_progress` (added 2026-06-11).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal applies to (e.g. `"expert"`).
+    pub level: String,
+    /// Trailing-30d volume (fixed-point contracts) required to newly earn this level.
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub earn_volume_goal_fp: FixedPointCount,
+    /// Trailing-30d volume (fixed-point contracts) required to keep this level once earned.
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Latest cron-computed trading-volume progress toward volume-based API usage
+/// tiers, for the Predictions (`event_contract`) lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed; `trailing_30d_volume_fp`
+    /// covers the trailing 30 days ending at this time.
+    pub computed_ts: i64,
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub trailing_30d_volume_fp: FixedPointCount,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 /// Token cost for one API v2 endpoint whose cost differs from the default.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EndpointTokenCost {
@@ -79,9 +113,22 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on. Added 2026 (per-index subaccount balances).
+    #[serde(default)]
+    pub exchange_index: i64,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
+    /// Whether this subaccount is voluntarily locked for settlement advance computation.
+    /// Added 2026 alongside `exchange_index`.
+    #[serde(default)]
+    pub voluntarily_locked: bool,
+    /// Current settlement advance state token, if one has been established.
+    #[serde(default)]
+    pub settlement_advance_state: Option<String>,
+    /// Outstanding settlement advance in dollars.
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub settlement_advance: FixedPointDollars,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -146,6 +193,10 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, this key is restricted to a single sub-account (0-63) and may only
+    /// read and trade on it. Absent/null means the key is unrestricted. Added 2026-07.
+    #[serde(default)]
+    pub subaccount: Option<u8>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -162,6 +213,10 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63) that you own. Omit to
+    /// leave the key unrestricted. Added 2026-07.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +231,10 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63) that you own. Omit to
+    /// leave the key unrestricted. Added 2026-07.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -216,6 +275,39 @@ impl KalshiRestClient {
     /// **Requires auth.**
     pub async fn get_account_api_limits(&self) -> Result<GetAccountApiLimitsResponse, KalshiError> {
         let path = Self::full_path("/account/limits");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant a permanent Advanced API usage-level tier upgrade (Predictions only).
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get trailing 30-day trading volume progress toward volume-based API usage
+    /// tiers (Predictions/`event_contract` lane).
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
         self.send(
             Method::GET,
             &path,

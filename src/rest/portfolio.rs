@@ -90,6 +90,9 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
+    #[deprecated(
+        note = "Removed from the OpenAPI schema 2026-07-09; the exchange no longer sends this field."
+    )]
     #[serde(default)]
     pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,

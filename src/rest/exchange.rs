@@ -17,6 +17,25 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Whether intra-exchange transfers are currently permitted. Added 2026-07-02.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-exchange-index status breakdown. Absent when unavailable. The
+    /// top-level fields above reflect the default exchange index (0).
+    /// Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+/// Status of a single exchange index. Part of `GetExchangeStatusResponse`
+/// (added 2026-07-02).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    /// Exchange index identifier (currently only `0` is available in production).
+    pub exchange_index: i64,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -48,6 +67,9 @@ pub struct Announcement {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[deprecated(
+    note = "GET /exchange/announcements was removed from the Predictions REST API on 2026-07-04. Use get_exchange_schedule for exchange operational state."
+)]
 pub struct GetExchangeAnnouncementsResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub announcements: Vec<Announcement>,
@@ -163,6 +185,10 @@ impl KalshiRestClient {
     }
 
     /// Get exchange announcements.
+    #[deprecated(
+        note = "GET /exchange/announcements was removed from the Predictions REST API on 2026-07-04. Calls will 404."
+    )]
+    #[allow(deprecated)]
     pub async fn get_exchange_announcements(
         &self,
     ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {

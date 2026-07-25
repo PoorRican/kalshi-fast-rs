@@ -183,6 +183,8 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated by Kalshi; no longer documented in the OpenAPI spec (2026-07-02).
+    #[deprecated(note = "Multivariate lookup history endpoints are fully deprecated upstream.")]
     pub async fn get_multivariate_event_collection_lookup_history(
         &self,
         collection_ticker: &str,
@@ -201,6 +203,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated upstream; predates RFQs and should not be used for new integrations.
+    #[deprecated(
+        note = "Deprecated in the OpenAPI spec; predates RFQs, do not use for new integrations."
+    )]
     pub async fn lookup_tickers_for_market_in_multivariate_event_collection(
         &self,
         collection_ticker: &str,
