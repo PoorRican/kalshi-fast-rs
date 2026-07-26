@@ -258,6 +258,18 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -468,6 +480,18 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -590,6 +614,16 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -673,6 +707,16 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -764,6 +808,18 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1155,5 +1211,62 @@ mod tests {
             msg,
             WsMessageRef::Data(WsDataMessageRef::Ticker { .. })
         ));
+    }
+
+    #[test]
+    fn ws_envelope_into_message_pyth_value() {
+        let json = r#"{
+            "type":"pyth_value",
+            "sid":11,
+            "seq":12,
+            "msg":{
+                "underlying_ticker":"Metal.XAU/USD",
+                "value_usd":"2350.12345678",
+                "source_ts_ms":1700000000000,
+                "received_at":1700000000123
+            }
+        }"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        let msg = env.into_message().unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "Metal.XAU/USD");
+                assert_eq!(msg.value_usd, "2350.12345678");
+                assert_eq!(msg.source_ts_ms, 1700000000000);
+                assert_eq!(msg.received_at, 1700000000123);
+            }
+            _ => panic!("expected pyth_value data message"),
+        }
+
+        let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match msg_ref.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "Metal.XAU/USD");
+            }
+            _ => panic!("expected pyth_value data message from borrowed path"),
+        }
+    }
+
+    #[test]
+    fn ws_envelope_into_message_pyth_value_underlying_list() {
+        let json = r#"{
+            "type":"pyth_value_underlying_list",
+            "sid":11,
+            "seq":13,
+            "msg":{
+                "underlying_tickers":["Metal.XAU/USD","Metal.XAG/USD"]
+            }
+        }"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        let msg = env.into_message().unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { msg, .. }) => {
+                assert_eq!(
+                    msg.underlying_tickers,
+                    vec!["Metal.XAU/USD".to_string(), "Metal.XAG/USD".to_string()]
+                );
+            }
+            _ => panic!("expected pyth_value_underlying_list data message"),
+        }
     }
 }

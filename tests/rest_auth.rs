@@ -126,8 +126,8 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    assert!(resp.read.bucket_capacity >= 0);
+    assert!(resp.write.bucket_capacity >= 0);
 }
 
 #[tokio::test]
@@ -340,7 +340,6 @@ async fn test_get_quotes() {
         client
             .get_quotes(GetQuotesParams {
                 rfq_id: Some(first_rfq.id.clone()),
-                rfq_creator_user_id: first_rfq.creator_user_id.clone(),
                 limit: Some(10),
                 ..Default::default()
             })
@@ -510,7 +509,6 @@ async fn test_get_quotes_all() {
         client
             .get_quotes_all(GetQuotesParams {
                 rfq_id: Some(first_rfq.id.clone()),
-                rfq_creator_user_id: first_rfq.creator_user_id.clone(),
                 limit: Some(100),
                 ..Default::default()
             })

@@ -3,17 +3,36 @@
 mod common;
 
 use kalshi_fast::{
-    AmendOrderRequest, BatchCancelOrdersRequest, BatchCreateOrdersRequest, BuySell,
-    CancelOrderParams, CreateOrderRequest, GetMarketsParams, GetOrdersParams, KalshiRestClient,
-    MarketStatusQuery, OrderType, YesNo,
+    BatchCancelOrderV2RequestOrder, BatchCancelOrdersV2Request, BatchCreateOrdersV2Request,
+    BookSide, CancelOrderV2Params, CreateOrderV2Request, GetMarketsParams, GetOrdersParams,
+    MarketStatusQuery, SelfTradePreventionType, SubaccountQueryParams, TimeInForce,
 };
 use std::time::Duration;
 
 /// Longer timeout for multi-step lifecycle tests
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
 
+fn create_order_v2_request(ticker: String, price: &str) -> CreateOrderV2Request {
+    CreateOrderV2Request {
+        ticker,
+        side: BookSide::Bid,
+        count: "1".to_string(),
+        price: price.to_string(),
+        time_in_force: TimeInForce::GoodTillCanceled,
+        self_trade_prevention_type: SelfTradePreventionType::TakerAtCross,
+        client_order_id: None,
+        expiration_time: None,
+        post_only: None,
+        cancel_order_on_pause: None,
+        reduce_only: None,
+        subaccount: None,
+        order_group_id: None,
+        exchange_index: None,
+    }
+}
+
 #[tokio::test]
-async fn test_order_lifecycle() {
+async fn test_order_lifecycle_v2() {
     common::load_env();
     let auth = common::load_auth();
     let client = common::demo_auth_client(auth);
@@ -41,22 +60,14 @@ async fn test_order_lifecycle() {
     // 2. Create a limit order at an extreme price so it won't fill (1 cent YES)
     let create_resp = tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
         client
-            .create_order(CreateOrderRequest {
-                ticker: market_ticker.clone(),
-                side: YesNo::Yes,
-                action: BuySell::Buy,
-                count: Some(1),
-                r#type: Some(OrderType::Limit),
-                yes_price: Some(1),
-                ..Default::default()
-            })
+            .create_order_v2(create_order_v2_request(market_ticker.clone(), "0.01"))
             .await
     })
     .await
     .expect("timeout")
-    .expect("create_order failed");
+    .expect("create_order_v2 failed");
 
-    let order_id = create_resp.order.order_id.clone();
+    let order_id = create_resp.order_id.clone();
 
     // Use a closure to ensure cleanup even on assertion failures
     let result = async {
@@ -74,50 +85,50 @@ async fn test_order_lifecycle() {
         // 4. Amend the order (change price to 2 cents)
         let amend_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
             client
-                .amend_order(
+                .amend_order_v2(
                     &order_id,
-                    AmendOrderRequest {
+                    SubaccountQueryParams::default(),
+                    kalshi_fast::AmendOrderV2Request {
                         ticker: market_ticker.clone(),
-                        side: YesNo::Yes,
-                        action: BuySell::Buy,
-                        yes_price: Some(2),
-                        count: Some(1),
-                        ..Default::default()
+                        side: BookSide::Bid,
+                        price: "0.02".to_string(),
+                        count: "1".to_string(),
+                        client_order_id: None,
+                        updated_client_order_id: None,
+                        exchange_index: None,
                     },
                 )
                 .await
         })
         .await
         .expect("timeout")
-        .expect("amend_order failed");
+        .expect("amend_order_v2 failed");
 
-        assert_eq!(amend_resp.order.order_id, amend_resp.order.order_id);
+        assert_eq!(amend_resp.order_id, order_id);
 
         // 5. Get queue position for the order
         let _queue_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-            client
-                .get_order_queue_position(&amend_resp.order.order_id)
-                .await
+            client.get_order_queue_position(&order_id).await
         })
         .await
         .expect("timeout")
         .expect("get_order_queue_position failed");
 
-        amend_resp.order.order_id.clone()
+        order_id.clone()
     }
     .await;
 
-    // 6. Cancel the order (cleanup) - use the potentially amended order_id
+    // 6. Cancel the order (cleanup)
     let cancel_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
-            .cancel_order(&result, CancelOrderParams::default())
+            .cancel_order_v2(&result, CancelOrderV2Params::default())
             .await
     })
     .await
     .expect("timeout")
-    .expect("cancel_order failed");
+    .expect("cancel_order_v2 failed");
 
-    assert!(cancel_resp.reduced_by > 0 || cancel_resp.order.order_id == result);
+    assert!(cancel_resp.reduced_by != "0" || cancel_resp.order_id == result);
 
     // 7. Verify order is cancelled via get_orders
     let orders_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
@@ -137,7 +148,7 @@ async fn test_order_lifecycle() {
 }
 
 #[tokio::test]
-async fn test_batch_order_lifecycle() {
+async fn test_batch_order_lifecycle_v2() {
     common::load_env();
     let auth = common::load_auth();
     let client = common::demo_auth_client(auth);
@@ -165,38 +176,22 @@ async fn test_batch_order_lifecycle() {
     // 2. Batch create 2 limit orders at extreme prices
     let batch_resp = tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
         client
-            .batch_create_orders(BatchCreateOrdersRequest {
+            .batch_create_orders_v2(BatchCreateOrdersV2Request {
                 orders: vec![
-                    CreateOrderRequest {
-                        ticker: market_ticker.clone(),
-                        side: YesNo::Yes,
-                        action: BuySell::Buy,
-                        count: Some(1),
-                        r#type: Some(OrderType::Limit),
-                        yes_price: Some(1),
-                        ..Default::default()
-                    },
-                    CreateOrderRequest {
-                        ticker: market_ticker.clone(),
-                        side: YesNo::Yes,
-                        action: BuySell::Buy,
-                        count: Some(1),
-                        r#type: Some(OrderType::Limit),
-                        yes_price: Some(2),
-                        ..Default::default()
-                    },
+                    create_order_v2_request(market_ticker.clone(), "0.01"),
+                    create_order_v2_request(market_ticker.clone(), "0.02"),
                 ],
             })
             .await
     })
     .await
     .expect("timeout")
-    .expect("batch_create_orders failed");
+    .expect("batch_create_orders_v2 failed");
 
     let order_ids: Vec<String> = batch_resp
         .orders
         .iter()
-        .filter_map(|r| r.order.as_ref().map(|o| o.order_id.clone()))
+        .filter_map(|r| r.order_id.clone())
         .collect();
 
     assert!(
@@ -207,15 +202,21 @@ async fn test_batch_order_lifecycle() {
     // 3. Batch cancel all created orders (cleanup)
     let cancel_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
-            .batch_cancel_orders(BatchCancelOrdersRequest {
-                ids: Some(order_ids.clone()),
-                orders: None,
+            .batch_cancel_orders_v2(BatchCancelOrdersV2Request {
+                orders: order_ids
+                    .iter()
+                    .map(|order_id| BatchCancelOrderV2RequestOrder {
+                        order_id: order_id.clone(),
+                        subaccount: None,
+                        exchange_index: None,
+                    })
+                    .collect(),
             })
             .await
     })
     .await
     .expect("timeout")
-    .expect("batch_cancel_orders failed");
+    .expect("batch_cancel_orders_v2 failed");
 
     assert_eq!(cancel_resp.orders.len(), order_ids.len());
 }

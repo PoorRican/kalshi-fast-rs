@@ -620,7 +620,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "yes_bid_size_fp": "10.00",
             "yes_ask_size_fp": "11.00",
             "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
             "notional_value": 100,
             "notional_value_dollars": "1.0000",
             "previous_yes_bid": 50,
@@ -845,12 +844,17 @@ fn get_historical_cutoff_response_deserializes() {
     let json = r#"{
         "market_settled_ts": "2025-01-01T00:00:00Z",
         "trades_created_ts": "2025-01-02T00:00:00Z",
-        "orders_updated_ts": "2025-01-03T00:00:00Z"
+        "orders_updated_ts": "2025-01-03T00:00:00Z",
+        "market_positions_last_updated_ts": "2025-01-04T00:00:00Z"
     }"#;
 
     let resp: kalshi_fast::GetHistoricalCutoffResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.market_settled_ts, "2025-01-01T00:00:00Z");
     assert_eq!(resp.trades_created_ts, "2025-01-02T00:00:00Z");
+    assert_eq!(
+        resp.market_positions_last_updated_ts.as_deref(),
+        Some("2025-01-04T00:00:00Z")
+    );
     assert_eq!(resp.orders_updated_ts, "2025-01-03T00:00:00Z");
 }
 
@@ -863,7 +867,6 @@ fn get_positions_response_deserializes() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -894,7 +897,6 @@ fn positions_page_from_response() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -1235,12 +1237,27 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{
+            "subaccount_number":1,
+            "exchange_index":0,
+            "balance":100,
+            "updated_ts":1700000000,
+            "voluntarily_locked":false,
+            "settlement_advance":"0.0000"
+        }]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
+    assert!(!resp.subaccount_balances[0].voluntarily_locked);
+    assert_eq!(resp.subaccount_balances[0].settlement_advance, "0.0000");
+    assert!(
+        resp.subaccount_balances[0]
+            .settlement_advance_state
+            .is_none()
+    );
 }
 
 #[test]

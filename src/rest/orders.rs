@@ -742,6 +742,9 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        note = "Legacy /portfolio/orders mutation endpoints were deprecated by Kalshi between 2026-06-18 and 2026-06-25 and no longer appear in the OpenAPI spec; use `create_order_v2` instead."
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +758,9 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        note = "Legacy /portfolio/orders mutation endpoints were deprecated by Kalshi between 2026-06-18 and 2026-06-25 and no longer appear in the OpenAPI spec; use `cancel_order_v2` instead."
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +777,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "Legacy /portfolio/orders mutation endpoints were deprecated by Kalshi between 2026-06-18 and 2026-06-25 and no longer appear in the OpenAPI spec; use `amend_order_v2` instead."
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +790,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "Legacy /portfolio/orders mutation endpoints were deprecated by Kalshi between 2026-06-18 and 2026-06-25 and no longer appear in the OpenAPI spec; use `decrease_order_v2` instead."
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +815,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "Legacy /portfolio/orders mutation endpoints were deprecated by Kalshi between 2026-06-18 and 2026-06-25 and no longer appear in the OpenAPI spec; use `batch_create_orders_v2` instead."
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +827,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "Legacy /portfolio/orders mutation endpoints were deprecated by Kalshi between 2026-06-18 and 2026-06-25 and no longer appear in the OpenAPI spec; use `batch_cancel_orders_v2` instead."
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,

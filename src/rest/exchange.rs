@@ -17,6 +17,23 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Whether intra-exchange transfers are currently permitted. Added 2026-07-02.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-exchange-index status breakdown. The top-level fields above reflect
+    /// the default exchange index (0). Absent when unavailable. Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+/// Status of a single exchange index. Added 2026-07-02.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    /// Exchange shard identifier. Currently only `0` is supported.
+    pub exchange_index: i64,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -163,6 +180,9 @@ impl KalshiRestClient {
     }
 
     /// Get exchange announcements.
+    #[deprecated(
+        note = "GET /exchange/announcements was removed from the Predictions REST API on 2026-07-04; this call now returns a 404. Use `get_exchange_schedule` for exchange operating hours."
+    )]
     pub async fn get_exchange_announcements(
         &self,
     ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {
