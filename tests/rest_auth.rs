@@ -126,8 +126,8 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    assert!(resp.read.refill_rate >= 0);
+    assert!(resp.write.refill_rate >= 0);
 }
 
 #[tokio::test]

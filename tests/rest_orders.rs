@@ -1,4 +1,5 @@
 #![cfg(feature = "live-tests")]
+#![allow(deprecated)] // exercises the legacy (deprecated but still live) order mutation endpoints
 
 mod common;
 

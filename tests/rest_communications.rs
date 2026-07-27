@@ -1,4 +1,5 @@
 #![cfg(feature = "live-tests")]
+#![allow(deprecated)] // exercises the legacy (deprecated but still live) quote-ID-only endpoints
 
 //! # ⚠️  Known-failing tests
 //!

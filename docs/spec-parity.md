@@ -91,6 +91,61 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The AsyncAPI document itself moved from AsyncAPI meta-spec format 2.x to 3.0.0 (the top-level
+  `asyncapi:` field), restructuring `channels` into separate `channels`/`operations` sections. This
+  is a docs-tooling format change only — the underlying channel names and message schemas kept their
+  shapes — so it required no crate changes; only diffs to actual channel/message schemas are tracked
+  here.
+
+- `fractional_trading_enabled` (REST `Market`, WebSocket `market_lifecycle_v2`) and the
+  `fractional_trading_updated` lifecycle event type were removed from both specs entirely (observed
+  2026-07, no dedicated changelog entry). They have been removed from the crate rather than kept as
+  `Option`, per the no-removed-fields-as-optional convention, since the upstream schemas no longer
+  reference them at all.
+
+- `price_level_structure` (REST `Market`, WebSocket `market_lifecycle_v2`) is modeled as a plain
+  `String`, not an enum, specifically so that upstream additions (seven new values shipped
+  2026-07-23: `center_whole_edge_half_cent`, `center_whole_edge_quint_cent`,
+  `center_half_edge_half_cent`, `center_half_edge_quint_cent`, `center_half_edge_deci_cent`,
+  `center_quint_edge_quint_cent`, `center_quint_edge_deci_cent`) round-trip losslessly with no crate
+  update. Consumers should key logic off `price_ranges` (`{ start, end, step }` bands), not off the
+  `price_level_structure` label, matching Kalshi's own guidance.
+
+- `pyth_value` is a new authenticated AsyncAPI channel (2026-07-23) delivering deduplicated Pyth
+  price updates by underlying ticker. It mirrors `cfbenchmarks_value`'s shape: `underlying_tickers`
+  (use `["all"]` for every available underlying) instead of market tickers, `WsUpdateAction::
+  SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` mirroring the CF Benchmarks
+  index actions, and `WsPythValue` / `WsPythUnderlyingList` routed through the standard
+  `WsDataMessageV2` enum. Unlike `cfbenchmarks_value`, this channel requires an authenticated
+  connection (`WsChannelV2::PythValue.is_private() == true`).
+
+- Kalshi is deprecating the legacy `/portfolio/orders` mutation endpoints (2026-06-18/25) in favor
+  of the V2 event-order endpoints added in 0.6.0. The legacy methods (`create_order`, `cancel_order`,
+  `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) remain live and
+  functional but are marked `#[deprecated]`, pointing at their V2 replacements.
+
+- Quote-ID-only communications endpoints (`get_quote`, `delete_quote`, `accept_quote`,
+  `confirm_quote`) are deprecated upstream (2026-06-25/07-09) in favor of RFQ-scoped equivalents
+  (`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`) that additionally
+  require the RFQ ID. The legacy methods are marked `#[deprecated]` but remain functional. `GetQuotesParams`
+  no longer accepts `market_ticker`/`event_ticker` (removed upstream 2026-06-20, no replacement) and
+  gained `min_ts`/`max_ts`/`user_filter`.
+
+- `GET /multivariate_event_collections/{collection_ticker}/lookup` (GET verb — the lookup *history*
+  feed, distinct from the still-live PUT ticker-pair lookup on the same path) was removed from the
+  OpenAPI spec entirely by 2026-07-02 ("fully deprecated" in the changelog). `get_multivariate_event_collection_lookup_history`
+  and its associated types (`GetMultivariateEventCollectionLookupHistoryParams/Response`,
+  `LookupPoint`) were removed rather than kept as dead code.
+
+- `GET /exchange/announcements` was removed from the Predictions REST API (2026-07-04) with no
+  replacement; `get_exchange_announcements` and its types (`Announcement`, `AnnouncementType`,
+  `AnnouncementStatus`, `GetExchangeAnnouncementsResponse`) were removed from the crate.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Predictions REST API schema
+  (2026-07-09) and removed from the crate; `price_level_structure`/`price_ranges` and the
+  fixed-point count/dollar fields are the canonical replacements for the first two.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

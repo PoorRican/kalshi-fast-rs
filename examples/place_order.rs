@@ -49,6 +49,10 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    // `create_order` is deprecated in favor of `create_order_v2` (Kalshi is
+    // deprecating the legacy /portfolio/orders mutation endpoints), but it
+    // remains live and is used here for simplicity.
+    #[allow(deprecated)]
     let created = client.create_order(order).await?;
     println!("order_id: {}", created.order.order_id);
     Ok(())
