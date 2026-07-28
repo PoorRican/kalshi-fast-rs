@@ -91,6 +91,93 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Predictions REST API schema on
+  2026-07-09 and are absent from the current OpenAPI/AsyncAPI documents (including the
+  `market_lifecycle_v2` `fractional_trading_enabled` field and the
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` event, both also gone from AsyncAPI). Per
+  `VERSIONING.md`, these were removed from the public Rust API rather than kept as optional shims
+  (minor version bump).
+
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were scheduled for deprecation by
+  the exchange between 2026-06-18 and 2026-06-25, and their operations are no longer present in the
+  published OpenAPI document. The changelog states calls now return a message directing callers to
+  the V2 endpoints rather than a hard failure, so — unlike a genuine schema removal — these methods
+  are kept and marked `#[deprecated]` (pointing at the corresponding `*_v2` method) instead of being
+  deleted. This is the explicit exception referenced by the refresh workflow's "don't preserve
+  removed endpoints" rule.
+
+- `GET /communications/quotes/{quote_id}`, `DELETE .../quotes/{quote_id}`, `PUT .../accept`, and
+  `PUT .../confirm` (quote-ID-only) are marked `deprecated: true` in the OpenAPI spec as of
+  2026-06-25 / 2026-07-09 in favor of the RFQ-scoped equivalents
+  (`GET/DELETE /communications/rfqs/{rfq_id}/quotes/{quote_id}`, `.../accept`, `.../confirm`). The
+  crate keeps the old methods as `#[deprecated]` and adds `get_rfq_quote`, `delete_rfq_quote`,
+  `accept_rfq_quote`, `confirm_rfq_quote`. `GetQuotesParams.market_ticker` / `.event_ticker` were
+  removed (exchange dropped the filters 2026-06-20); `min_ts`, `max_ts`, and `user_filter` were
+  added (2026-06-18 / current spec parity).
+
+- `lookup_tickers_for_market_in_multivariate_event_collection` (`PUT
+  /multivariate_event_collections/{collection_ticker}/lookup`) is marked `deprecated: true` in the
+  OpenAPI spec ("predates RFQs") and is kept as `#[deprecated]`. Its sibling GET (lookup history) is
+  fully absent from the current OpenAPI document (fully deprecated 2026-07-02), so
+  `get_multivariate_event_collection_lookup_history` and its types were removed outright rather than
+  deprecated, matching the "endpoint gone from the schema" rule.
+
+- `GET /exchange/announcements` was removed from the OpenAPI document on 2026-07-04
+  (`GET /exchange/schedule` remains the source for operational hours). `get_exchange_announcements`,
+  `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, and `AnnouncementStatus`
+  were removed from the public Rust API accordingly.
+
+- `pyth_value` is a new AsyncAPI channel (2026-07-13, authenticated) that delivers deduplicated Pyth
+  price updates by underlying ticker, mirroring the `cfbenchmarks_value` shape: seed
+  `underlying_tickers` on subscribe (or `["all"]` for every underlying), and use
+  `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` via
+  `update_subscription_v2` to manage the set post-subscribe. Modeled as `WsPythValue` /
+  `WsPythUnderlyingList` and routed through `WsDataMessageV2`.
+
+- `market_lifecycle_v2` gained a top-level `price_ranges` array (2026-07-02, emitted alongside
+  `price_level_structure` on `created` / `price_level_structure_updated`) and top-level
+  `strike_type` / `cap_strike` / `custom_strike` (2026-06-18, `metadata_updated` only, alongside the
+  pre-existing top-level `floor_strike` / `yes_sub_title`). All four follow the same "top-level,
+  event-scoped, distinct from `additional_metadata`" pattern already used for `floor_strike`.
+
+- Seven new `price_level_structure` values were introduced 2026-07-23 (`center_*_edge_*_cent`
+  variants). No crate change was needed: `price_level_structure` is already modeled as an opaque
+  `Option<String>` (both in `Market` and in `market_lifecycle_v2`) specifically so new values pass
+  through without a release. Consumers should key off `price_ranges` for valid order prices, not the
+  structure label.
+
+- `POST /api_keys`, `POST /api_keys/generate`, and `GET /api_keys` gained a `subaccount` field
+  (2026-07-02) to restrict an API key to a single sub-account (0-63). Modeled as `Option<u32>` on
+  `CreateApiKeyRequest`, `GenerateApiKeyRequest`, and `ApiKey`.
+
+- `SubaccountBalance.exchange_index: u32` (required, non-`Option`) was added 2026-07-02:
+  `GET /portfolio/subaccounts/balances` now returns one row per exchange index instead of one
+  combined row per subaccount.
+
+- `GET /account/api_usage_level/volume_progress` and `POST /account/api_usage_level/upgrade` are new
+  endpoints (2026-06-11 / 2026-06-25) for self-service volume-based API tier progress and upgrades.
+  Modeled as `get_account_api_usage_level_volume_progress` /
+  `GetAccountApiUsageLevelVolumeProgressResponse` and `upgrade_account_api_usage_level` (returns
+  `EmptyResponse`; the endpoint has no response body).
+
+- `GET /historical/positions` is a new endpoint (2026-07-23) for settled positions archived from the
+  live position set; it reuses the `GetPositionsResponse` shape. `GetHistoricalCutoffResponse` gained
+  `market_positions_last_updated_ts: Option<String>`, the cutoff separating live from historical
+  positions.
+
+- `GetEventsParams` gained `tickers: Option<String>` (comma-separated event tickers) and
+  `min_updated_ts: Option<i64>` (poll for metadata changes), matching the live OpenAPI parameter list
+  for `GET /events`; `EventData` gained `settlement_sources`, `fee_type_override`,
+  `fee_multiplier_override`, and `exchange_index` to match the current `EventData` schema (all
+  additive, `Option`).
+
+- `WsQuoteCreated`/`WsQuoteAccepted` gained `rfq_creator_id: Option<String>` (present in the AsyncAPI
+  schema but previously unmodeled) and all three quote lifecycle messages
+  (`quote_created`/`quote_accepted`/`quote_executed`) gained `subaccount: Option<u32>` (2026-07-30):
+  the subaccount your side of the quote used, recipient-scoped (never the counterparty's).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -1,4 +1,8 @@
 #![cfg(feature = "live-tests")]
+// Covers the legacy /portfolio/orders mutation endpoints, which remain
+// functionally callable (see docs/spec-parity.md) but are marked
+// #[deprecated] in favor of the V2 endpoints.
+#![allow(deprecated)]
 
 mod common;
 

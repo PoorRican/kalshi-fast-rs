@@ -49,6 +49,10 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    // NOTE: create_order is the legacy /portfolio/orders endpoint. It is
+    // deprecated in favor of create_order_v2 (see docs/spec-parity.md), but
+    // remains functionally callable, so it is kept here for illustration.
+    #[allow(deprecated)]
     let created = client.create_order(order).await?;
     println!("order_id: {}", created.order.order_id);
     Ok(())
