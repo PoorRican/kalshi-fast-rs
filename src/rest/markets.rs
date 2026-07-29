@@ -206,6 +206,12 @@ pub struct Market {
     pub series_id: Option<i64>,
     #[serde(default)]
     pub event_id: Option<i64>,
+    /// Removed from the OpenAPI `Market` schema 2026-07-09. Always `None`
+    /// going forward; use `price_level_structure` / `price_ranges` instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "removed from Market upstream 2026-07-09; use price_level_structure/price_ranges"
+    )]
     #[serde(default)]
     pub response_price_units: Option<String>,
     #[serde(default)]
@@ -282,6 +288,12 @@ pub struct Market {
     pub open_interest: Option<i64>,
     #[serde(default)]
     pub open_interest_fp: Option<String>,
+    /// Removed from the OpenAPI `Market` schema 2026-07-09. Always `None`
+    /// going forward; use `price_level_structure` / `price_ranges` instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "removed from Market upstream 2026-07-09; use price_level_structure/price_ranges"
+    )]
     #[serde(default)]
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]

@@ -17,6 +17,22 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Whether intra-exchange transfers are currently permitted. Added 2026-07-02.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-index status breakdown. The top-level fields above reflect the default exchange
+    /// index (0). Absent when the per-index breakdown is unavailable. Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+/// Status of a single exchange index/shard. See [`GetExchangeStatusResponse::exchange_index_statuses`].
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: i32,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -47,6 +63,9 @@ pub struct Announcement {
     pub status: AnnouncementStatus,
 }
 
+/// Removed from the OpenAPI spec 2026-07-04 (`GET /exchange/announcements` no longer exists).
+/// The response type is kept for source compatibility; use [`KalshiRestClient::get_exchange_schedule`]
+/// for exchange schedule info instead.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetExchangeAnnouncementsResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
@@ -163,6 +182,10 @@ impl KalshiRestClient {
     }
 
     /// Get exchange announcements.
+    #[deprecated(
+        since = "0.7.0",
+        note = "GET /exchange/announcements was removed from the OpenAPI spec 2026-07-04 and now errors"
+    )]
     pub async fn get_exchange_announcements(
         &self,
     ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {

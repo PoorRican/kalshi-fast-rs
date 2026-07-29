@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -49,6 +49,35 @@ pub struct GetAccountApiLimitsResponse {
     pub grants: Vec<ApiUsageLevelGrant>,
 }
 
+/// One volume-based API usage tier's earn/keep goals and the account's progress toward them.
+/// See `GET /account/api_usage_level/volume_progress`. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level for this Predictions volume goal (e.g. `"expert"`).
+    pub level: String,
+    pub earn_volume_goal_fp: FixedPointCount,
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Trailing 30-day trading volume progress toward volume-based API usage tiers, for the
+/// predictions (event_contract) lane. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed; `trailing_30d_volume_fp`
+    /// covers the trailing 30 days ending at this time.
+    pub computed_ts: i64,
+    pub trailing_30d_volume_fp: FixedPointCount,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 /// Token cost for one API v2 endpoint whose cost differs from the default.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EndpointTokenCost {
@@ -79,6 +108,10 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on. Required upstream since 2026-07-02: a subaccount
+    /// with funds on multiple indexes now appears as multiple entries rather than one combined
+    /// row.
+    pub exchange_index: i32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -146,6 +179,10 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, the API key is restricted to this single sub-account (0-63) and may only read
+    /// and trade on it. Absent/null means the key is unrestricted. Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -162,6 +199,11 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the API key to a single sub-account (0-63) that you own. A restricted key may
+    /// only read and trade on that sub-account. Omit to leave the key unrestricted. Added
+    /// 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +218,9 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the API key to a single sub-account (0-63) that you own. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -239,6 +284,43 @@ impl KalshiRestClient {
             Option::<&()>::None,
             Option::<&()>::None,
             false,
+        )
+        .await
+    }
+
+    /// Get the account's trailing 30-day trading volume progress toward volume-based API usage
+    /// tiers (Expert, Premier, Paragon, Prime, Prestige) for the predictions lane. Added
+    /// 2026-06-11.
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant a permanent Advanced API usage-level grant. Currently only the Predictions exchange
+    /// instance is supported; requires at least 1 of the user's last 100 Predictions orders to
+    /// have been created via API. Use [`Self::get_account_api_limits`] to inspect the resulting
+    /// usage tier and grants. Added 2026-06-11.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
         )
         .await
     }

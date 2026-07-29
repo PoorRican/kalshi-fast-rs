@@ -46,6 +46,11 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `"fifteen_min"`). Absent when the event has no cadence
+    /// set. Not covered by the OpenAPI spec (`product_metadata` is untyped there); documented in
+    /// the changelog 2026-07-30.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -91,6 +96,9 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Identifier for the exchange shard new events under this series are created on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

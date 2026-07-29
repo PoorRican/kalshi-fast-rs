@@ -126,6 +126,12 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Removed from the OpenAPI `ErrorResponse` schema 2026-08-06 (deprecated
+    /// 2026-07-28). Always `None` going forward; branch on `code` instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "removed from ErrorResponse upstream 2026-08-06; branch on `code` instead"
+    )]
     #[serde(default)]
     pub service: Option<String>,
 }
@@ -147,6 +153,9 @@ pub enum FeeType {
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventStatus {
+    /// Not yet open for trading. Added as a `GET /events` filter value 2026 (present in the
+    /// live OpenAPI spec; not otherwise dated in the changelog).
+    Unopened,
     Open,
     Closed,
     Settled,
@@ -157,6 +166,7 @@ pub enum EventStatus {
 impl EventStatus {
     pub fn as_str(self) -> &'static str {
         match self {
+            EventStatus::Unopened => "unopened",
             EventStatus::Open => "open",
             EventStatus::Closed => "closed",
             EventStatus::Settled => "settled",

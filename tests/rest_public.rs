@@ -302,18 +302,18 @@ async fn test_get_exchange_status() {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_get_exchange_announcements() {
+    // GET /exchange/announcements was removed from the OpenAPI spec 2026-07-04; the endpoint
+    // now errors instead of returning data.
     let client = common::demo_client();
-    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+    let result = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client.get_exchange_announcements().await
     })
     .await
-    .expect("timeout")
-    .expect("request failed");
+    .expect("timeout");
 
-    if let Some(first) = resp.announcements.first() {
-        assert!(!first.message.is_empty());
-    }
+    assert!(result.is_err());
 }
 
 #[tokio::test]
@@ -514,7 +514,10 @@ async fn test_get_multivariate_event_collection() {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_get_multivariate_event_collection_lookup_history() {
+    // Fully deprecated upstream 2026-07-02; no longer present in the OpenAPI spec at all, so the
+    // endpoint is expected to error.
     let client = common::demo_client();
 
     let collections_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
@@ -536,7 +539,7 @@ async fn test_get_multivariate_event_collection_lookup_history() {
     let ticker = collections_resp.multivariate_contracts[0]
         .collection_ticker
         .clone();
-    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+    let result = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
             .get_multivariate_event_collection_lookup_history(
                 &ticker,
@@ -545,8 +548,9 @@ async fn test_get_multivariate_event_collection_lookup_history() {
             .await
     })
     .await
-    .expect("timeout")
-    .expect("request failed");
+    .expect("timeout");
+
+    assert!(result.is_err());
 }
 
 #[tokio::test]

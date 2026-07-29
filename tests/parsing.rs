@@ -1235,7 +1235,7 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
