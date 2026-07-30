@@ -1,4 +1,7 @@
 #![cfg(feature = "live-tests")]
+// Deliberately exercises the legacy quote-ID-only endpoints (deprecated
+// 2026-06-25 in favor of the RFQ-scoped ones) to keep regression coverage.
+#![allow(deprecated)]
 
 //! # ⚠️  Known-failing tests
 //!

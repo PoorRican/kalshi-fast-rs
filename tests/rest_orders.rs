@@ -1,4 +1,8 @@
 #![cfg(feature = "live-tests")]
+// Deliberately exercises the legacy /portfolio/orders mutation endpoints
+// (deprecated 2026-06-18/25 in favor of the V2 event-order endpoints) to
+// keep regression coverage for as long as the legacy surface remains callable.
+#![allow(deprecated)]
 
 mod common;
 

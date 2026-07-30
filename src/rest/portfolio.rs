@@ -90,6 +90,8 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
+    /// Deprecated and removed from the OpenAPI schema 2026-07-09; the API no
+    /// longer returns this field. Kept as `Option` for source compatibility.
     #[serde(default)]
     pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
@@ -238,6 +240,36 @@ pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
 }
 
+/// GET /historical/positions query params.
+///
+/// Positions are archived per whole event: a settled event's positions move
+/// to the historical database together and are never split between this
+/// endpoint and `GET /portfolio/positions`. Added 2026-07-23.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+impl GetHistoricalPositionsParams {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        if let Some(limit) = self.limit
+            && (limit == 0 || limit > 1000)
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /historical/positions: limit must be 1..=1000".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl KalshiRestClient {
     /// Get the account balance.
     ///
@@ -284,6 +316,23 @@ impl KalshiRestClient {
         params: GetSettlementsParams,
     ) -> Result<GetSettlementsResponse, KalshiError> {
         let path = Self::full_path("/portfolio/settlements");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database. Supports
+    /// cursor pagination. Use for positions older than the
+    /// `market_positions_last_updated_ts` cutoff returned by
+    /// `GET /historical/cutoff`; unsettled positions remain on
+    /// [`get_positions`](Self::get_positions).
+    ///
+    /// **Requires auth.**
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        params.validate()?;
+        let path = Self::full_path("/historical/positions");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await
     }

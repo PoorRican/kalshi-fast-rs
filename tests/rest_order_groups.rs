@@ -48,6 +48,7 @@ async fn test_order_group_lifecycle() {
         client
             .update_order_group_limit(
                 &group_id,
+                SubaccountQueryParams::default(),
                 UpdateOrderGroupLimitRequest {
                     contracts_limit: Some(200),
                     ..Default::default()

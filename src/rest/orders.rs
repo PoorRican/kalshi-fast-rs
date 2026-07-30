@@ -742,6 +742,10 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        since = "0.7.0",
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18/25; use create_order_v2"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +759,10 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        since = "0.7.0",
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18/25; use cancel_order_v2"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +779,10 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18/25; use amend_order_v2"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +793,10 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18/25; use decrease_order_v2"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +819,10 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18/25; use batch_create_orders_v2"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +832,10 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18/25; use batch_cancel_orders_v2"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -896,13 +920,20 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Update an order group's contracts limit.
+    ///
+    /// `params.subaccount` selects which subaccount's order group to update
+    /// (defaults to primary). Added 2026-07-30 / Aug 6.
+    ///
+    /// **Requires auth.**
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
