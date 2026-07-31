@@ -91,6 +91,89 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were removed from the OpenAPI spec
+  between 2026-06-18 and 2026-06-25 (changelog: "Legacy order mutation endpoints deprecated"). The
+  exchange now responds with `Please switch to the V2 endpoints`. The crate methods are kept but
+  marked `#[deprecated]` pointing at their `_v2` equivalents rather than removed, since the routes
+  may still function as an error-passthrough and removing a public method is a harder break than
+  necessary. `examples/place_order.rs` and `tests/rest_orders.rs` were migrated to the V2 endpoints.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Predictions REST API schema
+  (changelog, 2026-07-09) and are no longer present in the OpenAPI spec. The corresponding Rust
+  fields were removed (breaking, 0.6.0 → 0.7.0) since they no longer carry any signal from the
+  exchange; `Market.price_level_structure`, `Market.price_ranges`, and the fixed-point count/dollar
+  fields are the canonical replacements. The `fractional_trading_enabled` field on the
+  `market_lifecycle_v2` WebSocket message (a separate AsyncAPI schema) is unaffected by the REST
+  removal but is no longer present in the current AsyncAPI schema either; it is kept as `Option` for
+  backward compatibility rather than removed, since WS messages are not scoped by this changelog
+  entry.
+
+- `GET /exchange/announcements` was removed from the Predictions REST API (changelog, 2026-07-04).
+  `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, and `AnnouncementStatus` were removed from the crate (breaking). Exchange
+  schedule remains available through `get_exchange_schedule`.
+
+- `GET /communications/quotes` no longer supports `market_ticker` / `event_ticker` filters
+  (changelog, 2026-06-20); these were removed from `GetQuotesParams` (breaking). `min_ts` / `max_ts`
+  time-window filters were added the same window (2026-06-18) as their replacement, alongside a
+  previously-missing `user_filter` field that was already present in the OpenAPI spec.
+
+- RFQ-scoped quote action/lookup endpoints (`GET`/`DELETE`/`PUT .../rfqs/{rfq_id}/quotes/{quote_id}`)
+  were added 2026-06-25 (accept/confirm/delete) and 2026-07-09 (lookup) as `get_rfq_quote`,
+  `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`. The quote-ID-only equivalents
+  (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) remain but are marked `#[deprecated]`
+  per the OpenAPI spec's own `deprecated: true` annotation on those operations; quotes are no longer
+  guaranteed queryable/actionable this way unless in a post-acceptance state.
+
+- `SubaccountBalance.exchange_index` was added 2026-07-02: `GET /portfolio/subaccounts/balances` now
+  returns one balance entry per exchange index rather than one combined row per subaccount.
+
+- `ApiKey.subaccount`, `CreateApiKeyRequest.subaccount`, and `GenerateApiKeyRequest.subaccount` were
+  added 2026-07-02 to support subaccount-restricted API keys (`POST /api_keys`,
+  `POST /api_keys/generate`). Absent/`None` means an unrestricted key.
+
+- `GetExchangeStatusResponse` gained `intra_exchange_transfers_active` and `exchange_index_statuses`
+  (2026-07-02); `Series.exchange_index`, `EventData.exchange_index`, `EventData.settlement_sources`,
+  `Market.exchange_index` were added across 2026-06-18 – 2026-07-30 for the multi-exchange-index
+  rollout. `EventMetadata.cadence` is modeled from the 2026-07-30 changelog entry even though
+  `Event.product_metadata` remains an opaque `object` in the OpenAPI schema (no typed shape to grep).
+
+- `update_order_group_limit` now takes a `SubaccountQueryParams` argument (breaking signature
+  change) since `PUT .../order_groups/{id}/limit` gained a `subaccount` query parameter
+  (changelog, 2026-08-06).
+
+- `ErrorResponse.service` is marked `#[deprecated]` (Rust attribute) rather than removed: the
+  upstream field was deprecated 2026-07-28 and removed from all REST error responses 2026-08-06.
+  Kept as `Option<String>` (always `None` now) so older cached error bodies still parse; callers
+  should branch on `code` instead, which was already the documented stable contract.
+
+- The `pyth_value` WebSocket channel (added 2026-07-23, requires authentication) mirrors the
+  `cfbenchmarks_value` channel's shape: `underlying_tickers` seeds the subscription (`["all"]` for
+  every underlying), and `update_subscription` supports `subscribe_underlyings` /
+  `unsubscribe_underlyings` / `underlying_list` actions via new `WsUpdateAction` variants. Modeled as
+  `WsPythValue` / `WsPythUnderlyingList` in `ws::types::messages::pyth`, routed through
+  `WsDataMessageV2` like every other typed channel.
+
+- Seven new `price_level_structure` string values were introduced 2026-07-23
+  (`center_{whole,half,quint}_edge_{half,quint,deci}_cent` combinations). No crate change was needed:
+  the field is already modeled as a loose `Option<String>` (never an enum) specifically to tolerate
+  new values without a release.
+
+- `GET /historical/positions` (added 2026-07-23) reuses the existing `GetPositionsResponse` shape and
+  is modeled with a dedicated `GetHistoricalPositionsParams` (`ticker`, `event_ticker`, `limit`,
+  `cursor`) rather than the broader `GetPositionsParams`, since the historical endpoint's query
+  parameters are a strict subset (no `count_filter`, no `subaccount`).
+
+- `GET /live_data/events/{event_ticker}` (added 2026-07-30) is modeled as `EventLiveData` /
+  `GetEventLiveDataResponse` in `rest::live_data`. `is_historical` and `default_range` are
+  `Option<bool>` / `Option<String>` since both are conditional per the OpenAPI description.
+
+- Multivariate lookup history endpoints are fully deprecated (changelog, 2026-07-02) and no longer
+  documented in the OpenAPI spec. `get_multivariate_event_collection_lookup_history` is kept but
+  marked `#[deprecated]` rather than removed.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

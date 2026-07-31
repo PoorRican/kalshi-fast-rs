@@ -87,6 +87,39 @@ pub struct LiveData {
     pub extra: Map<String, Value>,
 }
 
+/// Live data keyed by event ticker (e.g. crypto price charts, commodity price
+/// timeseries, weather observations). Added 2026-07-30.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EventLiveData {
+    /// Names the schema of `details`.
+    #[serde(rename = "type")]
+    pub live_data_type: String,
+    #[serde(default)]
+    pub details: Map<String, Value>,
+    /// True when the event has matured and this is a frozen historical
+    /// snapshot (crypto live data only).
+    #[serde(default)]
+    pub is_historical: Option<bool>,
+    #[serde(default)]
+    pub default_range: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetEventLiveDataResponse {
+    pub live_data: EventLiveData,
+}
+
+/// GET /live_data/events/{event_ticker} query params. Added 2026-07-30.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetEventLiveDataParams {
+    /// Chart range hint (e.g. `15min`, `1h`, `1d`); restricts the returned
+    /// timeseries window where the underlying live data type supports it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetGameStatsResponse {
     #[serde(default)]
@@ -183,6 +216,25 @@ impl KalshiRestClient {
         params: GetLiveDataByMilestoneParams,
     ) -> Result<GetLiveDataResponse, KalshiError> {
         let path = Self::full_path(&format!("/live_data/milestone/{milestone_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Get live data for an event by its event ticker. Serves event-keyed
+    /// live data such as crypto price charts, commodity price timeseries, and
+    /// weather observations. Added 2026-07-30.
+    pub async fn get_event_live_data(
+        &self,
+        event_ticker: &str,
+        params: GetEventLiveDataParams,
+    ) -> Result<GetEventLiveDataResponse, KalshiError> {
+        let path = Self::full_path(&format!("/live_data/events/{event_ticker}"));
         self.send(
             Method::GET,
             &path,

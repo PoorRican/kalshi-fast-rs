@@ -258,6 +258,18 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -468,6 +480,18 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
                 raw: msg,
@@ -590,6 +614,16 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -673,6 +707,16 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -764,6 +808,18 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),

@@ -183,6 +183,9 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated 2026-07-02: multivariate lookup history endpoints are fully
+    /// deprecated and no longer documented in the OpenAPI spec.
+    #[deprecated(note = "multivariate lookup history endpoints are fully deprecated")]
     pub async fn get_multivariate_event_collection_lookup_history(
         &self,
         collection_ticker: &str,
