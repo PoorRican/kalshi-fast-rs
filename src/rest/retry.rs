@@ -63,6 +63,7 @@ impl RetryConfig {
     }
 }
 
+#[allow(deprecated)]
 pub(crate) fn build_http_error(
     status: reqwest::StatusCode,
     bytes: &[u8],

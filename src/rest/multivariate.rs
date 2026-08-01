@@ -103,28 +103,6 @@ pub struct CreateMarketInMultivariateEventCollectionResponse {
     pub extra: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct GetMultivariateEventCollectionLookupHistoryParams {
-    pub lookback_seconds: u32,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetMultivariateEventCollectionLookupHistoryResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub lookup_points: Vec<LookupPoint>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LookupPoint {
-    pub event_ticker: String,
-    pub market_ticker: String,
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub selected_markets: Vec<TickerPair>,
-    pub last_queried_ts: String,
-    #[serde(default, flatten)]
-    pub extra: Map<String, Value>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct LookupTickersForMarketInMultivariateEventCollectionRequest {
     pub selected_markets: Vec<TickerPair>,
@@ -183,24 +161,14 @@ impl KalshiRestClient {
             .await
     }
 
-    pub async fn get_multivariate_event_collection_lookup_history(
-        &self,
-        collection_ticker: &str,
-        params: GetMultivariateEventCollectionLookupHistoryParams,
-    ) -> Result<GetMultivariateEventCollectionLookupHistoryResponse, KalshiError> {
-        let path = Self::full_path(&format!(
-            "/multivariate_event_collections/{collection_ticker}/lookup"
-        ));
-        self.send(
-            Method::GET,
-            &path,
-            Some(&params),
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
+    /// Look up an individual market in a multivariate event collection by its
+    /// selected legs.
+    ///
+    /// Deprecated by Kalshi: this endpoint predates RFQs and should not be
+    /// used for new integrations.
+    #[deprecated(
+        note = "predates RFQs and should not be used for new integrations (Kalshi OpenAPI)"
+    )]
     pub async fn lookup_tickers_for_market_in_multivariate_event_collection(
         &self,
         collection_ticker: &str,

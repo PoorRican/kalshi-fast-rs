@@ -629,6 +629,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn http_error_parses_wrapped_error_envelope() {
         let body = br#"{"error":{"code":"bad_request","message":"invalid","service":"trade-api"}}"#;
         let err = build_http_error(StatusCode::BAD_REQUEST, body, None);

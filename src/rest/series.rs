@@ -91,6 +91,9 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Exchange shard this series' events are created on. Defaults to 0. Added 2026-07.
+    #[serde(default)]
+    pub exchange_index: i64,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
