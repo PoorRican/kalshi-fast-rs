@@ -34,6 +34,8 @@ pub struct MarketPositionRef<'a> {
     pub market_exposure_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
     pub realized_pnl_dollars: FixedPointDollarsRef<'a>,
+    /// Removed from the Kalshi REST schema 2026-07-09. Always `None` on current payloads.
+    #[deprecated(note = "removed from Kalshi API 2026-07-09")]
     #[serde(default)]
     pub resting_orders_count: Option<i32>,
     #[serde(borrow)]
@@ -43,6 +45,7 @@ pub struct MarketPositionRef<'a> {
 }
 
 impl<'a> MarketPositionRef<'a> {
+    #[allow(deprecated)]
     pub fn into_owned(self) -> MarketPosition {
         MarketPosition {
             ticker: self.ticker.into_owned(),

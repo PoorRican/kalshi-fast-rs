@@ -126,6 +126,11 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Deprecated by Kalshi 2026-07-28, removed from responses 2026-07-29.
+    /// Branch on `code` instead. Kept `Option` so old and new payloads both parse.
+    #[deprecated(
+        note = "removed from Kalshi error responses 2026-07-29; branch on `code` instead"
+    )]
     #[serde(default)]
     pub service: Option<String>,
 }

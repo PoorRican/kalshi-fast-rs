@@ -206,6 +206,8 @@ pub struct Market {
     pub series_id: Option<i64>,
     #[serde(default)]
     pub event_id: Option<i64>,
+    /// Removed from the Kalshi REST schema 2026-07-09. Always `None` on current payloads.
+    #[deprecated(note = "removed from Kalshi API 2026-07-09")]
     #[serde(default)]
     pub response_price_units: Option<String>,
     #[serde(default)]
@@ -282,6 +284,11 @@ pub struct Market {
     pub open_interest: Option<i64>,
     #[serde(default)]
     pub open_interest_fp: Option<String>,
+    /// Removed from the Kalshi REST schema 2026-07-09. Always `None` on current payloads.
+    /// Use `price_level_structure` / `price_ranges` instead.
+    #[deprecated(
+        note = "removed from Kalshi API 2026-07-09; use price_level_structure/price_ranges"
+    )]
     #[serde(default)]
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]
@@ -342,6 +349,9 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    /// Identifier for the exchange shard this market lives on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

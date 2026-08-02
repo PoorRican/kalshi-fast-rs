@@ -91,6 +91,86 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The `service` field on `ErrorResponse` was deprecated by Kalshi 2026-07-28 and removed from
+  error response bodies 2026-07-29. Branch on `code` instead. The field is marked
+  `#[deprecated]` but kept as `Option<String>` so older cached/mocked payloads still parse.
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Kalshi REST schema 2026-07-09 (the
+  WebSocket `market_position` message never had `resting_orders_count`). These fields are marked
+  `#[deprecated]` and always deserialize to `None` on current payloads. Use
+  `Market.price_level_structure` / `Market.price_ranges` in place of the removed pricing fields.
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were removed from the OpenAPI spec
+  2026-06-18 in favor of the V2 event-order endpoints (`create_order_v2` etc, already present in the
+  crate since 0.6.0). The legacy methods are marked `#[deprecated]` rather than deleted so existing
+  call sites still compile; the exchange now returns an error directing callers to the V2 endpoint.
+- `get_exchange_announcements` / `GET /exchange/announcements` was removed from the OpenAPI spec
+  2026-07-04. The method is marked `#[deprecated]`; use `get_exchange_schedule` for exchange hours.
+- `get_multivariate_event_collection_lookup_history` / `GET
+  /multivariate_event_collections/{ticker}/lookup` (the history-lookup GET) was removed from the
+  OpenAPI spec 2026-07-02 ("Multivariate lookup history endpoints are fully deprecated"). The method
+  is marked `#[deprecated]`. The PUT lookup endpoint (`lookup_tickers_for_market_in_multivariate_event_collection`)
+  is unaffected.
+- `GetQuotesParams` no longer has `market_ticker` / `event_ticker` filters — Kalshi removed support
+  for filtering `GET /communications/quotes` by market or event ticker 2026-06-20. `min_ts` /
+  `max_ts` filters were added in their place (2026-06-18). RFQ-scoped quote actions
+  (`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`) were added
+  2026-06-25/07-09 and are preferred over the quote-ID-only actions (`get_quote`, `delete_quote`,
+  `accept_quote`, `confirm_quote`, now `#[deprecated]`), which Kalshi still supports but has marked
+  deprecated in the OpenAPI spec.
+- `update_order_group_limit` now takes a `SubaccountQueryParams` argument (the `subaccount` is a
+  query parameter, not a request-body field) matching the sibling `reset_order_group` /
+  `trigger_order_group` methods. Added 2026-07-30.
+- `WsChannelV2::is_private()` was missing `CfbenchmarksValue` and now also `PythValue` — both
+  channels require authentication per their AsyncAPI channel descriptions ("Requires
+  authentication"), so subscribing to either without an authenticated connection previously slipped
+  past the client's auth gate. Fixed as part of adding `pyth_value` channel support.
+- The `pyth_value` WebSocket channel (added 2026-07-23) delivers deduplicated Pyth price updates by
+  underlying ticker, mirroring the `cfbenchmarks_value` channel's shape: seed `underlying_tickers` on
+  subscribe (or `["all"]`), and use `update_subscription_v2` with `WsUpdateAction::SubscribeUnderlyings`
+  / `UnsubscribeUnderlyings` / `UnderlyingList` plus the new `underlying_tickers` field on
+  `WsUpdateSubscriptionParamsV2`. `validate_update` rejects mixing underlying actions with market
+  targets and requires `underlying_tickers` for the add/remove actions, matching the AsyncAPI error
+  semantics (error code 28).
+- `WsMarketLifecycleV2` (`market_lifecycle_v2` / `multivariate_market_lifecycle`) gained
+  `exchange_index` (present only on `created` events), `price_ranges` (present on `created` and
+  `price_level_structure_updated` events, alongside `price_level_structure`), and `strike_type` /
+  `cap_strike` / `custom_strike` (present only on `metadata_updated` events, alongside the existing
+  top-level `floor_strike` / `yes_sub_title`). `WsEventLifecycle` (`event_lifecycle`) gained
+  `exchange_index`. All are `Option` for the same top-level-conditional-field reasons as the
+  existing `floor_strike` / `yes_sub_title` fields.
+- `WsQuoteCreated`, `WsQuoteAccepted`, and `WsQuoteExecuted` (the `communications` channel's
+  `quote_created` / `quote_accepted` / `quote_executed` messages) gained `subaccount: Option<i64>`,
+  present only when your side of the quote used a subaccount.
+- `EventData` (`GET /events`, `GET /events/{event_ticker}`) gained `settlement_sources` (mirroring
+  the field already on `Series`, added 2026-06-18) and `exchange_index` (added 2026-07-30).
+  `EventMetadata` (`product_metadata`) gained `cadence: Option<String>` (added 2026-07-28).
+  `Series` gained `exchange_index` (added 2026-07-30). `GetEventsParams` gained `tickers` (CSV
+  filter, added 2026-06-18) and `min_updated_ts`.
+- `GetExchangeStatusResponse` gained `intra_exchange_transfers_active: Option<bool>` and
+  `exchange_index_statuses: Vec<ExchangeIndexStatus>` (per-exchange-index status breakdown), both
+  added 2026-07-02.
+- `SubaccountBalance` (`GET /portfolio/subaccounts/balances`) gained `exchange_index: Option<i64>` —
+  Kalshi now returns one balance entry per exchange index per subaccount (added 2026-07-02).
+- `ApiKey`, `CreateApiKeyRequest`, and `GenerateApiKeyRequest` gained `subaccount: Option<u32>` for
+  subaccount-restricted API keys (added 2026-07-02).
+- Added `get_account_api_usage_level_volume_progress` (`GET
+  /account/api_usage_level/volume_progress`) and `upgrade_account_api_usage_level` (`POST
+  /account/api_usage_level/upgrade`), both added 2026-06-11.
+- Added `get_historical_positions` (`GET /historical/positions`, added 2026-07-22) and
+  `GetHistoricalCutoffResponse.market_positions_last_updated_ts` (the cutoff separating live from
+  historical positions).
+- Added `get_event_live_data` (`GET /live_data/events/{event_ticker}`, added 2026-07-28) returning
+  event-keyed live data (crypto price charts, commodity timeseries, weather observations); the
+  `EventLiveData.live_data_type` field (JSON `type`) names the schema of `details`.
+- `price_level_structure` on `Market` and the WebSocket lifecycle payload remain plain `String`
+  (not a fixed enum) — the seven new tapered/centered structure values introduced 2026-07-23 require
+  no crate change; always read the market's live `price_ranges` for valid order prices rather than
+  branching on the structure label.
+- Richer combo-validation error bodies on multivariate market creation (added 2026-07-29) require no
+  crate change: `ErrorResponse.message` / `.details` are already untyped `Option<String>` and the
+  `code` values are unchanged.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

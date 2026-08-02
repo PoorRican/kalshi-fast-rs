@@ -183,6 +183,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "removed from the Kalshi OpenAPI spec 2026-07-02; the endpoint no longer exists"
+    )]
     pub async fn get_multivariate_event_collection_lookup_history(
         &self,
         collection_ticker: &str,

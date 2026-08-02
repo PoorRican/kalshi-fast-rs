@@ -13,6 +13,12 @@ use std::time::Duration;
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test]
+// The legacy /portfolio/orders mutation endpoints exercised here were removed
+// from the Kalshi OpenAPI spec 2026-06-18 in favor of the V2 event-order
+// endpoints (create_order_v2 etc). This live test now exercises dead
+// endpoints and will fail against the live API; kept for now to avoid
+// discarding lifecycle test coverage pending a V2 rewrite.
+#[allow(deprecated)]
 async fn test_order_lifecycle() {
     common::load_env();
     let auth = common::load_auth();
@@ -137,6 +143,9 @@ async fn test_order_lifecycle() {
 }
 
 #[tokio::test]
+// See the note on test_order_lifecycle: exercises the now-removed legacy
+// batch order endpoints.
+#[allow(deprecated)]
 async fn test_batch_order_lifecycle() {
     common::load_env();
     let auth = common::load_auth();

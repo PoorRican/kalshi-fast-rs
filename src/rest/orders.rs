@@ -742,6 +742,9 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        note = "removed from the Kalshi OpenAPI spec 2026-06-18 in favor of create_order_v2; the exchange now returns an error directing callers to the V2 endpoint"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +758,9 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        note = "removed from the Kalshi OpenAPI spec 2026-06-18 in favor of cancel_order_v2; the exchange now returns an error directing callers to the V2 endpoint"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +777,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "removed from the Kalshi OpenAPI spec 2026-06-18 in favor of amend_order_v2; the exchange now returns an error directing callers to the V2 endpoint"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +790,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "removed from the Kalshi OpenAPI spec 2026-06-18 in favor of decrease_order_v2; the exchange now returns an error directing callers to the V2 endpoint"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +815,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "removed from the Kalshi OpenAPI spec 2026-06-18 in favor of batch_create_orders_v2; the exchange now returns an error directing callers to the V2 endpoint"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +827,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "removed from the Kalshi OpenAPI spec 2026-06-18 in favor of batch_cancel_orders_v2; the exchange now returns an error directing callers to the V2 endpoint"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -896,13 +914,18 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Update an order group's contracts limit.
+    ///
+    /// `params.subaccount` targets a specific subaccount's order group; omit
+    /// for the primary account. Added 2026-07-30.
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
