@@ -64,6 +64,11 @@ pub struct WsQuoteCreated {
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
     pub created_ts: String,
+    /// Present only when your side of this quote used a subaccount. Contains
+    /// your own subaccount number; the counterparty's is never shared.
+    /// Added 2026-07-30.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -231,6 +236,8 @@ pub struct WsQuoteCreatedRef<'a> {
     pub rfq_target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
     #[serde(borrow)]
     pub created_ts: Cow<'a, str>,
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 impl<'a> WsQuoteCreatedRef<'a> {
@@ -247,6 +254,7 @@ impl<'a> WsQuoteCreatedRef<'a> {
             no_contracts_offered_fp: self.no_contracts_offered_fp.map(Cow::into_owned),
             rfq_target_cost_dollars: self.rfq_target_cost_dollars.map(Cow::into_owned),
             created_ts: self.created_ts.into_owned(),
+            subaccount: self.subaccount,
         }
     }
 }
@@ -358,5 +366,32 @@ impl<'a> WsCommunicationsRef<'a> {
                 WsCommunications::QuoteExecuted(msg.into_owned())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Per the AsyncAPI (2026-07-30), `quote_created` includes `subaccount`
+    /// when the recipient's side of the quote used a subaccount.
+    #[test]
+    fn quote_created_surfaces_subaccount() {
+        let json = r#"{
+            "quote_id": "q-1",
+            "rfq_id": "rfq-1",
+            "quote_creator_id": "creator-1",
+            "market_ticker": "KXHIGHNY-24JAN01-T60",
+            "yes_bid_dollars": "0.5000",
+            "no_bid_dollars": "0.5000",
+            "created_ts": "2026-07-30T00:00:00Z",
+            "subaccount": 3
+        }"#;
+
+        let owned: WsQuoteCreated = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.subaccount, Some(3));
+
+        let borrowed: WsQuoteCreatedRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().subaccount, Some(3));
     }
 }

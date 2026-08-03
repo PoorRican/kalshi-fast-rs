@@ -1,3 +1,4 @@
+use crate::rest::PriceRange;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -9,6 +10,10 @@ pub struct WsMarketLifecycleV2 {
     pub market_ticker: String,
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
+    /// Identifier for the exchange shard the market lives on. Only present on
+    /// `created` events. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub open_ts: Option<i64>,
     #[serde(default)]
@@ -24,14 +29,29 @@ pub struct WsMarketLifecycleV2 {
     #[serde(default)]
     pub is_deactivated: Option<bool>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// Valid price bands for the market, in fixed-point dollars. Emitted
+    /// alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events and is distinct from
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Determines how `floor_strike`/`cap_strike` are interpreted. Only present
+    /// on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Top-level updated cap strike. Only present on `metadata_updated` events.
+    /// Added 2026-06-18.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Only present on `metadata_updated` events with a custom/structured
+    /// strike type. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events.
     #[serde(default)]
@@ -54,7 +74,6 @@ pub enum WsMarketLifecycleEventType {
     CloseDateUpdated,
     Determined,
     Settled,
-    FractionalTradingUpdated,
     PriceLevelStructureUpdated,
     /// Fires when market metadata (name, title, subtitles, etc.) changes. Added 2026-05-11.
     MetadataUpdated,
@@ -98,6 +117,9 @@ pub struct WsMarketLifecycleAdditionalMetadata {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsEventLifecycle {
     pub event_ticker: String,
+    /// Identifier for the exchange shard the event's markets live on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
@@ -130,6 +152,8 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
     #[serde(default)]
+    pub exchange_index: Option<i64>,
+    #[serde(default)]
     pub open_ts: Option<i64>,
     #[serde(default)]
     pub close_ts: Option<i64>,
@@ -143,13 +167,19 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub settled_ts: Option<i64>,
     #[serde(default)]
     pub is_deactivated: Option<bool>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
@@ -165,6 +195,7 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
         WsMarketLifecycleV2 {
             market_ticker: self.market_ticker.into_owned(),
             event_type: self.event_type,
+            exchange_index: self.exchange_index,
             open_ts: self.open_ts,
             close_ts: self.close_ts,
             result: self.result.map(Cow::into_owned),
@@ -172,9 +203,12 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             settlement_value: self.settlement_value.map(Cow::into_owned),
             settled_ts: self.settled_ts,
             is_deactivated: self.is_deactivated,
-            fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges,
             floor_strike: self.floor_strike,
+            strike_type: self.strike_type.map(Cow::into_owned),
+            cap_strike: self.cap_strike,
+            custom_strike: self.custom_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
@@ -242,6 +276,8 @@ impl<'a> WsMarketLifecycleAdditionalMetadataRef<'a> {
 pub struct WsEventLifecycleRef<'a> {
     #[serde(borrow)]
     pub event_ticker: Cow<'a, str>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, borrow)]
     pub title: Option<Cow<'a, str>>,
     #[serde(default, borrow)]
@@ -262,6 +298,7 @@ impl<'a> WsEventLifecycleRef<'a> {
     pub fn into_owned(self) -> WsEventLifecycle {
         WsEventLifecycle {
             event_ticker: self.event_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             title: self.title.map(Cow::into_owned),
             subtitle: self.subtitle.map(Cow::into_owned),
             collateral_return_type: self.collateral_return_type.map(Cow::into_owned),
@@ -370,5 +407,75 @@ mod tests {
                 .and_then(Value::as_str),
             Some("kept")
         );
+    }
+
+    /// Per the AsyncAPI (2026-06-18), `metadata_updated` also carries
+    /// `strike_type`, `cap_strike`, and `custom_strike` at the top level.
+    #[test]
+    fn metadata_updated_surfaces_strike_fields() {
+        let json = r#"{
+            "event_type": "metadata_updated",
+            "market_ticker": "KXHIGHNY-24JAN01-T60",
+            "strike_type": "between",
+            "floor_strike": 60.5,
+            "cap_strike": 70.5,
+            "custom_strike": {"key": "value"}
+        }"#;
+
+        let owned: WsMarketLifecycleV2 = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.strike_type.as_deref(), Some("between"));
+        assert_eq!(owned.cap_strike, Some(70.5));
+        assert_eq!(
+            owned.custom_strike.as_ref().and_then(|m| m.get("key")),
+            Some(&"value".to_string())
+        );
+
+        let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
+        let round_tripped = borrowed.into_owned();
+        assert_eq!(round_tripped.strike_type.as_deref(), Some("between"));
+        assert_eq!(round_tripped.cap_strike, Some(70.5));
+    }
+
+    /// Per the AsyncAPI, `created` events carry `exchange_index` and, alongside
+    /// `price_level_structure`, a `price_ranges` array (added 2026-07-30 /
+    /// 2026-07-02 respectively).
+    #[test]
+    fn created_event_surfaces_exchange_index_and_price_ranges() {
+        let json = r#"{
+            "event_type": "created",
+            "market_ticker": "KXHIGHNY-24JAN01-T60",
+            "exchange_index": 0,
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start": "0.01", "end": "0.99", "step": "0.01"}]
+        }"#;
+
+        let owned: WsMarketLifecycleV2 = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.exchange_index, Some(0));
+        let ranges = owned.price_ranges.expect("price_ranges present");
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].start, "0.01");
+
+        let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
+        let round_tripped = borrowed.into_owned();
+        assert_eq!(round_tripped.exchange_index, Some(0));
+        assert_eq!(round_tripped.price_ranges.unwrap().len(), 1);
+    }
+
+    /// Per the AsyncAPI (2026-07-30), event/market creation messages include
+    /// `exchange_index` identifying the exchange shard.
+    #[test]
+    fn event_lifecycle_surfaces_exchange_index() {
+        let json = r#"{
+            "event_ticker": "KXHIGHNY-24JAN01",
+            "exchange_index": 0,
+            "title": "Title",
+            "subtitle": "Sub"
+        }"#;
+
+        let owned: WsEventLifecycle = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.exchange_index, Some(0));
+
+        let borrowed: WsEventLifecycleRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().exchange_index, Some(0));
     }
 }

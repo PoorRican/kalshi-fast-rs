@@ -91,6 +91,51 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were removed from the OpenAPI spec
+  (2026-06-18 deprecation announcement, confirmed removed by 2026-08-03). The corresponding Rust
+  methods and request/response types were removed rather than kept as dead HTTP calls. Use the V2
+  event-order endpoints (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`) instead.
+
+- The quote-ID-only communications endpoints (`get_quote`, `delete_quote`, `accept_quote`,
+  `confirm_quote`) and `lookup_tickers_for_market_in_multivariate_event_collection` are marked
+  `#[deprecated]` in Rust, matching `deprecated: true` in the live OpenAPI spec. Unlike the legacy
+  order endpoints above, these are *not* removed — the spec still documents and supports them, so the
+  crate keeps them callable while steering new code at the preferred replacements (`get_rfq_quote` /
+  `delete_rfq_quote` / `accept_rfq_quote` / `confirm_rfq_quote`, and RFQs generally).
+
+- `price_level_structure` (on both the REST `Market` struct and the `market_lifecycle_v2` WebSocket
+  message) is modeled as a raw `String`, not a closed Rust enum. When Kalshi introduced seven new
+  price-level-structure values in 2026-07, no crate change was needed — new string values just parse
+  through unchanged.
+
+- `EventData.product_metadata` reuses the `EventMetadata` type (the schema for
+  `GET /events/{ticker}/metadata`) even though the OpenAPI models the two as distinct, unrelated
+  shapes (the top-level `product_metadata` field is an untyped free-form object; `EventMetadata` is a
+  curated schema with `image_url`/`market_details`/`settlement_sources`). This is a pre-existing
+  modeling choice, not changed by this refresh. It is not lossy: `EventMetadata` carries a
+  `#[serde(flatten)] extra` catch-all, so free-form keys like the 2026-07-30 `cadence` addition land in
+  `extra` rather than being dropped.
+
+- `ErrorResponse.service` was deprecated by Kalshi on 2026-07-28 and removed from all REST error
+  bodies by 2026-08-06. The field was already `Option<String>`, so no crate change was required;
+  it now simply always deserializes to `None`. Branch on `ErrorResponse.code` instead.
+
+- The `market_lifecycle_v2` WebSocket channel's `fractional_trading_updated` event type and the
+  `fractional_trading_enabled` field were removed from the AsyncAPI in April 2026 (predating the
+  0.6.0 watermark), but the crate had not caught up: `WsMarketLifecycleEventType` still had a
+  `FractionalTradingUpdated` variant and `WsMarketLifecycleV2` still had a `fractional_trading_enabled`
+  field. Both were removed as part of this refresh's field-by-field verification pass.
+
+- The `pyth_value` WebSocket channel (added 2026-07-23) mirrors the `cfbenchmarks_value` channel's
+  shape: a private/authenticated channel using a dedicated subscription-parameter field
+  (`underlying_tickers` instead of `index_ids`) and three update actions (`subscribe_underlyings` /
+  `unsubscribe_underlyings` / `underlying_list` instead of `subscribe_indices` /
+  `unsubscribe_indices` / `indexlist`). Unlike `cfbenchmarks_value`, the `pyth_value` message payload
+  has no windowed-average companion data — just `underlying_ticker`, `value_usd`, `source_ts_ms`, and
+  `received_at`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

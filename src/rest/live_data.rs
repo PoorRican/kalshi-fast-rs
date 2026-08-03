@@ -87,6 +87,38 @@ pub struct LiveData {
     pub extra: Map<String, Value>,
 }
 
+/// Live data keyed by event ticker (crypto price charts, commodity
+/// timeseries, weather observations). Added 2026-07-30.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EventLiveData {
+    #[serde(rename = "type")]
+    pub live_data_type: String,
+    #[serde(default)]
+    pub details: Map<String, Value>,
+    /// Present for crypto live data: true when the event has matured and the
+    /// payload is a frozen historical snapshot.
+    #[serde(default)]
+    pub is_historical: Option<bool>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+/// Response for `GET /live_data/events/{event_ticker}`. Added 2026-07-30.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetEventLiveDataResponse {
+    pub live_data: EventLiveData,
+}
+
+/// Query params for `GET /live_data/events/{event_ticker}`. Added 2026-07-30.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetEventLiveDataParams {
+    /// Optional chart range hint (e.g. `15min`, `1h`, `1d`). Restricts the
+    /// returned timeseries window where the underlying live data type
+    /// supports it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetGameStatsResponse {
     #[serde(default)]
@@ -171,6 +203,24 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Get live data keyed by event ticker (e.g. crypto price charts,
+    /// commodity price timeseries, weather observations). Added 2026-07-30.
+    pub async fn get_live_data_for_event(
+        &self,
+        event_ticker: &str,
+        params: GetEventLiveDataParams,
+    ) -> Result<GetEventLiveDataResponse, KalshiError> {
+        let path = Self::full_path(&format!("/live_data/events/{event_ticker}"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
             Option::<&()>::None,
             false,
         )
