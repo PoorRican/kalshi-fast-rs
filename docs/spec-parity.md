@@ -91,6 +91,90 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `service` on `ErrorResponse` was deprecated by Kalshi on 2026-07-28 and removed from all REST
+  error responses on 2026-08-06. The field is kept (as `Option<String>`, unchanged) but marked
+  `#[deprecated]` so downstream code branching on it gets a compiler warning; branch on `code`
+  instead, which is present on every error response.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Predictions REST API schema
+  (2026-07-09) and are no longer present in the OpenAPI spec at all. The corresponding Rust struct
+  fields were removed (a breaking change — see `VERSIONING.md`). The WebSocket `market_positions`
+  channel mirrors `MarketPosition`, so its (dead-code) `resting_orders_count` field was removed too.
+  `GET /exchange/announcements` was removed the same window (2026-07-04); `get_exchange_announcements`
+  and its supporting types (`Announcement`, `AnnouncementType`, `AnnouncementStatus`,
+  `GetExchangeAnnouncementsResponse`) were deleted from the crate.
+
+- `WsMarketLifecycleV2::fractional_trading_enabled` and the `FractionalTradingUpdated` event-type
+  variant are marked `#[deprecated]` rather than removed: the AsyncAPI schema no longer documents a
+  `fractional_trading_updated` event (fractional trading has fully rolled out), but removing a public
+  enum variant/field outright would be a harsher break than necessary for a field that simply stops
+  being emitted. `#[deprecated]` gives downstream code a compiler warning without breaking builds.
+
+- `GetQuotesParams` (`GET /communications/quotes`) no longer supports `market_ticker` or
+  `event_ticker` filters (removed 2026-06-20); those fields were removed from the Rust struct. The
+  endpoint gained `min_ts`/`max_ts` (last-updated time window) and `user_filter` (2026-06-18/2026-06-23).
+
+- RFQ-scoped quote endpoints (`GET`/`DELETE /communications/rfqs/{rfq_id}/quotes/{quote_id}`,
+  `PUT .../accept`, `PUT .../confirm`) were added 2026-06-25 as the preferred replacement for the
+  quote-ID-only endpoints (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`), which are
+  now `#[deprecated]` but still call the still-live legacy paths. Likewise, the legacy
+  `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were deprecated 2026-06-18 in favor
+  of the V2 event-order endpoints already in the crate, and
+  `get_multivariate_event_collection_lookup_history` / `lookup_tickers_for_market_in_multivariate_event_collection`
+  are deprecated per the OpenAPI spec (the GET lookup-history operation was removed entirely; the PUT
+  lookup operation predates RFQs and is marked `deprecated: true`). All of these are `#[deprecated]`
+  attributes, not removals, so existing callers keep compiling with a warning.
+
+- `exchange_index` (identifies an exchange shard; defaults to 0) was added across the OpenAPI/AsyncAPI
+  specs in 2026-07 for multi-exchange-index rollout: `Market`, `EventData`, `Series`,
+  `WsMarketLifecycleV2` (market creation only), `WsEventLifecycle`, `SubaccountBalance`,
+  `GetExchangeStatusResponse` (via new `exchange_index_statuses: Vec<ExchangeIndexStatus>` plus
+  top-level `intra_exchange_transfers_active`), and the order-group delete/reset/trigger/limit query
+  params (via a new `exchange_index` field on `SubaccountQueryParams`). All modeled as `Option<i64>`
+  (or `Option<u32>` for the query-param cases, matching the existing `subaccount` convention) even
+  where the spec marks them required, since these are newly-added fields and older cached payloads
+  may predate them.
+
+- `PUT /portfolio/order_groups/{order_group_id}/limit` gained `subaccount`/`exchange_index` **query**
+  parameters (2026-08-06), not body fields. `update_order_group_limit` now takes a
+  `SubaccountQueryParams` argument in addition to the `UpdateOrderGroupLimitRequest` body — a
+  breaking signature change.
+
+- `Event product_metadata now includes cadence` (changelog, 2026-07-30) has no corresponding field in
+  the OpenAPI `GetEventMetadataResponse` schema as of this reconciliation. No dedicated `cadence`
+  field was added to `EventMetadata`; it is still captured losslessly via the existing
+  `extra: Map<String, Value>` flatten field if the exchange sends it. Revisit once the OpenAPI schema
+  catches up.
+
+- `EventData.settlement_sources` (mirroring the field already on `Series`), `fee_type_override`, and
+  `fee_multiplier_override` were added to match the OpenAPI `EventData` schema (2026-06-18 / ongoing).
+
+- New `pyth_value` WebSocket channel (2026-07-23) follows the same pattern as `cfbenchmarks_value`:
+  `WsChannelV2::PythValue`, `underlying_tickers: Option<Vec<String>>` subscription parameter (use
+  `["all"]` for every underlying), and `WsUpdateAction::SubscribeUnderlyings` /
+  `UnsubscribeUnderlyings` / `UnderlyingList` update actions (mutually exclusive with market targets,
+  same validation shape as the CF Benchmarks index actions). Messages are `WsPythValue`
+  (`pyth_value`) and `WsPythUnderlyingList` (`pyth_value_underlying_list`), routed through
+  `WsDataMessageV2::PythValue` / `PythValueUnderlyingList`.
+
+- New endpoints added: `GET /live_data/events/{event_ticker}` (`get_event_live_data`, 2026-07-30),
+  `GET /historical/positions` (`get_historical_positions`, reuses `GetPositionsResponse`,
+  2026-07-23), `POST /account/api_usage_level/upgrade` (`upgrade_account_api_usage_level`,
+  2026-06-11), and `GET /account/api_usage_level/volume_progress`
+  (`get_account_api_usage_level_volume_progress`, 2026-06-11).
+
+- `ApiKey.subaccount`, and a `subaccount: Option<u32>` field on `CreateApiKeyRequest` /
+  `GenerateApiKeyRequest`, were added 2026-07-02 for subaccount-restricted API keys. `WsQuoteCreated`
+  gained a `subaccount: Option<u32>` field the same window (present only when your side of the quote
+  used a subaccount).
+
+- The seven new `price_level_structure` values introduced 2026-07-23 (plus
+  `center_centi_edge_centi_cent` for combo markets, 2026-08-17) require no crate change:
+  `Market.price_level_structure` and `WsMarketLifecycleV2.price_level_structure` are already plain
+  `String`, and the source of truth for valid prices is the `price_ranges` array, already modeled.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

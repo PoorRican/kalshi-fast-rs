@@ -126,6 +126,12 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Deprecated 2026-07-28; removed from all REST error responses 2026-08-06.
+    /// Branch on `code` instead, which is present on every error response.
+    #[deprecated(
+        since = "0.7.0",
+        note = "removed from the API on 2026-08-06; branch on `code` instead"
+    )]
     #[serde(default)]
     pub service: Option<String>,
 }
