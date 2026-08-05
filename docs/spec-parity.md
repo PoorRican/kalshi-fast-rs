@@ -91,6 +91,50 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The multivariate ticker-pair lookup surface (`PUT /multivariate_event_collections/{ticker}/lookup`,
+  its lookup-history feed, and the `multivariate` WebSocket channel / `multivariate_lookup` message)
+  was removed upstream (2026-08-06). It has been removed from the crate entirely rather than kept as
+  dead code; the `multivariate_market_lifecycle` channel is unaffected and still modeled.
+
+- The legacy `/portfolio/orders` mutation endpoints (create/cancel/amend/decrease/batch) were
+  deprecated 2026-06-18 and are now entirely absent from the live OpenAPI spec (the paths only expose
+  `GET`). They have been removed from the crate; use the V2 `/portfolio/events/orders/*` methods
+  (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`) instead. Likewise
+  `GET /exchange/announcements` is gone (removed 2026-07-04); the crate no longer models it.
+
+- `exchange_index` (`Option<u32>`, matching the OpenAPI `ExchangeIndex` schema which defaults to 0)
+  appears on many response types (`Market`, `Series`, `MultivariateEventCollection`, `EventData`,
+  `GetExchangeStatusResponse.exchange_index_statuses`, `SubaccountBalance`, and the WS
+  `market_lifecycle_v2` payload). It identifies the exchange shard a resource lives on; `0` is
+  currently the only shard in production. `SubaccountBalance.exchange_index` is `required` in the
+  live schema (a subaccount with funds on multiple indexes appears as multiple entries), so it is
+  modeled as non-`Option`; the others are optional per their schemas.
+
+- `price_level_structure` is modeled as a raw `String` (not a Rust enum) on both the REST `Market`
+  struct and the WS `market_lifecycle_v2` payload, specifically so new upstream values (Kalshi has
+  added eight new structures across 2026-07 and 2026-08, including the multivariate-market
+  `center_centi_edge_centi_cent` tick) pass through without a crate release. Consumers should read
+  `price_ranges` (the `{start, end, step}` bands) for valid order prices rather than special-casing
+  the structure name.
+
+- `MultivariateEventCollection.associated_event_tickers`, `.is_single_market_per_event`, and
+  `.is_all_yes` are marked `[DEPRECATED - use associated_events instead]` in the OpenAPI spec but
+  remain `required`. They are kept as non-`Option` Rust fields (matching the schema) and marked
+  `#[deprecated]` so callers get a compiler warning without a parsing behavior change.
+
+- `pyth_value` is a private (auth-required) AsyncAPI channel (added 2026-07-23) that mirrors the
+  `cfbenchmarks_value` shape: `underlying_tickers` seeds the subscription, and
+  `subscribe_underlyings` / `unsubscribe_underlyings` / `underlying_list`
+  (`WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList`) manage it
+  post-subscribe, folded into the resubscribe state the same way CF Benchmarks index updates are.
+
+- `Series` previously carried `subcategory`, `description`, `url`, `volume` (non-fixed-point),
+  `inactive`, and `latest_event_ticker` fields that do not exist anywhere in the live OpenAPI
+  `Series` schema. They were removed rather than carried forward as dead `Option` fields; this
+  predates any specific changelog entry we could find and was likely stale even before the 0.6.0
+  refresh.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -46,6 +46,10 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `fifteen_min`). Absent when the event
+    /// has no cadence set.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -59,12 +63,6 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
-    #[serde(default)]
-    pub subcategory: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub url: Option<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub tags: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
@@ -82,15 +80,11 @@ pub struct Series {
     #[serde(default)]
     pub product_metadata: Option<Map<String, Value>>,
     #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default)]
     pub volume_fp: Option<String>,
-    #[serde(default)]
-    pub latest_event_ticker: Option<String>,
     #[serde(default)]
     pub last_updated_ts: Option<String>,
     #[serde(default)]
-    pub inactive: Option<bool>,
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
