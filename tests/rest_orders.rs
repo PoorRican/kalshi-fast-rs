@@ -12,6 +12,15 @@ use std::time::Duration;
 /// Longer timeout for multi-step lifecycle tests
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
 
+// The legacy `/portfolio/orders` mutation endpoints exercised below
+// (create_order/cancel_order/amend_order/batch_create_orders/batch_cancel_orders)
+// were removed from the OpenAPI spec on 2026-06-18 in favor of the V2
+// event-market order endpoints (create_order_v2 etc., see rest_order_v2.rs).
+// The methods remain in the crate as #[deprecated] wrappers; these tests will
+// fail against a live demo/prod server now that the legacy paths 404. Kept
+// for now to document the deprecation; migrate or remove once V1 support is
+// dropped from the crate.
+#[allow(deprecated)]
 #[tokio::test]
 async fn test_order_lifecycle() {
     common::load_env();
@@ -136,6 +145,7 @@ async fn test_order_lifecycle() {
     assert!(!orders_resp.orders.iter().any(|o| o.order_id == result));
 }
 
+#[allow(deprecated)]
 #[tokio::test]
 async fn test_batch_order_lifecycle() {
     common::load_env();

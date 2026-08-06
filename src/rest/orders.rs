@@ -742,6 +742,12 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    ///
+    /// **Deprecated**: the legacy `/portfolio/orders` mutation endpoints were
+    /// removed from the OpenAPI spec on 2026-06-18. Use [`Self::create_order_v2`].
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were removed; use create_order_v2"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +761,12 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    ///
+    /// **Deprecated**: the legacy `/portfolio/orders` mutation endpoints were
+    /// removed from the OpenAPI spec on 2026-06-18. Use [`Self::cancel_order_v2`].
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were removed; use cancel_order_v2"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +783,11 @@ impl KalshiRestClient {
         .await
     }
 
+    /// **Deprecated**: the legacy `/portfolio/orders` mutation endpoints were
+    /// removed from the OpenAPI spec on 2026-06-18. Use [`Self::amend_order_v2`].
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were removed; use amend_order_v2"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +798,11 @@ impl KalshiRestClient {
             .await
     }
 
+    /// **Deprecated**: the legacy `/portfolio/orders` mutation endpoints were
+    /// removed from the OpenAPI spec on 2026-06-18. Use [`Self::decrease_order_v2`].
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were removed; use decrease_order_v2"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +825,12 @@ impl KalshiRestClient {
         .await
     }
 
+    /// **Deprecated**: the legacy `/portfolio/orders` mutation endpoints were
+    /// removed from the OpenAPI spec on 2026-06-18. Use
+    /// [`Self::batch_create_orders_v2`].
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were removed; use batch_create_orders_v2"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +840,12 @@ impl KalshiRestClient {
             .await
     }
 
+    /// **Deprecated**: the legacy `/portfolio/orders` mutation endpoints were
+    /// removed from the OpenAPI spec on 2026-06-18. Use
+    /// [`Self::batch_cancel_orders_v2`].
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were removed; use batch_cancel_orders_v2"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -896,13 +930,20 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Update an order group's contract limit.
+    ///
+    /// `params.subaccount` targets a non-primary subaccount (defaults to
+    /// primary); `params.exchange_index` targets a non-default exchange shard.
+    /// Both query params added 2026-08-06 (subaccount support for order-group
+    /// limit updates).
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 

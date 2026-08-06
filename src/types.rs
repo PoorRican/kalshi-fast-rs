@@ -126,6 +126,9 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Removed from the Kalshi API as of 2026-08-06; always `None` on current responses.
+    /// Branch on `code` instead, which is present on every error response.
+    #[deprecated(note = "removed from the Kalshi API as of 2026-08-06; always None")]
     #[serde(default)]
     pub service: Option<String>,
 }

@@ -29,6 +29,12 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// Pyth underlying tickers for `pyth_value` subscriptions. Omit to
+    /// subscribe with no underlyings and add them later via
+    /// `update_subscription`; use `["all"]` to track every available
+    /// underlying. Added 2026-07-23.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underlying_tickers: Option<Vec<String>>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -155,6 +161,11 @@ pub struct WsUpdateSubscriptionParamsV2 {
     /// track every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// Pyth underlying tickers to add or remove. Required for the
+    /// `subscribe_underlyings` / `unsubscribe_underlyings` actions; use
+    /// `["all"]` to track every available underlying. Added 2026-07-23.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underlying_tickers: Option<Vec<String>>,
 }
 
 impl WsUpdateSubscriptionParamsV2 {
@@ -180,6 +191,16 @@ pub enum WsUpdateAction {
     /// Request the available CF Benchmarks index IDs without modifying the
     /// subscription (server replies with a `cfbenchmarks_value_indexlist`).
     Indexlist,
+    /// Add the supplied `underlying_tickers` to a `pyth_value` subscription.
+    /// Added 2026-07-23.
+    SubscribeUnderlyings,
+    /// Remove the supplied `underlying_tickers` from a `pyth_value`
+    /// subscription. Added 2026-07-23.
+    UnsubscribeUnderlyings,
+    /// Request the underlying tickers observed on the Pyth stream in the last
+    /// two hours, without modifying the subscription (server replies with a
+    /// `pyth_value_underlying_list`). Added 2026-07-23.
+    UnderlyingList,
 }
 
 impl WsUpdateAction {
@@ -191,6 +212,17 @@ impl WsUpdateAction {
             WsUpdateAction::SubscribeIndices
                 | WsUpdateAction::UnsubscribeIndices
                 | WsUpdateAction::Indexlist
+        )
+    }
+
+    /// Whether this action operates on Pyth underlying tickers rather than
+    /// market targets.
+    pub fn is_underlying_action(self) -> bool {
+        matches!(
+            self,
+            WsUpdateAction::SubscribeUnderlyings
+                | WsUpdateAction::UnsubscribeUnderlyings
+                | WsUpdateAction::UnderlyingList
         )
     }
 }
@@ -230,6 +262,11 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         .as_ref()
         .map(|v| !v.is_empty())
         .unwrap_or(false);
+    let has_underlying_tickers = params
+        .underlying_tickers
+        .as_ref()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
 
     // CF Benchmarks index actions are mutually exclusive with market targets and
     // have their own `index_ids` requirements.
@@ -254,6 +291,33 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         return Err(KalshiError::InvalidParams(
             "update_subscription: index_ids is only valid for subscribe_indices, \
              unsubscribe_indices, or indexlist actions"
+                .to_string(),
+        ));
+    }
+
+    // Pyth underlying actions are mutually exclusive with market targets and
+    // have their own `underlying_tickers` requirements.
+    if params.action.is_underlying_action() {
+        if has_any_market_tickers || has_any_market_ids {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: underlying actions do not support market_ticker(s) or market_id(s)"
+                    .to_string(),
+            ));
+        }
+        if matches!(
+            params.action,
+            WsUpdateAction::SubscribeUnderlyings | WsUpdateAction::UnsubscribeUnderlyings
+        ) && !has_underlying_tickers
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: subscribe_underlyings/unsubscribe_underlyings require underlying_tickers"
+                    .to_string(),
+            ));
+        }
+    } else if params.underlying_tickers.is_some() {
+        return Err(KalshiError::InvalidParams(
+            "update_subscription: underlying_tickers is only valid for subscribe_underlyings, \
+             unsubscribe_underlyings, or underlying_list actions"
                 .to_string(),
         ));
     }
@@ -476,6 +540,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&both).is_err());
 
@@ -490,6 +555,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&multi).is_err());
 
@@ -504,6 +570,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&valid).is_ok());
     }
@@ -521,6 +588,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -538,6 +606,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -555,6 +624,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -572,6 +642,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&missing).is_err());
 
@@ -586,6 +657,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&ok).is_ok());
     }
@@ -603,6 +675,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -620,6 +693,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -637,6 +711,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }

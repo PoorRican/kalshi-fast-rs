@@ -126,8 +126,8 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    assert!(resp.read.bucket_capacity >= 0);
+    assert!(resp.write.bucket_capacity >= 0);
 }
 
 #[tokio::test]
@@ -524,6 +524,7 @@ async fn test_get_quotes_all() {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_get_subaccount_netting() {
     common::load_env();
     let auth = common::load_auth();
