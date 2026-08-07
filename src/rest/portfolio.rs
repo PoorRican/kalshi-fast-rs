@@ -238,6 +238,72 @@ pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
 }
 
+/// Body for `POST /portfolio/intra_exchange_instance_transfer`.
+///
+/// `source` / `destination` are kept as raw strings (rather than a dedicated
+/// enum) so unrecognized exchange-instance values round-trip losslessly, in
+/// line with `ApiUsageLevelGrant.exchange_instance`. Known values are
+/// `"event_contract"` and `"margined"`.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    pub source: String,
+    pub destination: String,
+    /// Amount to transfer, in centicents.
+    pub amount: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
+/// Status of an intra-exchange-instance transfer.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntraExchangeInstanceTransferStatus {
+    Pending,
+    Complete,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    pub source: String,
+    pub destination: String,
+    pub source_exchange_shard: i32,
+    pub destination_exchange_shard: i32,
+    pub amount: FixedPointDollars,
+    pub status: IntraExchangeInstanceTransferStatus,
+    pub created_ts: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
+}
+
 impl KalshiRestClient {
     /// Get the account balance.
     ///
@@ -302,6 +368,55 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Transfer funds within the same account, across exchange instances
+    /// (e.g. event-contract <-> margined).
+    ///
+    /// The transfer is processed asynchronously; poll
+    /// [`Self::get_intra_exchange_instance_transfer`] with the returned
+    /// `transfer_id` to observe completion.
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List intra-exchange-instance transfer history. Supports cursor pagination.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get a single intra-exchange-instance transfer by id.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
     /// Create a pager for iterating over positions page by page.
     ///
     /// **Requires auth.** See [`CursorPager`].
@@ -353,6 +468,42 @@ impl KalshiRestClient {
                 Ok((resp.settlements, resp.cursor))
             })
         })
+    }
+
+    /// Create a pager for iterating over intra-exchange-instance transfers page by page.
+    ///
+    /// **Requires auth.** See [`CursorPager`].
+    pub fn intra_exchange_instance_transfers_pager(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> CursorPager<IntraExchangeInstanceTransfer> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
+            })
+        })
+    }
+
+    /// Stream intra-exchange-instance transfers one by one.
+    ///
+    /// **Requires auth.**
+    pub fn stream_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<IntraExchangeInstanceTransfer, KalshiError>> + Send {
+        stream_items(
+            self.intra_exchange_instance_transfers_pager(params),
+            max_items,
+        )
     }
 
     /// Stream positions one by one.

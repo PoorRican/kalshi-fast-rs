@@ -91,6 +91,9 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Exchange shard index. Added 2026-07. Defaults to 0 when unset upstream.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

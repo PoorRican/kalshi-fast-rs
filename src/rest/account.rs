@@ -190,6 +190,11 @@ pub struct GenerateApiKeyResponse {
 pub struct SubaccountQueryParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Exchange shard index. Added 2026-07 alongside subaccount support on
+    /// order-group limit updates; accepted (but not required) on every
+    /// endpoint that takes this params struct.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

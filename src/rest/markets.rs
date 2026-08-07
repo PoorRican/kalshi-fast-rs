@@ -342,6 +342,9 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    /// Exchange shard index. Added 2026-07.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

@@ -8,6 +8,88 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-08-07
+
+### Compatibility
+
+- Docs snapshot: 2026-08-07
+- OpenAPI: 3.27.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-08-07
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Series responses include `exchange_index` (2026-07-28) | Added `exchange_index: Option<u32>` to `Series` |
+| Lifecycle creation messages now include `exchange_index` (2026-07-28/30) | Added `exchange_index` to `WsEventLifecycle` (required by spec) and `WsMarketLifecycleV2` (created-only) |
+| The `service` field on error responses is deprecated (2026-07-28), then removed (2026-07-29) | **Breaking** — removed `ErrorResponse.service` |
+| Richer combo-validation errors on multivariate market creation (2026-07-29) | No code change — surfaced via the existing generic `ErrorResponse.details` string, no new schema upstream |
+| Order group limit updates support subaccounts (2026-07-30) | **Breaking** — `update_order_group_limit` now takes a `SubaccountQueryParams`; also added `exchange_index` to `SubaccountQueryParams` (paired parameter on the same endpoints) |
+| Multivariate event collections include `exchange_index` (2026-08-04) | Added `exchange_index: Option<u32>` to `MultivariateEventCollection` |
+| Centicent pricing on multivariate (combo) markets (2026-08-04) | No code change — `Market.price_level_structure` and `PriceRange` are already untyped strings, tolerate the new `center_centi_edge_centi_cent` tick value without modification |
+| FIX execution reports identify the source exchange index (2026-08-04) | No code change — FIX protocol not modeled by this crate |
+| Sided leverage estimates on margin markets (2026-08-03) | No code change — margin (perps) markets not modeled by this crate |
+| Margin order groups bind to single `exchange_index` (2026-08-06) | No code change — margin order groups not modeled by this crate |
+| Richer combo-validation errors on FIX RFQ creation (2026-08-05) | No code change — FIX protocol not modeled by this crate |
+| Intra-account transfer history endpoints (2026-08-05) | Added `intra_exchange_instance_transfer`, `get_intra_exchange_instance_transfers` (+ pager/stream), `get_intra_exchange_instance_transfer` and their types |
+| Multivariate lookup endpoint and channel removed (2026-08-05) | **Breaking** — removed the REST lookup endpoint/history feed and the WS `multivariate`/`multivariate_lookup` channel and message types |
+| Order group maximum increased to 100,000 per user (2026-08-07) | No code change — operational limit only, not enforced client-side |
+
+### Added
+
+- [Rust API] Added `exchange_index: Option<u32>` to `Series`, `Market`, and `MultivariateEventCollection`
+  (`ExchangeIndex` is an exchange-shard identifier; defaults to 0 upstream).
+- [Rust API] Added `exchange_index` to `WsEventLifecycle` / `WsEventLifecycleRef` and
+  `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` (`Option<i64>`, matching the AsyncAPI `integer`
+  type). On `market_lifecycle_v2` this key is only present on `created` events, per the spec.
+- [Rust API] Added `exchange_index: Option<u32>` to `SubaccountQueryParams`, used across the
+  order-group and V2-order endpoints.
+- [Rust API] Added intra-exchange-instance transfer support: `IntraExchangeInstanceTransferRequest`,
+  `IntraExchangeInstanceTransferResponse`, `IntraExchangeInstanceTransfer`,
+  `IntraExchangeInstanceTransferStatus`, `GetIntraExchangeInstanceTransfersParams`,
+  `GetIntraExchangeInstanceTransfersResponse`, `GetIntraExchangeInstanceTransferResponse`, and
+  `KalshiRestClient::intra_exchange_instance_transfer` /
+  `KalshiRestClient::get_intra_exchange_instance_transfers` (+ pager/stream) /
+  `KalshiRestClient::get_intra_exchange_instance_transfer`.
+
+### Removed
+
+- [Rust API] Removed `ErrorResponse.service` (upstream removed the field from REST error bodies
+  2026-07-29). Branch on `code` instead.
+- [Rust API] Removed the multivariate ticker-pair lookup REST endpoint and lookup-history feed
+  (`get_multivariate_event_collection_lookup_history`,
+  `lookup_tickers_for_market_in_multivariate_event_collection`, and their request/response types),
+  and the WebSocket `multivariate` / `multivariate_lookup` channel and message types
+  (`WsChannelV2::Multivariate`, `WsMsgType::Multivariate`, `WsMsgType::MultivariateLookup`,
+  `WsDataMessageV2::Multivariate`, `WsMultivariate`, `WsMultivariateRef`). Upstream removed both the
+  endpoint and the channel on 2026-08-05. The `multivariate_market_lifecycle` channel is unaffected.
+
+### Fixed
+
+- [Tests] `tests/rest_auth.rs::test_get_account_api_limits` referenced the pre-0.6.0
+  `read_limit`/`write_limit` fields removed in the previous release; updated to
+  `resp.read.refill_rate` / `resp.write.refill_rate` so `cargo test --all-targets --features
+  live-tests` compiles again.
+
+### Breaking
+
+- [Rust API] `ErrorResponse` no longer has a `service` field. Downstream exhaustive struct
+  destructuring must drop it.
+- [Rust API] `KalshiRestClient::update_order_group_limit` gained a `params: SubaccountQueryParams`
+  argument between `order_group_id` and `body`, to carry the newly-supported `subaccount` /
+  `exchange_index` query parameters.
+- [Rust API] Removed `get_multivariate_event_collection_lookup_history`,
+  `lookup_tickers_for_market_in_multivariate_event_collection`,
+  `GetMultivariateEventCollectionLookupHistoryParams`,
+  `GetMultivariateEventCollectionLookupHistoryResponse`, `LookupPoint`,
+  `LookupTickersForMarketInMultivariateEventCollectionRequest`,
+  `LookupTickersForMarketInMultivariateEventCollectionResponse`,
+  `WsChannelV2::Multivariate`, `WsMsgType::Multivariate`, `WsMsgType::MultivariateLookup`,
+  `WsDataMessageV2::Multivariate`, `WsMultivariate`, and `WsMultivariateRef` — the upstream endpoint
+  and channel are gone.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility

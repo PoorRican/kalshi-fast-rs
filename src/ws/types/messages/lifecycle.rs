@@ -9,6 +9,10 @@ pub struct WsMarketLifecycleV2 {
     pub market_ticker: String,
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
+    /// Exchange shard the market lives on. Per the AsyncAPI this key exists
+    /// **only** when the market is created.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub open_ts: Option<i64>,
     #[serde(default)]
@@ -98,6 +102,11 @@ pub struct WsMarketLifecycleAdditionalMetadata {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsEventLifecycle {
     pub event_ticker: String,
+    /// Exchange shard the event's markets live on. Marked required by the
+    /// AsyncAPI, but modeled as `Option` like the other fields here since the
+    /// exchange has been observed to omit fields it marks required.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
@@ -129,6 +138,8 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub open_ts: Option<i64>,
     #[serde(default)]
@@ -165,6 +176,7 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
         WsMarketLifecycleV2 {
             market_ticker: self.market_ticker.into_owned(),
             event_type: self.event_type,
+            exchange_index: self.exchange_index,
             open_ts: self.open_ts,
             close_ts: self.close_ts,
             result: self.result.map(Cow::into_owned),
@@ -242,6 +254,8 @@ impl<'a> WsMarketLifecycleAdditionalMetadataRef<'a> {
 pub struct WsEventLifecycleRef<'a> {
     #[serde(borrow)]
     pub event_ticker: Cow<'a, str>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, borrow)]
     pub title: Option<Cow<'a, str>>,
     #[serde(default, borrow)]
@@ -262,6 +276,7 @@ impl<'a> WsEventLifecycleRef<'a> {
     pub fn into_owned(self) -> WsEventLifecycle {
         WsEventLifecycle {
             event_ticker: self.event_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             title: self.title.map(Cow::into_owned),
             subtitle: self.subtitle.map(Cow::into_owned),
             collateral_return_type: self.collateral_return_type.map(Cow::into_owned),

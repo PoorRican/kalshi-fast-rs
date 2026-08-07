@@ -91,6 +91,40 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The Margin (perps) REST/FIX API (`docs.kalshi.com/margin-rest/*`, `docs.kalshi.com/fix-margin/*`)
+  is a separate product surface with its own docs tree, not covered by the main `openapi.yaml` /
+  `asyncapi.yaml` this crate tracks. It is intentionally out of scope: margin markets, margin order
+  groups, margin leverage estimates, and the FIX protocol itself are not modeled. The one exception
+  is `get_margin_fee_tiers` (`GET /margin/fee_tiers`), kept from before this endpoint was split out
+  of the manual OpenAPI spec; its response fields are untyped JSON for that reason (see above).
+  Changelog entries scoped to margin/FIX (e.g. sided leverage estimates, margin order group
+  `exchange_index` binding, FIX execution report `LastMkt`) require no crate changes.
+
+- `exchange_index` (an `ExchangeIndex`/shard identifier, integer, defaults to 0) was added across
+  much of the OpenAPI/AsyncAPI surface in 2026-07/08: `Series`, `Market`,
+  `MultivariateEventCollection`, the `event_lifecycle` and `market_lifecycle_v2` WS payloads, and as
+  a query/body parameter on several portfolio endpoints (order groups, V2 orders, balance,
+  subaccount transfers). The crate models it as a plain `Option<u32>` (or `Option<i64>` on the two
+  WS lifecycle messages, matching their upstream `integer` type) rather than a dedicated
+  `ExchangeIndex` newtype, consistent with how other simple exchange-shard fields are already
+  modeled in `orders.rs`. `SubaccountQueryParams` gained `exchange_index` and is reused across every
+  order-group and V2-order endpoint that takes it, even the few (`GET /portfolio/order_groups`,
+  `POST .../amend`, `POST .../decrease`) whose OpenAPI parameter list doesn't include it — the field
+  is `skip_serializing_if` `None`, so it's a no-op there.
+
+- The multivariate ticker-pair lookup REST endpoint
+  (`PUT /multivariate_event_collections/{collection_ticker}/lookup`,
+  `GET .../lookup` history) and the standalone `multivariate` / `multivariate_lookup` WebSocket
+  channel were removed upstream on 2026-08-05. Removed from the crate accordingly: the REST lookup
+  methods and their types, `WsChannelV2::Multivariate`, `WsMsgType::Multivariate` /
+  `MultivariateLookup`, and the `WsDataMessageV2::Multivariate` message type. The
+  `multivariate_market_lifecycle` channel (a distinct, still-live channel for lifecycle events on
+  multivariate markets) is unaffected.
+
+- `ErrorResponse.service` was deprecated 2026-07-28 and removed from REST error bodies 2026-07-29.
+  The field has been removed from the crate's `ErrorResponse` struct; callers should branch on
+  `code` instead, per the upstream changelog's own guidance.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -899,10 +899,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
