@@ -126,6 +126,11 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Deprecated 2026-07-28, removed from all error responses 2026-08-06.
+    /// Kept as `Option<String>` (an explicit `docs/spec-parity.md` exception
+    /// to the field-removal rule): it round-trips losslessly, was never a
+    /// stable classification contract, and will simply deserialize to `None`
+    /// going forward. Branch on `code` instead.
     #[serde(default)]
     pub service: Option<String>,
 }

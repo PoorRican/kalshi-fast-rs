@@ -1,4 +1,8 @@
 #![cfg(feature = "live-tests")]
+// Deliberately exercises the legacy (pre-V2) order mutation endpoints, which
+// are deprecated upstream in favor of the V2 endpoints (see rest_order_groups
+// / place_order examples for the V2 surface).
+#![allow(deprecated)]
 
 mod common;
 

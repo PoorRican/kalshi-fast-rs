@@ -46,6 +46,11 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `"fifteen_min"`), when set. Added
+    /// 2026-07-30. Not present in the manually-defined OpenAPI schema (which
+    /// leaves `product_metadata` untyped); see `docs/spec-parity.md`.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -53,6 +58,9 @@ pub struct EventMetadata {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Series {
     pub ticker: String,
+    /// Identifies the target exchange instance for new events. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub frequency: Option<String>,
     #[serde(default)]

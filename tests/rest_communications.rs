@@ -1,4 +1,7 @@
 #![cfg(feature = "live-tests")]
+// Exercises the deprecated quote-ID-only lookup/delete endpoints alongside
+// the RFQ-scoped ones; still supported upstream for now.
+#![allow(deprecated)]
 
 //! # ⚠️  Known-failing tests
 //!

@@ -96,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
 
 - `examples/rest_retry_config.rs`
 - `examples/rfq_quotes_order_groups.rs`
-- `examples/ws_user_orders_v2.rs`
+- `examples/ws_user_orders.rs`
 - `examples/list_open_markets.rs`
 - `examples/orderbook_stream.rs`
 

@@ -1,6 +1,11 @@
-/// Example of using authenticated REST endpoints:
-/// - Gets balance
-/// - Places an order
+// Deliberately exercises the legacy `create_order` endpoint, deprecated
+// upstream in favor of `create_order_v2` (see
+// `examples/rfq_quotes_order_groups.rs` for a V2 flow).
+#![allow(deprecated)]
+
+//! Example of using authenticated REST endpoints:
+//! - Gets balance
+//! - Places an order
 use kalshi_fast::{
     BuySell, CreateOrderRequest, GetMarketsParams, KalshiAuth, KalshiEnvironment, KalshiRestClient,
     MarketStatusQuery, OrderType, YesNo,
