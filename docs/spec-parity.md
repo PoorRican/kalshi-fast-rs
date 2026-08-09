@@ -91,6 +91,37 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were deprecated by Kalshi on
+  2026-06-18 and no longer appear in the published OpenAPI reference. They are kept in the crate as
+  `#[deprecated]` methods rather than removed, since the upstream changelog describes them as
+  "deprecated" (returning a migration-notice error) rather than confirmed 404s, and removing the
+  primary order-placement surface without confirmation of the exact runtime behavior would be an
+  unnecessarily destructive breaking change. Use the `*_v2` equivalents
+  (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`), added in 0.6.0.
+- `get_quote`, `delete_quote`, `accept_quote`, `confirm_quote` are `#[deprecated]` in favor of the
+  RFQ-scoped `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`
+  (2026-06-25 / 2026-07-09). The quote-ID-only endpoints remain supported upstream for now.
+- `EventData.category` is `#[deprecated]`, mirroring the OpenAPI `deprecated: true` annotation on
+  the field; the series-level category is the replacement.
+- The WebSocket `multivariate` channel (message type `multivariate_lookup`) and the REST
+  multivariate lookup endpoints were removed upstream (fully deprecated 2026-07-02, removed
+  2026-08-06) and are removed from the crate. Multivariate market state changes are covered by the
+  `multivariate_market_lifecycle` channel instead.
+- `exchange_index` fields (added across `Series`, `EventData`, `MultivariateEventCollection`, and
+  the `market_lifecycle_v2` / `event_lifecycle` WebSocket messages) are modeled as `Option<i64>`
+  even where the OpenAPI/AsyncAPI schema marks them present-by-default (`x-omitempty: false`),
+  because the exchange-shard rollout is still in progress and only `exchange_index=0` exists in
+  production today.
+- `IntraExchangeInstanceTransfer.source` / `.destination` are kept as raw `String` rather than an
+  `ExchangeInstance` enum (`event_contract` | `margined`), matching the existing
+  `ApiUsageLevelGrant.exchange_instance` convention: the raw string tolerates future
+  exchange-instance values without a crate update.
+- The `subaccount` bound-validation in `GetPositionsParams`, `GetOrdersParams`, and
+  `CreateOrderRequest` previously rejected values above 32; the documented and live-spec range is
+  0-63 (0 = primary, 1-63 = numbered subaccounts). Fixed during the 2026-08-09 refresh.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -65,10 +65,10 @@ impl GetOrdersParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -255,10 +255,10 @@ impl CreateOrderRequest {
         }
 
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
+                "CreateOrderRequest: subaccount must be 0..=63".to_string(),
             ));
         }
 
@@ -419,7 +419,7 @@ pub struct CreateOrderGroupRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateOrderGroupResponse {
     pub order_group_id: String,
-    /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
+    /// 0 = primary account, 1-63 = subaccount. Added 2026-05-07.
     #[serde(default)]
     pub subaccount: Option<u32>,
 }
@@ -529,7 +529,7 @@ pub struct CreateOrderV2Request {
     pub cancel_order_on_pause: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reduce_only: Option<bool>,
-    /// 0 = primary; 1–32 = subaccount.
+    /// 0 = primary; 1-63 = subaccount.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -741,7 +741,11 @@ impl KalshiRestClient {
 
     /// Place a new order.
     ///
+    /// Deprecated 2026-06-18 (removed from the current OpenAPI reference);
+    /// use [`Self::create_order_v2`] instead.
+    ///
     /// **Requires auth.**
+    #[deprecated(note = "legacy /portfolio/orders mutation endpoint; use create_order_v2 instead")]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -754,7 +758,11 @@ impl KalshiRestClient {
 
     /// Cancel an order by ID.
     ///
+    /// Deprecated 2026-06-18 (removed from the current OpenAPI reference);
+    /// use [`Self::cancel_order_v2`] instead.
+    ///
     /// **Requires auth.**
+    #[deprecated(note = "legacy /portfolio/orders mutation endpoint; use cancel_order_v2 instead")]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +779,9 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated 2026-06-18 (removed from the current OpenAPI reference);
+    /// use [`Self::amend_order_v2`] instead.
+    #[deprecated(note = "legacy /portfolio/orders mutation endpoint; use amend_order_v2 instead")]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +792,11 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated 2026-06-18 (removed from the current OpenAPI reference);
+    /// use [`Self::decrease_order_v2`] instead.
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoint; use decrease_order_v2 instead"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +819,11 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated 2026-06-18 (removed from the current OpenAPI reference);
+    /// use [`Self::batch_create_orders_v2`] instead.
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoint; use batch_create_orders_v2 instead"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +833,11 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated 2026-06-18 (removed from the current OpenAPI reference);
+    /// use [`Self::batch_cancel_orders_v2`] instead.
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoint; use batch_cancel_orders_v2 instead"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -899,10 +925,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 

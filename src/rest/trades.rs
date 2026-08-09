@@ -116,6 +116,11 @@ pub struct GetHistoricalCutoffResponse {
     pub market_settled_ts: String,
     pub trades_created_ts: String,
     pub orders_updated_ts: String,
+    /// Cutoff based on position last-update time. Settled positions archived
+    /// before this timestamp are served through `GET /historical/positions`.
+    /// Added 2026-07-23.
+    #[serde(default)]
+    pub market_positions_last_updated_ts: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
