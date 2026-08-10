@@ -2,17 +2,17 @@
 
 pub(crate) use cargo_husky as _;
 use kalshi_fast::{
-    ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
-    CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
-    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
-    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
-    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
+    ApplySubaccountTransferResponse, BookSide, BuySell, CreateSubaccountResponse, ErrorResponse,
+    EventData, EventMetadata, EventStatus, GetAccountApiLimitsResponse,
+    GetAccountEndpointCostsResponse, GetEventsParams, GetExchangeScheduleResponse,
+    GetExchangeStatusResponse, GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse,
+    GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams,
+    GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse, GetSettlementsParams,
+    GetSettlementsResponse, GetSubaccountBalancesResponse, GetSubaccountTransfersParams,
+    GetSubaccountTransfersResponse, GetTradesParams, GetTradesResponse,
+    GetUserDataTimestampResponse, MarketMetadata, MarketStatus, MarketStatusConversionError,
+    MarketStatusQuery, MveFilter, OrderStatus, OrderType, PositionCountFilter, PriceRange,
+    SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
 
 // ============================================================================
@@ -304,35 +304,6 @@ fn get_positions_params_serializes_count_filter_csv() {
 
     let json = serde_json::to_value(&params).unwrap();
     assert_eq!(json["count_filter"], "position,total_traded");
-}
-
-#[test]
-fn create_order_request_serializes_all_fields() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-123".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        client_order_id: Some("my-order-1".into()),
-        count: Some(10),
-        r#type: Some(OrderType::Limit),
-        yes_price: Some(50),
-        time_in_force: Some(TimeInForce::GoodTillCanceled),
-        post_only: Some(true),
-        subaccount: Some(1),
-        ..Default::default()
-    };
-
-    let json = serde_json::to_value(&req).unwrap();
-    assert_eq!(json["ticker"], "TICK-123");
-    assert_eq!(json["side"], "yes");
-    assert_eq!(json["action"], "buy");
-    assert_eq!(json["client_order_id"], "my-order-1");
-    assert_eq!(json["count"], 10);
-    assert_eq!(json["type"], "limit");
-    assert_eq!(json["yes_price"], 50);
-    assert_eq!(json["time_in_force"], "good_till_canceled");
-    assert_eq!(json["post_only"], true);
-    assert_eq!(json["subaccount"], 1);
 }
 
 #[test]
@@ -947,7 +918,7 @@ fn get_orders_response_deserializes() {
 }
 
 #[test]
-fn create_order_response_deserializes() {
+fn get_order_response_deserializes() {
     let json = r#"{
         "order": {
             "order_id": "ord-123",
@@ -970,41 +941,10 @@ fn create_order_response_deserializes() {
         }
     }"#;
 
-    let resp: kalshi_fast::CreateOrderResponse = serde_json::from_str(json).unwrap();
+    let resp: kalshi_fast::GetOrderResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.order.order_id, "ord-123");
     assert_eq!(resp.order.ticker, "MKT-1");
-}
-
-#[test]
-fn cancel_order_response_deserializes() {
-    let json = r#"{
-        "order": {
-            "order_id": "ord-123",
-            "user_id": "user-1",
-            "client_order_id": "client-1",
-            "ticker": "MKT-1",
-            "side": "yes",
-            "action": "buy",
-            "type": "limit",
-            "status": "canceled",
-            "yes_price_dollars": "0.5500",
-            "no_price_dollars": "0.4500",
-            "fill_count_fp": "0.00",
-            "remaining_count_fp": "5.00",
-            "initial_count_fp": "10.00",
-            "taker_fill_cost_dollars": "0.0000",
-            "maker_fill_cost_dollars": "0.0000",
-            "taker_fees_dollars": "0.0000",
-            "maker_fees_dollars": "0.0000"
-        },
-        "reduced_by": 5,
-        "reduced_by_fp": "5.00"
-    }"#;
-
-    let resp: kalshi_fast::CancelOrderResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.order.status, OrderStatus::Canceled);
-    assert_eq!(resp.reduced_by, 5);
-    assert_eq!(resp.reduced_by_fp, "5.00");
+    assert_eq!(resp.order.status, OrderStatus::Resting);
 }
 
 #[test]
@@ -1067,19 +1007,28 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
-}
+    // New fields (2026-07-02) tolerate absence on older payloads.
+    assert!(!resp.intra_exchange_transfers_active);
+    assert!(resp.exchange_index_statuses.is_empty());
 
-#[test]
-fn get_exchange_announcements_response_deserializes() {
-    let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
+    let with_shards_json = r#"{
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "description": "primary shard",
+                "exchange_active": true,
+                "trading_active": true,
+                "intra_exchange_transfers_active": true
+            }
         ]
     }"#;
-
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
+    let resp: GetExchangeStatusResponse = serde_json::from_str(with_shards_json).unwrap();
+    assert!(resp.intra_exchange_transfers_active);
+    assert_eq!(resp.exchange_index_statuses.len(), 1);
+    assert_eq!(resp.exchange_index_statuses[0].description, "primary shard");
 }
 
 #[test]
@@ -1235,12 +1184,25 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000,"exchange_index":0}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
+
+    // A subaccount with funds on multiple exchange indexes returns one entry
+    // per index (2026-07-02).
+    let multi_index_json = r#"{
+        "subaccount_balances": [
+            {"subaccount_number":1,"balance":100,"updated_ts":1700000000,"exchange_index":0},
+            {"subaccount_number":1,"balance":50,"updated_ts":1700000000,"exchange_index":1}
+        ]
+    }"#;
+    let resp: GetSubaccountBalancesResponse = serde_json::from_str(multi_index_json).unwrap();
+    assert_eq!(resp.subaccount_balances.len(), 2);
+    assert_eq!(resp.subaccount_balances[1].exchange_index, 1);
 }
 
 #[test]
@@ -1465,135 +1427,6 @@ fn get_orders_params_validates_subaccount_bounds() {
     assert!(params.validate().is_err());
 }
 
-#[test]
-fn create_order_request_validate_requires_count_or_count_fp() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_rejects_count_mismatch() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(2),
-        count_fp: Some("1.0".into()),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_rejects_conflicting_prices() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        yes_price_dollars: Some("0.10".into()),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        no_price: Some(90),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_market_order_no_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Market),
-        yes_price: Some(10),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_limit_order_requires_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Limit),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_subaccount_bounds() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        subaccount: Some(32),
-        ..Default::default()
-    };
-    assert!(req.validate().is_ok());
-
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        subaccount: Some(33),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_sell_position_floor() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        sell_position_floor: Some(1),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_ok_with_yes_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        r#type: Some(OrderType::Limit),
-        ..Default::default()
-    };
-    assert!(req.validate().is_ok());
-}
-
 // ============================================================================
 // Optional Field Deserialization Tests (image_url / color_code)
 // ============================================================================
@@ -1802,7 +1635,7 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
 }
 
 #[test]
-fn multivariate_collections_and_lookup_responses_deserialize_typed() {
+fn multivariate_collections_responses_deserialize_typed() {
     let json = r#"{
         "multivariate_contracts": [{
             "collection_ticker": "COL-1",
@@ -1833,94 +1666,6 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
-
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
-}
-
-#[test]
-fn batch_order_responses_deserialize_typed() {
-    let create_json = r#"{
-        "orders": [{
-            "client_order_id": "c-1",
-            "order": {
-                "order_id": "o-1",
-                "user_id": "user-1",
-                "client_order_id": "c-1",
-                "ticker": "MKT-1",
-                "side": "yes",
-                "action": "buy",
-                "type": "limit",
-                "status": "resting",
-                "yes_price_dollars": "0.5500",
-                "no_price_dollars": "0.4500",
-                "fill_count_fp": "0.00",
-                "remaining_count_fp": "10.00",
-                "initial_count_fp": "10.00",
-                "taker_fill_cost_dollars": "0.0000",
-                "maker_fill_cost_dollars": "0.0000",
-                "taker_fees_dollars": "0.0000",
-                "maker_fees_dollars": "0.0000"
-            },
-            "error": null
-        }]
-    }"#;
-    let created: kalshi_fast::BatchCreateOrdersResponse =
-        serde_json::from_str(create_json).unwrap();
-    assert_eq!(created.orders.len(), 1);
-    assert_eq!(
-        created.orders[0]
-            .order
-            .as_ref()
-            .map(|o| o.order_id.as_str()),
-        Some("o-1")
-    );
-
-    let cancel_json = r#"{
-        "orders": [{
-            "order_id": "o-1",
-            "order": {
-                "order_id": "o-1",
-                "user_id": "user-1",
-                "client_order_id": "c-1",
-                "ticker": "MKT-1",
-                "side": "yes",
-                "action": "buy",
-                "type": "limit",
-                "status": "canceled",
-                "yes_price_dollars": "0.5500",
-                "no_price_dollars": "0.4500",
-                "fill_count_fp": "0.00",
-                "remaining_count_fp": "0.00",
-                "initial_count_fp": "10.00",
-                "taker_fill_cost_dollars": "0.0000",
-                "maker_fill_cost_dollars": "0.0000",
-                "taker_fees_dollars": "0.0000",
-                "maker_fees_dollars": "0.0000"
-            },
-            "reduced_by": 1,
-            "reduced_by_fp": "1.00",
-            "error": null
-        }]
-    }"#;
-    let canceled: kalshi_fast::BatchCancelOrdersResponse =
-        serde_json::from_str(cancel_json).unwrap();
-    assert_eq!(canceled.orders.len(), 1);
-    assert_eq!(canceled.orders[0].reduced_by_fp, "1.00");
 }
 
 #[test]

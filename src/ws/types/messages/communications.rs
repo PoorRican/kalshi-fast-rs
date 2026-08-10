@@ -64,6 +64,10 @@ pub struct WsQuoteCreated {
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
     pub created_ts: String,
+    /// Subaccount the quote creator placed this quote under. Only present
+    /// when the recipient's own side used a subaccount. Added 2026-07-30.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -231,6 +235,8 @@ pub struct WsQuoteCreatedRef<'a> {
     pub rfq_target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
     #[serde(borrow)]
     pub created_ts: Cow<'a, str>,
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 impl<'a> WsQuoteCreatedRef<'a> {
@@ -247,6 +253,7 @@ impl<'a> WsQuoteCreatedRef<'a> {
             no_contracts_offered_fp: self.no_contracts_offered_fp.map(Cow::into_owned),
             rfq_target_cost_dollars: self.rfq_target_cost_dollars.map(Cow::into_owned),
             created_ts: self.created_ts.into_owned(),
+            subaccount: self.subaccount,
         }
     }
 }

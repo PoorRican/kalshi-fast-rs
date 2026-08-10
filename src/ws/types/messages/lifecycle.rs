@@ -1,3 +1,4 @@
+use crate::rest::PriceRange;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -9,6 +10,10 @@ pub struct WsMarketLifecycleV2 {
     pub market_ticker: String,
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
+    /// Exchange shard the market lives on. Only present when the market is
+    /// created. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub open_ts: Option<i64>,
     #[serde(default)]
@@ -27,6 +32,11 @@ pub struct WsMarketLifecycleV2 {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// Valid price bands for the market, in fixed-point dollars. Emitted
+    /// alongside `price_level_structure` (on creation and
+    /// `price_level_structure_updated` events). Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events and is distinct from
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
@@ -106,12 +116,17 @@ pub struct WsEventLifecycle {
     pub collateral_return_type: Option<String>,
     #[serde(default)]
     pub series_ticker: Option<String>,
+    /// Exchange shard the event's markets live on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub strike_date: Option<i64>,
     #[serde(default)]
     pub strike_period: Option<String>,
     #[serde(default)]
     pub additional_metadata: Option<WsEventLifecycleAdditionalMetadata>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +145,8 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
     #[serde(default)]
+    pub exchange_index: Option<i64>,
+    #[serde(default)]
     pub open_ts: Option<i64>,
     #[serde(default)]
     pub close_ts: Option<i64>,
@@ -147,6 +164,8 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
@@ -165,6 +184,7 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
         WsMarketLifecycleV2 {
             market_ticker: self.market_ticker.into_owned(),
             event_type: self.event_type,
+            exchange_index: self.exchange_index,
             open_ts: self.open_ts,
             close_ts: self.close_ts,
             result: self.result.map(Cow::into_owned),
@@ -174,6 +194,7 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             is_deactivated: self.is_deactivated,
             fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges,
             floor_strike: self.floor_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
@@ -251,11 +272,15 @@ pub struct WsEventLifecycleRef<'a> {
     #[serde(default, borrow)]
     pub series_ticker: Option<Cow<'a, str>>,
     #[serde(default)]
+    pub exchange_index: Option<i64>,
+    #[serde(default)]
     pub strike_date: Option<i64>,
     #[serde(default, borrow)]
     pub strike_period: Option<Cow<'a, str>>,
     #[serde(default)]
     pub additional_metadata: Option<WsEventLifecycleAdditionalMetadataRef>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl<'a> WsEventLifecycleRef<'a> {
@@ -266,11 +291,13 @@ impl<'a> WsEventLifecycleRef<'a> {
             subtitle: self.subtitle.map(Cow::into_owned),
             collateral_return_type: self.collateral_return_type.map(Cow::into_owned),
             series_ticker: self.series_ticker.map(Cow::into_owned),
+            exchange_index: self.exchange_index,
             strike_date: self.strike_date,
             strike_period: self.strike_period.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata
                 .map(WsEventLifecycleAdditionalMetadataRef::into_owned),
+            extra: self.extra,
         }
     }
 }
