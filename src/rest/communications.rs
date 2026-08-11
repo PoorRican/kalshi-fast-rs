@@ -97,14 +97,22 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restrict to quotes last updated after this Unix timestamp. Added
+    /// 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
+    pub min_ts: Option<i64>,
+    /// Restrict to quotes last updated before this Unix timestamp. Added
+    /// 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to
+    /// enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote_creator_user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -278,6 +286,16 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Look up a quote by ID.
+    ///
+    /// Deprecated 2026-06-25: use [`Self::get_rfq_quote`] instead, which
+    /// scopes the lookup to its RFQ. Quotes are no longer guaranteed to
+    /// remain durably queryable through this endpoint once cleared by a
+    /// server roll or restart.
+    #[deprecated(
+        since = "0.7.0",
+        note = "use get_rfq_quote instead; scope quote actions to their RFQ"
+    )]
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,6 +308,29 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Look up a quote scoped to its RFQ. Returns `404` if the quote does
+    /// not belong to the given RFQ. Added 2026-06-25.
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Deprecated 2026-06-25: use [`Self::delete_rfq_quote`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "use delete_rfq_quote instead; scope quote actions to their RFQ"
+    )]
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -302,6 +343,29 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Cancel a quote scoped to its RFQ, so it can no longer be accepted.
+    /// Added 2026-06-25.
+    pub async fn delete_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Deprecated 2026-06-25: use [`Self::accept_rfq_quote`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "use accept_rfq_quote instead; scope quote actions to their RFQ"
+    )]
     pub async fn accept_quote(
         &self,
         quote_id: &str,
@@ -312,8 +376,43 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Accept a quote scoped to its RFQ. Requires the quoter to confirm.
+    /// Added 2026-06-25.
+    pub async fn accept_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/accept"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Deprecated 2026-06-25: use [`Self::confirm_rfq_quote`] instead.
+    #[deprecated(
+        since = "0.7.0",
+        note = "use confirm_rfq_quote instead; scope quote actions to their RFQ"
+    )]
     pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote scoped to its RFQ. Starts a timer for order
+    /// execution. Added 2026-06-25.
+    pub async fn confirm_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm"
+        ));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await

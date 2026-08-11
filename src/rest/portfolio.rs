@@ -25,6 +25,21 @@ pub struct GetBalanceResponse {
     pub balance_dollars: Option<FixedPointDollars>,
 }
 
+/// GET /portfolio/balance query params.
+///
+/// `portfolio_value` in the response is always scoped to `exchange_index`
+/// (defaulting to 0). When `subaccount` is omitted, `balance` is the primary
+/// account's aggregate balance; pass `subaccount` explicitly (0 for primary,
+/// 1-63 for subaccounts) to read that subaccount's balance on the requested
+/// exchange index instead. Added 2026-08 (exchange-index sharding).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+}
+
 /// GET /portfolio/positions query params
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetPositionsParams {
@@ -90,8 +105,6 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
 }
@@ -242,16 +255,13 @@ impl KalshiRestClient {
     /// Get the account balance.
     ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.

@@ -200,13 +200,6 @@ impl WsEnvelope {
                 seq,
                 msg: parse_msg(&msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageV2::Data(WsDataMessageV2::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_msg(&msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -253,6 +246,18 @@ impl WsEnvelope {
             }
             WsMsgType::CfbenchmarksValueIndexlist => Ok(WsMessageV2::Data(
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: parse_msg(&msg)?,
@@ -410,13 +415,6 @@ impl<'a> WsEnvelopeRef<'a> {
                 seq,
                 msg: parse_borrowed_msg(msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageRef::Data(WsDataMessageRef::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_borrowed_msg(msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
@@ -463,6 +461,18 @@ impl<'a> WsEnvelopeRef<'a> {
             }
             WsMsgType::CfbenchmarksValueIndexlist => Ok(WsMessageRef::Data(
                 WsDataMessageRef::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: parse_borrowed_msg(msg)?,
@@ -560,11 +570,6 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsEventFeeUpdate,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariate,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -589,6 +594,16 @@ pub enum WsDataMessageV2 {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
     },
 }
 
@@ -644,11 +659,6 @@ pub enum WsDataMessageRef<'a> {
         seq: Option<u64>,
         msg: WsEventFeeUpdateRef<'a>,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariateRef<'a>,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -673,6 +683,16 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -735,11 +755,6 @@ impl<'a> WsDataMessageRef<'a> {
                 seq,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::Multivariate { sid, seq, msg } => WsDataMessageV2::Multivariate {
-                sid,
-                seq,
-                msg: msg.into_owned(),
-            },
             WsDataMessageRef::Communications { sid, seq, msg } => WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -764,6 +779,18 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1155,5 +1182,57 @@ mod tests {
             msg,
             WsMessageRef::Data(WsDataMessageRef::Ticker { .. })
         ));
+    }
+
+    #[test]
+    fn ws_envelope_into_message_pyth_value() {
+        let json = r#"{
+            "type":"pyth_value",
+            "sid":1,
+            "seq":2,
+            "msg":{
+                "underlying_ticker":"KXBTC",
+                "value_usd":"65000.00000000",
+                "source_ts_ms":1700000000000,
+                "received_at":1700000000001
+            }
+        }"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        let msg = env.into_message().unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "KXBTC");
+                assert_eq!(msg.value_usd, "65000.00000000");
+            }
+            other => panic!("expected pyth_value data message, got {other:?}"),
+        }
+
+        let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match msg_ref.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "KXBTC");
+            }
+            other => panic!("expected pyth_value data message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ws_envelope_into_message_pyth_value_underlying_list() {
+        let json = r#"{
+            "type":"pyth_value_underlying_list",
+            "sid":1,
+            "seq":2,
+            "msg":{
+                "underlying_tickers":["KXBTC","KXETH"]
+            }
+        }"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        let msg = env.into_message().unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { msg, .. }) => {
+                assert_eq!(msg.underlying_tickers, vec!["KXBTC", "KXETH"]);
+            }
+            other => panic!("expected pyth_value_underlying_list data message, got {other:?}"),
+        }
     }
 }

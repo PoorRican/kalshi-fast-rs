@@ -91,6 +91,71 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Legacy order mutation endpoints removed (2026-08).** `POST /portfolio/orders`,
+  `DELETE /portfolio/orders/{order_id}`, `POST /portfolio/orders/{order_id}/amend`,
+  `POST /portfolio/orders/{order_id}/decrease`, `POST /portfolio/orders/batched`, and
+  `DELETE /portfolio/orders/batched` no longer appear in the OpenAPI spec (deprecation was announced
+  2026-06-18, and by this refresh they're gone). Only the read endpoints (`GET /portfolio/orders`,
+  `GET /portfolio/orders/{order_id}`) remain. The crate removed `create_order`, `cancel_order`,
+  `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders`, and their
+  request/response types (`CreateOrderRequest`, `CancelOrderParams`, `CancelOrderResponse`,
+  `AmendOrderRequest`, `AmendOrderResponse`, `DecreaseOrderRequest`, `DecreaseOrderResponse`,
+  `BatchCreateOrdersRequest`, `BatchCreateOrdersResponse`, `BatchCancelOrdersRequest`,
+  `BatchCancelOrdersResponse`, and their per-order response types). Use the V2 event-order endpoints
+  instead (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`, added in 0.6.0) — this is a breaking change
+  (0.6.0 → 0.7.0).
+
+- **Multi-exchange-index sharding.** Kalshi is rolling out shard identifiers (`exchange_index`,
+  currently always `0` in production) across markets, series, events, multivariate collections, and
+  several portfolio endpoints. The crate models `exchange_index` as `Option<i64>` (or plain `i64`
+  where the spec marks it required, e.g. `SubaccountBalance`) everywhere it appears, and does not
+  attempt to route requests by shard. `GetBalanceParams` and `UpdateOrderGroupLimitParams` gained an
+  `exchange_index` query field; `GetExchangeStatusResponse` gained `exchange_index_statuses: Vec<
+  ExchangeIndexStatus>` and `intra_exchange_transfers_active`. New `POST
+  /portfolio/intra_exchange_instance_transfer` (+ list/get) endpoints move funds between exchange
+  instances (`event_contract` | `margined`), modeled with a proper `ExchangeInstance` enum (unlike
+  `ApiUsageLevelGrant.exchange_instance`, which stays a raw `String` since it's read-only telemetry).
+
+- **RFQ-scoped quote endpoints (2026-06-25).** `GET/DELETE /communications/quotes/{quote_id}` and
+  `PUT /communications/quotes/{quote_id}/accept|confirm` are deprecated in the spec in favor of
+  `.../rfqs/{rfq_id}/quotes/{quote_id}...` variants — RFQ quotes are no longer guaranteed to remain
+  durably queryable outside a post-acceptance state once cleared by a server roll/restart. The crate
+  keeps the old methods (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) marked
+  `#[deprecated]` for source compatibility and adds `get_rfq_quote`, `delete_rfq_quote`,
+  `accept_rfq_quote`, `confirm_rfq_quote`. `GetQuotesParams` dropped `market_ticker`/`event_ticker`
+  (removed upstream 2026-06-20) and gained `min_ts`, `max_ts`, and `user_filter`.
+
+- **`price_level_structure` stays an untyped `String`** on both REST (`Market`) and WebSocket
+  (`market_lifecycle_v2`) even though the AsyncAPI now enumerates 12 known values (`linear_cent`,
+  `deci_cent`, `tapered_deci_cent`, plus 9 `center_*_edge_*_cent` variants added
+  2026-06-18 through 2026-08-13). Per Kalshi's own guidance, consumers should key off the
+  `price_ranges` array for valid order prices rather than the structure name, so no crate change is
+  needed when new structure values appear.
+
+- **`pyth_value` WebSocket channel (2026-07-23)**, modeled the same way as `cfbenchmarks_value` but
+  keyed by underlying ticker instead of index ID: `WsPythValue` / `WsPythUnderlyingList` (+ `Ref`
+  variants), `underlying_tickers` on `WsSubscriptionParamsV2` / `WsUpdateSubscriptionParamsV2`, and
+  `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` (mirroring the
+  index actions). `validate_update` enforces the same mutual-exclusivity rules against market
+  targets.
+
+- **`WsTrade.is_block_trade: bool`** (2026-08-13) mirrors the REST `Trade.is_block_trade` field
+  added in 0.6.0 — `#[serde(default)]` despite being marked required in the spec, for the same
+  forward/backward-compatibility reasons.
+
+- **Removed upstream, removed from the crate:** the `service` field on REST error bodies (removed
+  2026-08-06; branch on `code` instead — the crate never modeled a `code`-based branch since none
+  existed downstream); `GET /exchange/announcements` (removed 2026-07-04, along with
+  `Announcement`/`AnnouncementType`/`AnnouncementStatus`/`GetExchangeAnnouncementsResponse`); the
+  multivariate ticker-lookup endpoint (`PUT/GET .../lookup`, removed 2026-08-05, along with
+  `WsChannelV2::Multivariate` / the `multivariate_lookup` WS message type — the
+  `multivariate_market_lifecycle` channel is unaffected); `Market.response_price_units`,
+  `Market.fractional_trading_enabled`, and `MarketPosition.resting_orders_count` (removed
+  2026-07-09); `WsMarketLifecycleV2.fractional_trading_enabled` and the
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` variant (no longer in the AsyncAPI
+  `market_lifecycle_v2` event-type enum).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

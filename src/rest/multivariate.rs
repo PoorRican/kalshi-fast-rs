@@ -1,8 +1,10 @@
 //! Multivariate event collection endpoints.
 //!
 //! Collections group together related events into a single multi-leg market.
-//! This module exposes the CRUD endpoints, the ticker-pair lookup helpers, and
-//! the lookup history feed.
+//! This module exposes the CRUD endpoints. The ticker-pair lookup endpoint
+//! and its lookup-history feed were removed upstream 2026-08-05 (they predated
+//! RFQs); use `create_market_in_multivariate_event_collection` to create or
+//! resolve a combo market, or the communications (RFQ) APIs for quoting.
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
@@ -73,6 +75,10 @@ pub struct MultivariateEventCollection {
     pub size_min: i32,
     pub size_max: i32,
     pub functional_description: String,
+    /// Identifier for the exchange shard this collection's markets live on.
+    /// Added 2026-08-06 (multi-exchange-index sharding).
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -99,41 +105,6 @@ pub struct CreateMarketInMultivariateEventCollectionResponse {
     pub market_ticker: String,
     #[serde(default)]
     pub market: Option<Market>,
-    #[serde(default, flatten)]
-    pub extra: Map<String, Value>,
-}
-
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct GetMultivariateEventCollectionLookupHistoryParams {
-    pub lookback_seconds: u32,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetMultivariateEventCollectionLookupHistoryResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub lookup_points: Vec<LookupPoint>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LookupPoint {
-    pub event_ticker: String,
-    pub market_ticker: String,
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub selected_markets: Vec<TickerPair>,
-    pub last_queried_ts: String,
-    #[serde(default, flatten)]
-    pub extra: Map<String, Value>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LookupTickersForMarketInMultivariateEventCollectionRequest {
-    pub selected_markets: Vec<TickerPair>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LookupTickersForMarketInMultivariateEventCollectionResponse {
-    pub event_ticker: String,
-    pub market_ticker: String,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -180,36 +151,6 @@ impl KalshiRestClient {
             "/multivariate_event_collections/{collection_ticker}"
         ));
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
-            .await
-    }
-
-    pub async fn get_multivariate_event_collection_lookup_history(
-        &self,
-        collection_ticker: &str,
-        params: GetMultivariateEventCollectionLookupHistoryParams,
-    ) -> Result<GetMultivariateEventCollectionLookupHistoryResponse, KalshiError> {
-        let path = Self::full_path(&format!(
-            "/multivariate_event_collections/{collection_ticker}/lookup"
-        ));
-        self.send(
-            Method::GET,
-            &path,
-            Some(&params),
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
-    pub async fn lookup_tickers_for_market_in_multivariate_event_collection(
-        &self,
-        collection_ticker: &str,
-        body: LookupTickersForMarketInMultivariateEventCollectionRequest,
-    ) -> Result<LookupTickersForMarketInMultivariateEventCollectionResponse, KalshiError> {
-        let path = Self::full_path(&format!(
-            "/multivariate_event_collections/{collection_ticker}/lookup"
-        ));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await
     }
 
