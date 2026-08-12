@@ -74,12 +74,10 @@ pub(crate) fn build_http_error(
     }
 
     let raw_body = String::from_utf8_lossy(bytes).to_string();
+    // `service` is deprecated/removed upstream (see ErrorResponse::service) and
+    // deliberately excluded from this shape check.
     let normalize = |error: ErrorResponse| {
-        if error.code.is_some()
-            || error.message.is_some()
-            || error.details.is_some()
-            || error.service.is_some()
-        {
+        if error.code.is_some() || error.message.is_some() || error.details.is_some() {
             Some(error)
         } else {
             None

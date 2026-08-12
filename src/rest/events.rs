@@ -5,7 +5,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
+use crate::rest::series::{EventMetadata, SettlementSource};
 use crate::types::{EventStatus, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
 use reqwest::Method;
@@ -31,6 +31,14 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Comma-separated list of event tickers to filter by. Query param name is
+    /// `tickers` (added 2026-06-18).
+    #[serde(rename = "tickers", skip_serializing_if = "Option::is_none")]
+    pub event_tickers: Option<String>,
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    /// Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
@@ -146,6 +154,13 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official sources used for determination of markets within this event.
+    /// Added 2026-06-18.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    /// Identifier for the exchange shard this event's markets live on.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

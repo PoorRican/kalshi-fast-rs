@@ -126,6 +126,15 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Named the internal Kalshi service that produced the error. Deprecated
+    /// 2026-07-28 and removed from all error responses 2026-08-06; kept as a
+    /// no-op field so older/cached payloads and existing match sites still
+    /// compile. Branch on `code` instead, which is present on every error
+    /// response.
+    #[deprecated(
+        since = "0.7.0",
+        note = "removed from all Kalshi error responses as of 2026-08-06; branch on `code` instead"
+    )]
     #[serde(default)]
     pub service: Option<String>,
 }

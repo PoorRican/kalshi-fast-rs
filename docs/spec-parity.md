@@ -91,6 +91,68 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Legacy V1 order mutation endpoints were removed from the OpenAPI spec (0.7.0).** As of this
+  refresh, `POST /portfolio/orders`, `DELETE /portfolio/orders/{order_id}`,
+  `POST /portfolio/orders/{order_id}/amend`, `POST /portfolio/orders/{order_id}/decrease`,
+  `POST /portfolio/orders/batched`, and `DELETE /portfolio/orders/batched` no longer appear in the
+  spec at all (Kalshi announced deprecation 2026-06-18; the paths are now gone, not merely marked
+  `deprecated: true`). `create_order`, `cancel_order`, `amend_order`, `decrease_order`,
+  `batch_create_orders`, `batch_cancel_orders`, and their request/response types were removed from
+  the crate (breaking, 0.6.0 → 0.7.0). Use the V2 equivalents (`create_order_v2`, `cancel_order_v2`,
+  `amend_order_v2`, `decrease_order_v2`, `batch_create_orders_v2`, `batch_cancel_orders_v2`), which
+  use `BookSide` + a single fixed-point `price` instead of separate yes/no price + side + action.
+  `GET /portfolio/orders`, `GET /portfolio/orders/{order_id}`, and the queue-position endpoints are
+  unaffected and remain modeled as before.
+
+- **`GET /exchange/announcements` was removed from the OpenAPI spec (0.7.0).** `get_exchange_announcements`,
+  `GetExchangeAnnouncementsResponse`, `Announcement`, `AnnouncementType`, and `AnnouncementStatus`
+  were removed from the crate (breaking). `GetExchangeStatusResponse` gained
+  `intra_exchange_transfers_active: Option<bool>` and `exchange_index_statuses:
+  Option<Vec<ExchangeIndexStatus>>` for per-shard status (added to the spec 2026-07-02, `description`
+  field added 2026-08-07).
+
+- **The multivariate ticker-lookup surface was removed from both specs (0.7.0).** The
+  `PUT/GET .../multivariate_event_collections/{collection_ticker}/lookup` REST endpoints and the
+  `multivariate` WebSocket channel (`multivariate_lookup` message type) were removed by Kalshi on
+  2026-08-06 (lookup history was already fully deprecated 2026-07-02). `lookup_tickers_for_market_in_multivariate_event_collection`,
+  `get_multivariate_event_collection_lookup_history`, their request/response types, `WsChannelV2::Multivariate`,
+  `WsMultivariate`/`WsMultivariateRef`, and the `multivariate_lookup` message-type variants were
+  removed from the crate (breaking). The `multivariate_market_lifecycle` channel and
+  `create_market_in_multivariate_event_collection` (create/resolve) are unaffected.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled` (REST and WS
+  `market_lifecycle_v2`), and `MarketPosition.resting_orders_count` (REST and WS) were removed from
+  both specs 2026-07-09 ("Deprecated Predictions REST schema fields removed") and are no longer
+  modeled (breaking). `price_level_structure`/`price_ranges`/the fixed-point fields remain the
+  canonical replacements.
+
+- `ErrorResponse.service` was deprecated 2026-07-28 and removed from all error responses 2026-08-06.
+  It is kept as a `#[deprecated]` `Option<String>` field (rather than removed outright) since it is
+  harmless to retain and some cached/historical payloads may still carry it; branch on `code`
+  instead, which is present on every error response.
+
+- `exchange_index` (`Option<u32>`, defaulting to 0) was added across most REST response/request
+  shapes during 2026-06/07/08 as Kalshi rolled out multi-shard exchange support: `Series`, `EventData`,
+  `MultivariateEventCollection`, `Order`, `OrderGroup` and its create/get responses, `SubaccountBalance`,
+  `SubaccountTransfer`, `SubaccountNettingConfig`, and the WS `market_lifecycle_v2` /
+  `event_lifecycle` creation payloads (`WsMarketLifecycleV2`, `WsEventLifecycle`). Request-side
+  `exchange_index` fields that route by market ticker (`CreateOrderRequest` in the V2 create/amend/
+  decrease/cancel/batch-cancel order bodies) are modeled as `Option<i32>` instead, because the API
+  accepts `-1` there as an "auto-route by ticker" sentinel; the sibling `market_ticker` field becomes
+  required when `-1` is used. `GetBalanceResponse` gained a `balance_breakdown:
+  Option<Vec<IndexedBalance>>` per-instance breakdown (2026-08-13), and `get_balance` now takes a
+  `GetBalanceParams { subaccount, exchange_index }`.
+
+- `event product_metadata.cadence` (added 2026-07-30) is not a distinct field on `EventMetadata`;
+  it round-trips through the existing `#[serde(flatten)] extra: Map<String, Value>` catch-all, so no
+  code change was needed for it.
+
+- New `price_level_structure` string values (seven added 2026-07-23, `center_deci_edge_centi_cent`
+  added 2026-08-13, `center_centi_edge_centi_cent` for combo markets scheduled 2026-08-17) require no
+  code change: the field is modeled as `Option<String>` (not an enum) precisely so new structure
+  names round-trip without a crate update. Consumers should key off `price_ranges`
+  (`{start, end, step}` bands), not the structure name.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
