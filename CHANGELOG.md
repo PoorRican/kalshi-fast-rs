@@ -75,6 +75,14 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
   - `WsDataMessageV2::CfbenchmarksValue` and `WsDataMessageV2::CfbenchmarksValueIndexlist` variants
     routed through both the wire and envelope parse paths
 
+### Fixed
+
+- [Rust API] Preserved Kalshi WebSocket control-frame subscription cursor metadata: `sid` / `seq`
+  now survive both owned and borrowed parsing paths for subscribed, unsubscribed, `ok`,
+  list-subscriptions, and error responses. `WsMessageV2::subscription_id()` /
+  `WsMessageRef::subscription_id()` and `.sequence()` expose metadata uniformly across data and
+  control frames.
+
 ### Changed
 
 - [Rust API] `GetAccountApiLimitsResponse` now reflects the current OpenAPI shape: nested
@@ -91,6 +99,11 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
   variants, and `WsUpdateSubscriptionParamsV2` gained an `index_ids` field. Downstream code with
   exhaustive matches over `WsUpdateAction` or struct-literal construction of
   `WsUpdateSubscriptionParamsV2` must be updated.
+- [Rust API] All `WsMessageV2` and `WsMessageRef` control variants gained `sid` and `seq` fields;
+  exhaustive downstream matches must use the new fields or `..`. Consumers accounting for the
+  per-subscription cursor MUST use `subscription_id()` and `sequence()` rather than enumerating
+  message variants.
+
 
 
 ## [0.5.0] - 2026-05-29
