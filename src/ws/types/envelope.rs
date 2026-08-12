@@ -272,10 +272,14 @@ impl WsEnvelope {
             )),
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
+                sid,
+                seq,
                 raw: msg,
             }),
             other => Ok(WsMessageV2::Unknown {
                 msg_type: other,
+                sid,
+                seq,
                 raw: msg,
             }),
         }
@@ -493,10 +497,14 @@ impl<'a> WsEnvelopeRef<'a> {
             )),
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
+                sid,
+                seq,
                 raw: msg,
             }),
             other => Ok(WsMessageRef::Unknown {
                 msg_type: other,
+                sid,
+                seq,
                 raw: msg,
             }),
         }
@@ -535,6 +543,8 @@ pub enum WsMessageV2 {
     Data(WsDataMessageV2),
     Unknown {
         msg_type: WsMsgType,
+        sid: Option<u64>,
+        seq: Option<u64>,
         raw: Option<Box<RawValue>>,
     },
 }
@@ -883,6 +893,8 @@ pub enum WsMessageRef<'a> {
     Data(WsDataMessageRef<'a>),
     Unknown {
         msg_type: WsMsgType,
+        sid: Option<u64>,
+        seq: Option<u64>,
         raw: Option<&'a RawValue>,
     },
 }
@@ -900,7 +912,7 @@ impl<'a> WsMessageRef<'a> {
             | Self::Ok { sid, .. }
             | Self::Error { sid, .. } => *sid,
             Self::Data(data) => data.subscription_id(),
-            Self::Unknown { .. } => None,
+            Self::Unknown { sid, .. } => *sid,
         }
     }
 
@@ -916,7 +928,7 @@ impl<'a> WsMessageRef<'a> {
             | Self::Ok { seq, .. }
             | Self::Error { seq, .. } => *seq,
             Self::Data(data) => data.sequence(),
-            Self::Unknown { .. } => None,
+            Self::Unknown { seq, .. } => *seq,
         }
     }
 
@@ -953,13 +965,20 @@ impl<'a> WsMessageRef<'a> {
                 error: error.into_owned(),
             },
             WsMessageRef::Data(data) => WsMessageV2::Data(data.into_owned()),
-            WsMessageRef::Unknown { msg_type, raw } => {
+            WsMessageRef::Unknown {
+                msg_type,
+                sid,
+                seq,
+                raw,
+            } => {
                 let raw_owned = match raw {
                     Some(value) => Some(serde_json::from_str::<Box<RawValue>>(value.get())?),
                     None => None,
                 };
                 WsMessageV2::Unknown {
                     msg_type,
+                    sid,
+                    seq,
                     raw: raw_owned,
                 }
             }
@@ -1012,7 +1031,7 @@ impl WsMessageV2 {
             | Self::Ok { sid, .. }
             | Self::Error { sid, .. } => *sid,
             Self::Data(data) => data.subscription_id(),
-            Self::Unknown { .. } => None,
+            Self::Unknown { sid, .. } => *sid,
         }
     }
 
@@ -1028,7 +1047,7 @@ impl WsMessageV2 {
             | Self::Ok { seq, .. }
             | Self::Error { seq, .. } => *seq,
             Self::Data(data) => data.sequence(),
-            Self::Unknown { .. } => None,
+            Self::Unknown { seq, .. } => *seq,
         }
     }
 }
@@ -1175,6 +1194,7 @@ mod tests {
             WsMessageV2::Unknown {
                 msg_type: WsMsgType::Unknown(value),
                 raw,
+                ..
             } => {
                 assert_eq!(value, "mystery");
                 assert!(raw.is_some());
@@ -1222,12 +1242,29 @@ mod tests {
             WsMessageV2::Unknown {
                 msg_type: WsMsgType::Unknown(value),
                 raw,
+                ..
             } => {
                 assert_eq!(value, "mystery");
                 assert!(raw.is_some());
             }
             _ => panic!("expected unknown message"),
         }
+    }
+
+    #[test]
+    fn ws_message_unknown_preserves_sequence_metadata() {
+        let json = r#"{"type":"mystery","sid":17,"seq":18,"msg":{"foo":1}}"#;
+
+        let owned = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        assert_eq!(owned.subscription_id(), Some(17));
+        assert_eq!(owned.sequence(), Some(18));
+
+        let borrowed = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        assert_eq!(borrowed.subscription_id(), Some(17));
+        assert_eq!(borrowed.sequence(), Some(18));
+        let borrowed_owned = borrowed.into_owned().unwrap();
+        assert_eq!(borrowed_owned.subscription_id(), Some(17));
+        assert_eq!(borrowed_owned.sequence(), Some(18));
     }
 
     #[test]

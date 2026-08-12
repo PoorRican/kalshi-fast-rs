@@ -124,8 +124,10 @@
 //! channels and emits [`WsEvent::Reconnected`]. If retries are exhausted it
 //! emits [`WsEvent::Disconnected`]. Configure via [`WsReconnectConfig`].
 //!
-//! **Note:** Sequence resync is not automatic; callers must handle any gaps
-//! using the `seq` field on [`WsDataMessageV2`] variants.
+//! **Note:** Sequence resync is not automatic; callers must detect gaps with
+//! [`WsMessageV2::subscription_id`] and [`WsMessageV2::sequence`]. Matching only
+//! [`WsDataMessageV2`] variants is unsafe because control and future unknown frames can also
+//! consume the per-subscription cursor.
 
 mod client;
 mod event;
