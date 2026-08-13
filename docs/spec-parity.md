@@ -91,6 +91,63 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Legacy (non-V2) order mutation endpoints are no longer documented in OpenAPI 3.28.0.** As of this
+  refresh, `POST /portfolio/orders`, `DELETE /portfolio/orders/{order_id}`, `POST
+  /portfolio/orders/{order_id}/amend`, `POST /portfolio/orders/{order_id}/decrease`, and `POST`/`DELETE
+  /portfolio/orders/batched` no longer appear as paths in the published spec (only the `GET` order
+  endpoints remain). No changelog entry corroborates an intentional removal date — this may be a docs
+  generator change rather than an actual endpoint sunset. Given the risk of silently breaking working
+  trading code, `create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`,
+  and `batch_cancel_orders` are kept functional but marked `#[deprecated]`, pointing callers at the `_v2`
+  equivalents. Re-verify on the next refresh and remove outright once removal is corroborated by the
+  changelog (or confirmed still-working/still-gone against the live API).
+
+- **`exchange_index` (multi-shard rollout).** Kalshi is rolling out exchange sharding across the API
+  surface; the field is a plain, unconstrained `integer` (`ExchangeIndex` schema) that defaults to `0`.
+  On the V2 order endpoints (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`,
+  `decrease_order_v2`, batch V2 endpoints) it additionally accepts the sentinel `-1` to mean
+  "auto-route by market ticker" — those fields are modeled as `Option<i64>` (not `u32`) specifically to
+  represent `-1`, and a companion `market_ticker: Option<String>` field (required when `exchange_index`
+  is `-1`) was added to `CancelOrderV2Params`, `DecreaseOrderV2Request`, and
+  `BatchCancelOrderV2RequestOrder`. Elsewhere (order groups, balance, transfers, `Market`,
+  `MultivariateEventCollection`, exchange status) `exchange_index` is always non-negative per the spec,
+  but is still modeled as `i64`/`Option<i64>` for consistency rather than mixing signed/unsigned types
+  across the crate. The changelog described one slice of this rollout as "margin order groups bind to
+  single exchange_index," but the OpenAPI schema shows `exchange_index` on the generic `OrderGroup` /
+  `CreateOrderGroupRequest` / `CreateOrderGroupResponse` / `GetOrderGroupResponse` schemas — it is not
+  margin-specific, so it was added to all order-group types.
+
+- `GetOrderGroupResponse.orders` is `Vec<String>` (order IDs), not `Vec<Order>` — this was a pre-existing
+  crate bug (the field was mistyped as full `Order` objects) that would have failed to deserialize
+  against the real API. Fixed as part of this refresh. `OrderGroup.contracts_limit` and
+  `GetOrderGroupResponse.contracts_limit` (plain integer fields) were removed — the OpenAPI schemas for
+  these types only define `contracts_limit_fp`; the plain-integer variants were never real.
+
+- `delete_order_group`, `reset_order_group`, `trigger_order_group`, and `update_order_group_limit` now
+  take an `OrderGroupActionParams { subaccount, exchange_index }` query-params argument (both fields
+  documented as query parameters, not body fields, on those endpoints) instead of the shared
+  `SubaccountQueryParams`. `get_order_group` / `get_order_groups` are unaffected — the OpenAPI confirms
+  those two endpoints only accept `subaccount`, not `exchange_index`.
+
+- `SubaccountTransfer.exchange_index` and `SubaccountBalance.exchange_index` are spec-required fields
+  that were missing entirely from the crate (a pre-existing gap, not tied to a specific changelog
+  entry). Modeled as plain `i64` with `#[serde(default)]` so existing test fixtures / older payloads
+  without the field still parse (defaulting to shard `0`).
+
+- `WsEventLifecycle.exchange_index` is marked `required` by the AsyncAPI spec but is modeled as
+  `Option<i64>` here: the struct previously had no catch-all `extra` field, so the exchange sending an
+  `event_lifecycle` message without it would otherwise fail to parse. Treated with the same leniency as
+  other "required per spec, sometimes absent in practice" fields documented above.
+
+- `WsMarketLifecycleV2` / `WsMarketLifecycleV2Ref` no longer carry `fractional_trading_enabled`, and
+  `WsMarketLifecycleEventType` no longer has a `FractionalTradingUpdated` variant. Both were added in a
+  prior release based on an upstream field that is no longer present anywhere in the current AsyncAPI
+  spec (verified via a full-file grep for "fractional"). Removed as stale/dead code per the refresh
+  workflow's "don't carry forward removed upstream fields" rule.
+
+- `WsQuoteCreated`, `WsQuoteAccepted`, and `WsQuoteExecuted` gained an optional `subaccount: Option<i64>`
+  field, present only when the authenticated user's side of the RFQ/quote used a subaccount.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -1,6 +1,6 @@
 use kalshi_fast::{
     CreateOrderGroupRequest, CreateQuoteRequest, CreateRFQRequest, KalshiAuth, KalshiEnvironment,
-    KalshiRestClient, SubaccountQueryParams, UpdateOrderGroupLimitRequest,
+    KalshiRestClient, OrderGroupActionParams, UpdateOrderGroupLimitRequest,
 };
 
 #[tokio::main]
@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
     client
         .update_order_group_limit(
             &order_group.order_group_id,
+            OrderGroupActionParams::default(),
             UpdateOrderGroupLimitRequest {
                 contracts_limit_fp: Some("50.00".to_string()),
                 ..Default::default()
@@ -66,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
     let _ = client
         .delete_order_group(
             &order_group.order_group_id,
-            SubaccountQueryParams::default(),
+            OrderGroupActionParams::default(),
         )
         .await;
 

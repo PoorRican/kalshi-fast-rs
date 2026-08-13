@@ -398,10 +398,11 @@ pub struct GetOrderGroupsResponse {
 pub struct OrderGroup {
     pub id: String,
     #[serde(default)]
-    pub contracts_limit: Option<i64>,
-    #[serde(default)]
     pub contracts_limit_fp: Option<FixedPointCount>,
     pub is_auto_cancel_enabled: bool,
+    /// Exchange shard this order group is bound to. Defaults to 0 if unspecified.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -414,6 +415,9 @@ pub struct CreateOrderGroupRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// Exchange shard to create this order group on. Defaults to 0 if unspecified.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -422,17 +426,22 @@ pub struct CreateOrderGroupResponse {
     /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
     #[serde(default)]
     pub subaccount: Option<u32>,
+    /// Exchange shard this order group was created on. Added 2026-08.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetOrderGroupResponse {
     pub is_auto_cancel_enabled: bool,
     #[serde(default)]
-    pub contracts_limit: Option<i64>,
-    #[serde(default)]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// List of order IDs belonging to this order group.
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub orders: Vec<Order>,
+    pub orders: Vec<String>,
+    /// Exchange shard this order group is bound to. Defaults to 0 if unspecified.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -441,6 +450,17 @@ pub struct UpdateOrderGroupLimitRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+}
+
+/// Query params shared by the order-group action endpoints (delete, reset,
+/// trigger, update limit), which accept `subaccount` and `exchange_index` as
+/// query parameters rather than body fields.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct OrderGroupActionParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -534,9 +554,9 @@ pub struct CreateOrderV2Request {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
-    /// Exchange shard index; currently only 0 is supported.
+    /// Exchange shard index. Defaults to 0. Use -1 to auto-route by market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -558,8 +578,12 @@ pub struct CreateOrderV2Response {
 pub struct CancelOrderV2Params {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Exchange shard index. Defaults to 0. Use -1 to auto-route by market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i64>,
+    /// Market ticker. Required when `exchange_index` is -1 (auto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -584,8 +608,9 @@ pub struct AmendOrderV2Request {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// Exchange shard index. Defaults to 0. Use -1 to auto-route by market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -613,8 +638,12 @@ pub struct DecreaseOrderV2Request {
     pub reduce_by: Option<FixedPointCount>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reduce_to: Option<FixedPointCount>,
+    /// Exchange shard index. Defaults to 0. Use -1 to auto-route by market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i64>,
+    /// Market ticker. Required when `exchange_index` is -1 (auto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -662,8 +691,12 @@ pub struct BatchCancelOrderV2RequestOrder {
     pub order_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Exchange shard index. Defaults to 0. Use -1 to auto-route by market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i64>,
+    /// Market ticker. Required when `exchange_index` is -1 (auto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -742,6 +775,14 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    ///
+    /// This legacy (non-V2) mutation endpoint is no longer documented in the
+    /// published OpenAPI spec as of 3.28.0 (2026-08). No changelog entry
+    /// confirms a removal date, so it is kept working but deprecated in favor
+    /// of [`create_order_v2`](Self::create_order_v2). See `docs/spec-parity.md`.
+    #[deprecated(
+        note = "no longer documented in the OpenAPI spec (as of 3.28.0); use create_order_v2 instead"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +796,14 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    ///
+    /// This legacy (non-V2) mutation endpoint is no longer documented in the
+    /// published OpenAPI spec as of 3.28.0 (2026-08). No changelog entry
+    /// confirms a removal date, so it is kept working but deprecated in favor
+    /// of [`cancel_order_v2`](Self::cancel_order_v2). See `docs/spec-parity.md`.
+    #[deprecated(
+        note = "no longer documented in the OpenAPI spec (as of 3.28.0); use cancel_order_v2 instead"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +820,13 @@ impl KalshiRestClient {
         .await
     }
 
+    /// This legacy (non-V2) mutation endpoint is no longer documented in the
+    /// published OpenAPI spec as of 3.28.0 (2026-08). No changelog entry
+    /// confirms a removal date, so it is kept working but deprecated in favor
+    /// of [`amend_order_v2`](Self::amend_order_v2). See `docs/spec-parity.md`.
+    #[deprecated(
+        note = "no longer documented in the OpenAPI spec (as of 3.28.0); use amend_order_v2 instead"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +837,13 @@ impl KalshiRestClient {
             .await
     }
 
+    /// This legacy (non-V2) mutation endpoint is no longer documented in the
+    /// published OpenAPI spec as of 3.28.0 (2026-08). No changelog entry
+    /// confirms a removal date, so it is kept working but deprecated in favor
+    /// of [`decrease_order_v2`](Self::decrease_order_v2). See `docs/spec-parity.md`.
+    #[deprecated(
+        note = "no longer documented in the OpenAPI spec (as of 3.28.0); use decrease_order_v2 instead"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +866,13 @@ impl KalshiRestClient {
         .await
     }
 
+    /// This legacy (non-V2) mutation endpoint is no longer documented in the
+    /// published OpenAPI spec as of 3.28.0 (2026-08). No changelog entry
+    /// confirms a removal date, so it is kept working but deprecated in favor
+    /// of [`batch_create_orders_v2`](Self::batch_create_orders_v2). See `docs/spec-parity.md`.
+    #[deprecated(
+        note = "no longer documented in the OpenAPI spec (as of 3.28.0); use batch_create_orders_v2 instead"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +882,13 @@ impl KalshiRestClient {
             .await
     }
 
+    /// This legacy (non-V2) mutation endpoint is no longer documented in the
+    /// published OpenAPI spec as of 3.28.0 (2026-08). No changelog entry
+    /// confirms a removal date, so it is kept working but deprecated in favor
+    /// of [`batch_cancel_orders_v2`](Self::batch_cancel_orders_v2). See `docs/spec-parity.md`.
+    #[deprecated(
+        note = "no longer documented in the OpenAPI spec (as of 3.28.0); use batch_cancel_orders_v2 instead"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -883,7 +960,7 @@ impl KalshiRestClient {
     pub async fn delete_order_group(
         &self,
         order_group_id: &str,
-        params: SubaccountQueryParams,
+        params: OrderGroupActionParams,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}"));
         self.send(
@@ -899,17 +976,18 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: OrderGroupActionParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
     pub async fn reset_order_group(
         &self,
         order_group_id: &str,
-        params: SubaccountQueryParams,
+        params: OrderGroupActionParams,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/reset"));
         let body = EmptyResponse::default();
@@ -920,7 +998,7 @@ impl KalshiRestClient {
     pub async fn trigger_order_group(
         &self,
         order_group_id: &str,
-        params: SubaccountQueryParams,
+        params: OrderGroupActionParams,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/trigger"));
         let body = EmptyResponse::default();

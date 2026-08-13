@@ -8,6 +8,147 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.7.0] - 2026-08-13
+
+### Compatibility
+
+- Docs snapshot: 2026-08-13
+- OpenAPI: 3.28.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-08-13
+
+**Changelog entries since 0.6.0 watermark (2026-06-08) and disposition:**
+
+| Entry | Action |
+|---|---|
+| New `center_deci_edge_centi_cent` price level structure (2026-08-10) | No code change — `Market.price_level_structure` is an untyped `String`, new values are tolerated automatically |
+| Balance reads scoped by `exchange_index` (2026-08-10) | Added `GetBalanceParams` (`subaccount`, `exchange_index`) and `balance_breakdown: Vec<IndexedBalance>` on `GetBalanceResponse` |
+| Block trade indicator for WebSocket trades (2026-08-07) | Added `is_block_trade: bool` to `WsTrade`/`WsTradeRef` |
+| Exchange shard descriptions (2026-08-07) | Added `ExchangeIndexStatus` struct and `exchange_index_statuses` field to `GetExchangeStatusResponse` |
+| Margin order groups bind to single `exchange_index` (2026-08-06) | Added `exchange_index` to `OrderGroup`, `CreateOrderGroupRequest`, `CreateOrderGroupResponse`, `GetOrderGroupResponse` (applies to all order groups, not just margin — see `docs/spec-parity.md`) |
+| Order group maximum increased to 100,000 per user (2026-08-07) | No code change — operational limit only, not modeled client-side |
+| Multivariate lookup endpoint and channel removed (2026-08-05) | **Breaking** — removed `GetMultivariateEventCollectionLookupHistory*`/`LookupTickersForMarketInMultivariateEventCollection*` REST types and methods; removed `WsChannelV2::Multivariate`, `WsMsgType::Multivariate`/`MultivariateLookup`, `WsMultivariate*` types, and their wire/envelope plumbing |
+| Centicent pricing on multivariate (combo) markets (2026-08-04) | No code change — same untyped `price_level_structure` string as above |
+| Richer combo-validation errors on FIX RFQ creation (2026-08-05) | No code change — crate has no FIX protocol client |
+| Intra-account transfer history endpoints (2026-08-05) | Added `IntraExchangeInstanceTransfer*` types and three new `KalshiRestClient` methods (`intra_exchange_instance_transfer`, `get_intra_exchange_instance_transfers`, `get_intra_exchange_instance_transfer`) plus pager/stream helpers |
+| FIX execution reports identify the source exchange index (2026-08-04) | No code change — crate has no FIX protocol client |
+| Sided leverage estimates on margin markets (2026-08-03) | No code change — `/margin/markets` does not exist in the published OpenAPI spec; the crate only models `/margin/fee_tiers` |
+| Order group limit updates support subaccounts (2026-07-30) | Added `OrderGroupActionParams` (`subaccount`, `exchange_index`) as the query-params argument for `update_order_group_limit`, `delete_order_group`, `reset_order_group`, `trigger_order_group` |
+| Multivariate event collections include `exchange_index` (2026-08-04) | Added `exchange_index: Option<i64>` to `MultivariateEventCollection` |
+| Richer combo-validation errors on multivariate market creation (2026-07-29) | No code change — `KalshiError::Http` already carries the generic `ErrorResponse` (`code`/`message`/`details`) plus the raw response body; no dedicated combo-error schema exists in the spec |
+
+**Additional schema drift found via direct OpenAPI/AsyncAPI diff (not individually itemized in the changelog RSS):**
+
+- OpenAPI bumped 3.20.0 → 3.28.0 (AsyncAPI unchanged at 2.0.0).
+- Legacy (non-V2) order mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) are no longer documented as paths in
+  the published OpenAPI spec. No changelog entry confirms an intentional removal, so these are kept
+  working but marked `#[deprecated]` rather than deleted. See `docs/spec-parity.md`.
+- `exchange_index` on the V2 order endpoints changed from `Option<u32>` to `Option<i64>` to represent
+  the `-1` "auto-route by market ticker" sentinel documented in the OpenAPI param descriptions. Added
+  the companion `market_ticker: Option<String>` field (required when `exchange_index` is `-1`) to
+  `CancelOrderV2Params`, `DecreaseOrderV2Request`, and `BatchCancelOrderV2RequestOrder`.
+- Fixed a pre-existing bug: `GetOrderGroupResponse.orders` was typed `Vec<Order>` but the OpenAPI schema
+  defines it as `Vec<String>` (order IDs) — this would have failed to deserialize against the real API.
+- Removed `OrderGroup.contracts_limit` and `GetOrderGroupResponse.contracts_limit` (plain integer
+  fields not present in the OpenAPI schemas; only `contracts_limit_fp` exists).
+- Added the spec-required `exchange_index` field to `SubaccountTransfer` and `SubaccountBalance`
+  (pre-existing gaps, unrelated to a specific changelog entry).
+- Added `exchange_index: Option<i64>` to `ApplySubaccountTransferRequest`, and a new
+  `CreateSubaccountRequest { exchange_index }` body — `create_subaccount()` now takes a body parameter.
+- Added `exchange_index: Option<i64>` to `Market` for consistency with the shard rollout (previously
+  fell through to the untyped `extra` map).
+- Removed `WsMarketLifecycleV2`/`Ref.fractional_trading_enabled` and
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` — no longer present anywhere in the current
+  AsyncAPI spec.
+- Added `WsEventLifecycle.exchange_index: Option<i64>` — spec-required, but previously silently dropped
+  (the struct had no `extra` catch-all before this).
+- Added `subaccount: Option<i64>` to `WsQuoteCreated`, `WsQuoteAccepted`, `WsQuoteExecuted`.
+- Fixed a pre-existing compile break in `tests/rest_auth.rs` (`read_limit`/`write_limit` no longer exist
+  on `GetAccountApiLimitsResponse` since the 0.6.0 restructure) that was blocking
+  `cargo test --all-targets`.
+
+### Added
+
+- [Rust API] Added `GetBalanceParams` and `balance_breakdown: Option<Vec<IndexedBalance>>` on
+  `GetBalanceResponse`; `get_balance` now takes a `GetBalanceParams` argument.
+- [Rust API] Added `is_block_trade: bool` to `WsTrade`/`WsTradeRef`.
+- [Rust API] Added `ExchangeIndexStatus` and `GetExchangeStatusResponse.exchange_index_statuses` /
+  `intra_exchange_transfers_active`.
+- [Rust API] Added `exchange_index` to `OrderGroup`, `CreateOrderGroupRequest`,
+  `CreateOrderGroupResponse`, `GetOrderGroupResponse`, `Market`, and `MultivariateEventCollection`.
+- [Rust API] Added `OrderGroupActionParams` and switched `delete_order_group`, `reset_order_group`,
+  `trigger_order_group`, `update_order_group_limit` to use it.
+- [Rust API] Added `IntraExchangeInstanceTransfer`, `IntraExchangeInstanceTransferRequest/Response`,
+  `ExchangeInstance`, `IntraExchangeInstanceTransferStatus`,
+  `GetIntraExchangeInstanceTransfers(All)Params/Response`, plus
+  `intra_exchange_instance_transfer`/`get_intra_exchange_instance_transfer(s)` methods, pager, and
+  stream helper.
+- [Rust API] Added `market_ticker: Option<String>` to `CancelOrderV2Params`, `DecreaseOrderV2Request`,
+  `BatchCancelOrderV2RequestOrder` (required when `exchange_index` is `-1`).
+- [Rust API] Added `CreateSubaccountRequest`; `create_subaccount()` now accepts it as a body.
+- [Rust API] Added `subaccount: Option<i64>` to `WsQuoteCreated`, `WsQuoteAccepted`, `WsQuoteExecuted`.
+- [Rust API] Added `WsEventLifecycle.exchange_index: Option<i64>`.
+- [Docs] Documented the `exchange_index` multi-shard rollout, the legacy-order-endpoint deprecation, and
+  several pre-existing drift fixes in `docs/spec-parity.md`.
+
+### Changed
+
+- [Rust API] `exchange_index` fields on the V2 order endpoints changed from `Option<u32>` to
+  `Option<i64>` to represent the `-1` auto-route sentinel.
+- [Rust API] `GetOrderGroupResponse.orders` changed from `Vec<Order>` to `Vec<String>` (bug fix — the
+  OpenAPI schema defines this as an array of order IDs).
+- [Rust API] Added spec-required `exchange_index` to `SubaccountTransfer` and `SubaccountBalance`.
+
+### Removed
+
+- [Rust API] Removed `GetMultivariateEventCollectionLookupHistoryParams/Response`, `LookupPoint`,
+  `LookupTickersForMarketInMultivariateEventCollectionRequest/Response`, and the
+  `get_multivariate_event_collection_lookup_history` /
+  `lookup_tickers_for_market_in_multivariate_event_collection` methods — the lookup endpoint no longer
+  exists in the OpenAPI spec.
+- [Rust API] Removed `WsChannelV2::Multivariate`, `WsMsgType::Multivariate`/`MultivariateLookup`,
+  `WsMultivariate`/`WsMultivariateRef`/`WsMultivariateSelectedMarket(Ref)`, and their wire/envelope
+  variants — the channel no longer exists in the AsyncAPI spec.
+- [Rust API] Removed `OrderGroup.contracts_limit` and `GetOrderGroupResponse.contracts_limit` (not
+  present in the OpenAPI schemas).
+- [Rust API] Removed `WsMarketLifecycleV2`/`Ref.fractional_trading_enabled` and
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` (no longer present in the AsyncAPI spec).
+
+### Deprecated
+
+- [Rust API] `create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`,
+  `batch_cancel_orders` (legacy, non-V2) are marked `#[deprecated]`. They are no longer documented as
+  paths in the published OpenAPI spec, but are kept functional since no changelog entry confirms an
+  intentional removal date. Use the `_v2` equivalents. See `docs/spec-parity.md`.
+
+### Fixed
+
+- [Tests] Fixed a pre-existing compile break in `tests/rest_auth.rs` referencing removed
+  `GetAccountApiLimitsResponse.read_limit`/`write_limit` fields (regression from the 0.6.0 restructure).
+
+### Breaking
+
+- [Rust API] Removed the multivariate lookup REST types/methods and the `multivariate` WebSocket
+  channel/message types (see Removed above). Downstream code using these must migrate off them; there
+  is no replacement (the feature was removed upstream).
+- [Rust API] `GetOrderGroupResponse.orders` changed from `Vec<Order>` to `Vec<String>`.
+- [Rust API] `exchange_index` fields on `CreateOrderV2Request`, `CancelOrderV2Params`,
+  `AmendOrderV2Request`, `DecreaseOrderV2Request`, `BatchCancelOrderV2RequestOrder` changed from
+  `Option<u32>` to `Option<i64>`.
+- [Rust API] `OrderGroup.contracts_limit` and `GetOrderGroupResponse.contracts_limit` removed.
+- [Rust API] `delete_order_group`, `reset_order_group`, `trigger_order_group`,
+  `update_order_group_limit` now take `OrderGroupActionParams` instead of `SubaccountQueryParams`.
+- [Rust API] `get_balance()` now takes a `GetBalanceParams` argument.
+- [Rust API] `create_subaccount()` now takes a `CreateSubaccountRequest` argument.
+- [Rust API] `WsMarketLifecycleV2`/`Ref` lost the `fractional_trading_enabled` field, and
+  `WsMarketLifecycleEventType` lost the `FractionalTradingUpdated` variant. Downstream exhaustive
+  matches/struct literals must be updated.
+- [Rust API] `ApplySubaccountTransferRequest`, `CreateOrderGroupRequest`, `CreateOrderGroupResponse`,
+  `GetOrderGroupResponse`, `OrderGroup` gained new fields; downstream exhaustive struct-literal
+  construction must add them.
+
+
 ## [0.6.0] - 2026-06-08
 
 ### Compatibility
