@@ -18,6 +18,7 @@ impl SubscriptionTracker {
             WsMessageV2::Subscribed {
                 id: Some(id),
                 sid: Some(sid),
+                ..
             } => {
                 self.handle_subscribed(Some(*id), Some(*sid));
             }
@@ -141,6 +142,7 @@ mod tests {
         tracker.handle_message(&WsMessageV2::Subscribed {
             id: Some(1),
             sid: Some(42),
+            seq: None,
         });
 
         assert!(tracker.pending.is_empty());
@@ -159,6 +161,7 @@ mod tests {
         tracker.handle_message(&WsMessageV2::Subscribed {
             id: Some(1),
             sid: Some(42),
+            seq: None,
         });
 
         let params = tracker.prepare_resubscribe();

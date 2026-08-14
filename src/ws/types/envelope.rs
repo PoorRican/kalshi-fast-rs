@@ -110,16 +110,21 @@ impl WsEnvelope {
                         .ok()
                         .and_then(|value| value.sid)
                 });
-                Ok(WsMessageV2::Subscribed { id, sid })
+                Ok(WsMessageV2::Subscribed { id, sid, seq })
             }
-            WsMsgType::Unsubscribed => Ok(WsMessageV2::Unsubscribed { id, sid }),
+            WsMsgType::Unsubscribed => Ok(WsMessageV2::Unsubscribed { id, sid, seq }),
             WsMsgType::Ok => {
                 if msg.is_some()
                     && let Ok(subscriptions) = parse_msg::<Vec<WsSubscriptionInfo>>(&msg)
                 {
-                    return Ok(WsMessageV2::ListSubscriptions { id, subscriptions });
+                    return Ok(WsMessageV2::ListSubscriptions {
+                        id,
+                        sid,
+                        seq,
+                        subscriptions,
+                    });
                 }
-                Ok(WsMessageV2::Ok { id })
+                Ok(WsMessageV2::Ok { id, sid, seq })
             }
             WsMsgType::ListSubscriptions => {
                 let subs = if msg.is_some() {
@@ -130,6 +135,8 @@ impl WsEnvelope {
                 };
                 Ok(WsMessageV2::ListSubscriptions {
                     id,
+                    sid,
+                    seq,
                     subscriptions: subs,
                 })
             }
@@ -142,7 +149,12 @@ impl WsEnvelope {
                         message: None,
                     }
                 };
-                Ok(WsMessageV2::Error { id, error })
+                Ok(WsMessageV2::Error {
+                    id,
+                    sid,
+                    seq,
+                    error,
+                })
             }
             WsMsgType::Ticker => Ok(WsMessageV2::Data(WsDataMessageV2::Ticker {
                 sid,
@@ -260,10 +272,14 @@ impl WsEnvelope {
             )),
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
+                sid,
+                seq,
                 raw: msg,
             }),
             other => Ok(WsMessageV2::Unknown {
                 msg_type: other,
+                sid,
+                seq,
                 raw: msg,
             }),
         }
@@ -311,7 +327,6 @@ impl<'a> WsEnvelopeRef<'a> {
             msg,
             subscriptions,
         } = self;
-
         match msg_type {
             WsMsgType::Subscribed => {
                 let sid = sid.or_else(|| {
@@ -319,17 +334,22 @@ impl<'a> WsEnvelopeRef<'a> {
                         .ok()
                         .and_then(|value| value.sid)
                 });
-                Ok(WsMessageRef::Subscribed { id, sid })
+                Ok(WsMessageRef::Subscribed { id, sid, seq })
             }
-            WsMsgType::Unsubscribed => Ok(WsMessageRef::Unsubscribed { id, sid }),
+            WsMsgType::Unsubscribed => Ok(WsMessageRef::Unsubscribed { id, sid, seq }),
             WsMsgType::Ok => {
                 if msg.is_some()
                     && let Ok(subscriptions) =
                         parse_borrowed_msg::<Vec<WsSubscriptionInfoRef<'a>>>(msg)
                 {
-                    return Ok(WsMessageRef::ListSubscriptions { id, subscriptions });
+                    return Ok(WsMessageRef::ListSubscriptions {
+                        id,
+                        sid,
+                        seq,
+                        subscriptions,
+                    });
                 }
-                Ok(WsMessageRef::Ok { id })
+                Ok(WsMessageRef::Ok { id, sid, seq })
             }
             WsMsgType::ListSubscriptions => {
                 let subs = if msg.is_some() {
@@ -340,6 +360,8 @@ impl<'a> WsEnvelopeRef<'a> {
                 };
                 Ok(WsMessageRef::ListSubscriptions {
                     id,
+                    sid,
+                    seq,
                     subscriptions: subs,
                 })
             }
@@ -352,7 +374,12 @@ impl<'a> WsEnvelopeRef<'a> {
                         message: None,
                     }
                 };
-                Ok(WsMessageRef::Error { id, error })
+                Ok(WsMessageRef::Error {
+                    id,
+                    sid,
+                    seq,
+                    error,
+                })
             }
             WsMsgType::Ticker => Ok(WsMessageRef::Data(WsDataMessageRef::Ticker {
                 sid,
@@ -470,10 +497,14 @@ impl<'a> WsEnvelopeRef<'a> {
             )),
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
+                sid,
+                seq,
                 raw: msg,
             }),
             other => Ok(WsMessageRef::Unknown {
                 msg_type: other,
+                sid,
+                seq,
                 raw: msg,
             }),
         }
@@ -485,25 +516,35 @@ pub enum WsMessageV2 {
     Subscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
     },
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
     },
     ListSubscriptions {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         subscriptions: Vec<WsSubscriptionInfo>,
     },
     Ok {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
     },
     Error {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         error: WsError,
     },
     Data(WsDataMessageV2),
     Unknown {
         msg_type: WsMsgType,
+        sid: Option<u64>,
+        seq: Option<u64>,
         raw: Option<Box<RawValue>>,
     },
 }
@@ -592,6 +633,39 @@ pub enum WsDataMessageV2 {
     },
 }
 
+macro_rules! data_message_position {
+    ($message:expr, $field:ident) => {
+        match $message {
+            Self::Ticker { $field, .. }
+            | Self::Trade { $field, .. }
+            | Self::OrderbookSnapshot { $field, .. }
+            | Self::OrderbookDelta { $field, .. }
+            | Self::Fill { $field, .. }
+            | Self::MarketPosition { $field, .. }
+            | Self::MarketLifecycleV2 { $field, .. }
+            | Self::MultivariateMarketLifecycle { $field, .. }
+            | Self::EventLifecycle { $field, .. }
+            | Self::EventFeeUpdate { $field, .. }
+            | Self::Multivariate { $field, .. }
+            | Self::Communications { $field, .. }
+            | Self::OrderGroupUpdates { $field, .. }
+            | Self::UserOrder { $field, .. }
+            | Self::CfbenchmarksValue { $field, .. }
+            | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
+        }
+    };
+}
+
+impl WsDataMessageV2 {
+    fn subscription_id(&self) -> Option<u64> {
+        data_message_position!(self, sid)
+    }
+
+    fn sequence(&self) -> Option<u64> {
+        data_message_position!(self, seq)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum WsDataMessageRef<'a> {
     Ticker {
@@ -674,6 +748,16 @@ pub enum WsDataMessageRef<'a> {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
     },
+}
+
+impl<'a> WsDataMessageRef<'a> {
+    fn subscription_id(&self) -> Option<u64> {
+        data_message_position!(self, sid)
+    }
+
+    fn sequence(&self) -> Option<u64> {
+        data_message_position!(self, seq)
+    }
 }
 
 impl<'a> WsDataMessageRef<'a> {
@@ -782,56 +866,119 @@ pub enum WsMessageRef<'a> {
     Subscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
     },
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
     },
     ListSubscriptions {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         subscriptions: Vec<WsSubscriptionInfoRef<'a>>,
     },
     Ok {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
     },
     Error {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         error: WsErrorRef<'a>,
     },
     Data(WsDataMessageRef<'a>),
     Unknown {
         msg_type: WsMsgType,
+        sid: Option<u64>,
+        seq: Option<u64>,
         raw: Option<&'a RawValue>,
     },
 }
 
 impl<'a> WsMessageRef<'a> {
+    /// Subscription id carried by any frame that has one.
+    ///
+    /// Consumers MUST use this instead of matching on variants, so a newly
+    /// sequenced frame type cannot silently escape cursor accounting.
+    pub fn subscription_id(&self) -> Option<u64> {
+        match self {
+            Self::Subscribed { sid, .. }
+            | Self::Unsubscribed { sid, .. }
+            | Self::ListSubscriptions { sid, .. }
+            | Self::Ok { sid, .. }
+            | Self::Error { sid, .. } => *sid,
+            Self::Data(data) => data.subscription_id(),
+            Self::Unknown { sid, .. } => *sid,
+        }
+    }
+
+    /// Sequence number carried by any frame that has one.
+    ///
+    /// Consumers MUST use this instead of matching on variants, so a newly
+    /// sequenced frame type cannot silently escape cursor accounting.
+    pub fn sequence(&self) -> Option<u64> {
+        match self {
+            Self::Subscribed { seq, .. }
+            | Self::Unsubscribed { seq, .. }
+            | Self::ListSubscriptions { seq, .. }
+            | Self::Ok { seq, .. }
+            | Self::Error { seq, .. } => *seq,
+            Self::Data(data) => data.sequence(),
+            Self::Unknown { seq, .. } => *seq,
+        }
+    }
+
     pub fn into_owned(self) -> Result<WsMessageV2, KalshiError> {
         let owned = match self {
-            WsMessageRef::Subscribed { id, sid } => WsMessageV2::Subscribed { id, sid },
-            WsMessageRef::Unsubscribed { id, sid } => WsMessageV2::Unsubscribed { id, sid },
-            WsMessageRef::ListSubscriptions { id, subscriptions } => {
-                WsMessageV2::ListSubscriptions {
-                    id,
-                    subscriptions: subscriptions
-                        .into_iter()
-                        .map(WsSubscriptionInfoRef::into_owned)
-                        .collect(),
-                }
+            WsMessageRef::Subscribed { id, sid, seq } => WsMessageV2::Subscribed { id, sid, seq },
+            WsMessageRef::Unsubscribed { id, sid, seq } => {
+                WsMessageV2::Unsubscribed { id, sid, seq }
             }
-            WsMessageRef::Ok { id } => WsMessageV2::Ok { id },
-            WsMessageRef::Error { id, error } => WsMessageV2::Error {
+            WsMessageRef::ListSubscriptions {
                 id,
+                sid,
+                seq,
+                subscriptions,
+            } => WsMessageV2::ListSubscriptions {
+                id,
+                sid,
+                seq,
+                subscriptions: subscriptions
+                    .into_iter()
+                    .map(WsSubscriptionInfoRef::into_owned)
+                    .collect(),
+            },
+            WsMessageRef::Ok { id, sid, seq } => WsMessageV2::Ok { id, sid, seq },
+            WsMessageRef::Error {
+                id,
+                sid,
+                seq,
+                error,
+            } => WsMessageV2::Error {
+                id,
+                sid,
+                seq,
                 error: error.into_owned(),
             },
             WsMessageRef::Data(data) => WsMessageV2::Data(data.into_owned()),
-            WsMessageRef::Unknown { msg_type, raw } => {
+            WsMessageRef::Unknown {
+                msg_type,
+                sid,
+                seq,
+                raw,
+            } => {
                 let raw_owned = match raw {
                     Some(value) => Some(serde_json::from_str::<Box<RawValue>>(value.get())?),
                     None => None,
                 };
                 WsMessageV2::Unknown {
                     msg_type,
+                    sid,
+                    seq,
                     raw: raw_owned,
                 }
             }
@@ -868,6 +1015,40 @@ impl WsRawEvent {
 
     pub fn parse_borrowed(&self) -> Result<WsMessageRef<'_>, KalshiError> {
         WsMessageRef::from_bytes(&self.bytes)
+    }
+}
+
+impl WsMessageV2 {
+    /// Subscription id carried by any frame that has one.
+    ///
+    /// Consumers MUST use this instead of matching on variants, so a newly
+    /// sequenced frame type cannot silently escape cursor accounting.
+    pub fn subscription_id(&self) -> Option<u64> {
+        match self {
+            Self::Subscribed { sid, .. }
+            | Self::Unsubscribed { sid, .. }
+            | Self::ListSubscriptions { sid, .. }
+            | Self::Ok { sid, .. }
+            | Self::Error { sid, .. } => *sid,
+            Self::Data(data) => data.subscription_id(),
+            Self::Unknown { sid, .. } => *sid,
+        }
+    }
+
+    /// Sequence number carried by any frame that has one.
+    ///
+    /// Consumers MUST use this instead of matching on variants, so a newly
+    /// sequenced frame type cannot silently escape cursor accounting.
+    pub fn sequence(&self) -> Option<u64> {
+        match self {
+            Self::Subscribed { seq, .. }
+            | Self::Unsubscribed { seq, .. }
+            | Self::ListSubscriptions { seq, .. }
+            | Self::Ok { seq, .. }
+            | Self::Error { seq, .. } => *seq,
+            Self::Data(data) => data.sequence(),
+            Self::Unknown { seq, .. } => *seq,
+        }
     }
 }
 
@@ -1013,6 +1194,7 @@ mod tests {
             WsMessageV2::Unknown {
                 msg_type: WsMsgType::Unknown(value),
                 raw,
+                ..
             } => {
                 assert_eq!(value, "mystery");
                 assert!(raw.is_some());
@@ -1060,12 +1242,29 @@ mod tests {
             WsMessageV2::Unknown {
                 msg_type: WsMsgType::Unknown(value),
                 raw,
+                ..
             } => {
                 assert_eq!(value, "mystery");
                 assert!(raw.is_some());
             }
             _ => panic!("expected unknown message"),
         }
+    }
+
+    #[test]
+    fn ws_message_unknown_preserves_sequence_metadata() {
+        let json = r#"{"type":"mystery","sid":17,"seq":18,"msg":{"foo":1}}"#;
+
+        let owned = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        assert_eq!(owned.subscription_id(), Some(17));
+        assert_eq!(owned.sequence(), Some(18));
+
+        let borrowed = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        assert_eq!(borrowed.subscription_id(), Some(17));
+        assert_eq!(borrowed.sequence(), Some(18));
+        let borrowed_owned = borrowed.into_owned().unwrap();
+        assert_eq!(borrowed_owned.subscription_id(), Some(17));
+        assert_eq!(borrowed_owned.sequence(), Some(18));
     }
 
     #[test]

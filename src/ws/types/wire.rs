@@ -16,20 +16,29 @@ pub(super) enum WsWireMessage {
     Subscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default)]
         msg: Option<WsSubscribedMsg>,
     },
     #[serde(rename = "unsubscribed")]
-    Unsubscribed { id: Option<u64>, sid: Option<u64> },
+    Unsubscribed {
+        id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
+    },
     #[serde(rename = "ok")]
     Ok {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default)]
         msg: Option<Value>,
     },
     #[serde(rename = "list_subscriptions")]
     ListSubscriptions {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default)]
         subscriptions: Vec<WsSubscriptionInfo>,
         #[serde(default)]
@@ -38,6 +47,8 @@ pub(super) enum WsWireMessage {
     #[serde(rename = "error")]
     Error {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default)]
         msg: Option<WsError>,
     },
@@ -179,22 +190,32 @@ pub(super) struct WsSubscribedMsg {
 impl WsWireMessage {
     pub(super) fn into_message(self) -> WsMessageV2 {
         match self {
-            WsWireMessage::Subscribed { id, sid, msg } => WsMessageV2::Subscribed {
+            WsWireMessage::Subscribed { id, sid, seq, msg } => WsMessageV2::Subscribed {
                 id,
                 sid: sid.or_else(|| msg.and_then(|value| value.sid)),
+                seq,
             },
-            WsWireMessage::Unsubscribed { id, sid } => WsMessageV2::Unsubscribed { id, sid },
-            WsWireMessage::Ok { id, msg } => {
+            WsWireMessage::Unsubscribed { id, sid, seq } => {
+                WsMessageV2::Unsubscribed { id, sid, seq }
+            }
+            WsWireMessage::Ok { id, sid, seq, msg } => {
                 if let Some(msg) = msg
                     && let Ok(subscriptions) =
                         serde_json::from_value::<Vec<WsSubscriptionInfo>>(msg)
                 {
-                    return WsMessageV2::ListSubscriptions { id, subscriptions };
+                    return WsMessageV2::ListSubscriptions {
+                        id,
+                        sid,
+                        seq,
+                        subscriptions,
+                    };
                 }
-                WsMessageV2::Ok { id }
+                WsMessageV2::Ok { id, sid, seq }
             }
             WsWireMessage::ListSubscriptions {
                 id,
+                sid,
+                seq,
                 subscriptions,
                 msg,
             } => {
@@ -203,11 +224,15 @@ impl WsWireMessage {
                     .unwrap_or(subscriptions);
                 WsMessageV2::ListSubscriptions {
                     id,
+                    sid,
+                    seq,
                     subscriptions: subs,
                 }
             }
-            WsWireMessage::Error { id, msg } => WsMessageV2::Error {
+            WsWireMessage::Error { id, sid, seq, msg } => WsMessageV2::Error {
                 id,
+                sid,
+                seq,
                 error: msg.unwrap_or(WsError {
                     code: None,
                     message: None,
@@ -305,20 +330,29 @@ pub(super) enum WsWireMessageRef<'a> {
     Subscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default)]
         msg: Option<WsSubscribedMsgRef>,
     },
     #[serde(rename = "unsubscribed")]
-    Unsubscribed { id: Option<u64>, sid: Option<u64> },
+    Unsubscribed {
+        id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
+    },
     #[serde(rename = "ok")]
     Ok {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default, borrow)]
         msg: Option<&'a RawValue>,
     },
     #[serde(rename = "list_subscriptions")]
     ListSubscriptions {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default, borrow)]
         subscriptions: Vec<WsSubscriptionInfoRef<'a>>,
         #[serde(default, borrow)]
@@ -327,6 +361,8 @@ pub(super) enum WsWireMessageRef<'a> {
     #[serde(rename = "error")]
     Error {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         #[serde(default, borrow)]
         msg: Option<WsErrorRef<'a>>,
     },
@@ -489,22 +525,32 @@ pub(super) struct WsSubscribedMsgRef {
 impl<'a> WsWireMessageRef<'a> {
     pub(super) fn into_message(self) -> WsMessageRef<'a> {
         match self {
-            WsWireMessageRef::Subscribed { id, sid, msg } => WsMessageRef::Subscribed {
+            WsWireMessageRef::Subscribed { id, sid, seq, msg } => WsMessageRef::Subscribed {
                 id,
                 sid: sid.or_else(|| msg.and_then(|value| value.sid)),
+                seq,
             },
-            WsWireMessageRef::Unsubscribed { id, sid } => WsMessageRef::Unsubscribed { id, sid },
-            WsWireMessageRef::Ok { id, msg } => {
+            WsWireMessageRef::Unsubscribed { id, sid, seq } => {
+                WsMessageRef::Unsubscribed { id, sid, seq }
+            }
+            WsWireMessageRef::Ok { id, sid, seq, msg } => {
                 if let Some(raw) = msg
                     && let Ok(subscriptions) =
                         serde_json::from_str::<Vec<WsSubscriptionInfoRef<'a>>>(raw.get())
                 {
-                    return WsMessageRef::ListSubscriptions { id, subscriptions };
+                    return WsMessageRef::ListSubscriptions {
+                        id,
+                        sid,
+                        seq,
+                        subscriptions,
+                    };
                 }
-                WsMessageRef::Ok { id }
+                WsMessageRef::Ok { id, sid, seq }
             }
             WsWireMessageRef::ListSubscriptions {
                 id,
+                sid,
+                seq,
                 subscriptions,
                 msg,
             } => {
@@ -513,11 +559,15 @@ impl<'a> WsWireMessageRef<'a> {
                     .unwrap_or(subscriptions);
                 WsMessageRef::ListSubscriptions {
                     id,
+                    sid,
+                    seq,
                     subscriptions: subs,
                 }
             }
-            WsWireMessageRef::Error { id, msg } => WsMessageRef::Error {
+            WsWireMessageRef::Error { id, sid, seq, msg } => WsMessageRef::Error {
                 id,
+                sid,
+                seq,
                 error: msg.unwrap_or(WsErrorRef {
                     code: None,
                     message: None,
