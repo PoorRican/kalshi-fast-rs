@@ -21,6 +21,11 @@ pub struct WsTrade {
     /// Normalized taker book side (bid | ask). Added 2026-05-07.
     #[serde(default)]
     pub taker_book_side: Option<BookSide>,
+    /// Whether the trade was matched off book. Added 2026-08-13. Marked
+    /// required by the AsyncAPI but modeled as `Option` for defensive parsing,
+    /// consistent with the other nominally-required fields on this message.
+    #[serde(default)]
+    pub is_block_trade: Option<bool>,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
@@ -53,6 +58,9 @@ pub struct WsTradeRef<'a> {
     /// Normalized taker book side (bid | ask). Added 2026-05-07.
     #[serde(default)]
     pub taker_book_side: Option<BookSide>,
+    /// Whether the trade was matched off book. Added 2026-08-13.
+    #[serde(default)]
+    pub is_block_trade: Option<bool>,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
@@ -73,6 +81,7 @@ impl<'a> WsTradeRef<'a> {
             taker_side: self.taker_side,
             taker_outcome_side: self.taker_outcome_side,
             taker_book_side: self.taker_book_side,
+            is_block_trade: self.is_block_trade,
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),

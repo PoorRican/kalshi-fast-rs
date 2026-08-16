@@ -15,42 +15,28 @@ use serde_json::{Map, Value};
 pub struct GetExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    /// True if intra-exchange transfers are currently permitted. Added 2026-07-02.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Per-exchange-index status breakdown. The top-level fields above reflect
+    /// the default exchange index (0). Absent when the per-index breakdown is
+    /// unavailable. Added 2026-07-02; `description` added 2026-08-13.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementType {
-    Info,
-    Warning,
-    Error,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementStatus {
-    Active,
-    Inactive,
-    #[serde(other)]
-    Unknown,
-}
-
+/// Status of a single exchange shard, part of [`GetExchangeStatusResponse::exchange_index_statuses`].
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Announcement {
-    #[serde(rename = "type")]
-    pub r#type: AnnouncementType,
-    pub message: String,
-    pub delivery_time: String,
-    pub status: AnnouncementStatus,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetExchangeAnnouncementsResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub announcements: Vec<Announcement>,
+pub struct ExchangeIndexStatus {
+    pub exchange_index: i64,
+    /// Description of this exchange shard. Added 2026-08-13.
+    #[serde(default)]
+    pub description: Option<String>,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -105,11 +91,12 @@ pub struct GetUserDataTimestampResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SeriesFeeChange {
-    pub id: i64,
+    pub id: String,
     pub series_ticker: String,
     pub fee_type: FeeType,
-    pub fee_multiplier: i64,
-    pub scheduled_ts: i64,
+    pub fee_multiplier: f64,
+    /// RFC3339 timestamp for when the fee change takes effect.
+    pub scheduled_ts: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -152,21 +139,6 @@ impl KalshiRestClient {
     /// Get the current exchange status (open, closed, etc.).
     pub async fn get_exchange_status(&self) -> Result<GetExchangeStatusResponse, KalshiError> {
         let path = Self::full_path("/exchange/status");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
-    /// Get exchange announcements.
-    pub async fn get_exchange_announcements(
-        &self,
-    ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {
-        let path = Self::full_path("/exchange/announcements");
         self.send(
             Method::GET,
             &path,

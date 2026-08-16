@@ -91,6 +91,42 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `exchange_index` rollout (2026-07/08): as Kalshi introduces exchange sharding, `exchange_index`
+  fields are landing incrementally across REST responses and WS lifecycle messages. Fields the
+  AsyncAPI marks required-but-conditional (e.g. `WsMarketLifecycleV2.exchange_index`, only present
+  on `created` events; `WsEventLifecycle.exchange_index`, spec-required but new) are modeled as
+  `Option` to match this crate's existing defensive-parsing convention for the rest of these
+  lifecycle messages, rather than trusting `required` on a field this new.
+- `WsTrade.is_block_trade` and the top-level `WsMarketLifecycleV2` `strike_type` / `cap_strike` /
+  `custom_strike` (distinct from the `additional_metadata` copies emitted on market creation) are
+  likewise modeled as `Option` despite being marked required/present in the spec, for the same
+  reason: newly-added fields on long-lived streaming messages are the most likely to be
+  inconsistently populated during rollout.
+- `ErrorResponse.service` was removed entirely (not made `Option`) because it is fully absent from
+  the OpenAPI schema as of 2026-08-06, not merely deprecated-but-present. Branch on `code` instead.
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` (REST and the WS `market_positions` mirror) were removed
+  entirely rather than kept as `Option`, because they are fully absent from the live schemas
+  (removed upstream 2026-07-09), not merely deprecated.
+- The multivariate lookup surface (`PUT .../multivariate_event_collections/{ticker}/lookup`, `GET
+  .../lookup` history, and the `multivariate` WS channel/`multivariate_lookup` message type) was
+  removed from the crate entirely, matching its removal from the live OpenAPI/AsyncAPI specs on
+  2026-08-06. Use `create_market_in_multivariate_event_collection` for combo market creation/lookup
+  and the `multivariate_market_lifecycle` WS channel for state changes.
+- `get_exchange_announcements` and its types were removed entirely; `GET /exchange/announcements`
+  was removed from the OpenAPI spec 2026-07-04. `get_exchange_schedule` remains the source for
+  exchange hours.
+- `SeriesFeeChange.id` / `fee_multiplier` / `scheduled_ts` were corrected to `String` / `f64` /
+  `String` (RFC3339) to match the live OpenAPI schema; the previous `i64` typings for all three
+  fields never matched the published shape and would have failed to deserialize real responses.
+- The quote-ID-only communications endpoints (`get_quote`, `delete_quote`, `accept_quote`,
+  `confirm_quote`) are marked `#[deprecated]` in favor of the RFQ-scoped equivalents
+  (`get_rfq_quote`, etc.), matching the upstream deprecation announced 2026-06-25. The upstream
+  endpoints themselves remain live, so the old methods are deprecated rather than removed.
+- `GetQuotesParams.market_ticker` / `event_ticker` were removed (not made inert `Option`s) because
+  `GET /communications/quotes` stopped accepting them upstream 2026-06-20; passing them would now
+  silently do nothing.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
