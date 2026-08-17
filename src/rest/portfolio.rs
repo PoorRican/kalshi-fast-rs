@@ -25,6 +25,23 @@ pub struct GetBalanceResponse {
     pub balance_dollars: Option<FixedPointDollars>,
 }
 
+/// GET /portfolio/balance query params.
+///
+/// `portfolio_value` in the response is always scoped to `exchange_index`
+/// (defaulting to 0). When `subaccount` is omitted, `balance` is the primary
+/// account's aggregate available balance; pass `subaccount` explicitly (0 for
+/// primary, 1-63 for subaccounts, added 2026-08-13) to read that subaccount's
+/// balance on the requested exchange index instead.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Exchange index to scope `portfolio_value` (and `balance`, when
+    /// `subaccount` is provided) to. Defaults to 0 (added 2026-08-13).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+}
+
 /// GET /portfolio/positions query params
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetPositionsParams {
@@ -51,9 +68,14 @@ pub struct GetPositionsParams {
     )]
     pub event_ticker: Option<Vec<String>>,
 
-    /// 0..=32
+    /// 0..=63
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter by exchange shard. Omit to return results from all exchange
+    /// shards (2026-08-20).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetPositionsParams {
@@ -73,10 +95,10 @@ impl GetPositionsParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -90,8 +112,6 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
 }
@@ -223,6 +243,10 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter by exchange shard. Omit to return results from all exchange
+    /// shards (2026-08-20).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -233,25 +257,33 @@ pub struct GetFillsResponse {
     pub cursor: Option<String>,
 }
 
+/// Balance for a single exchange index.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i64,
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total resting order value broken down by exchange index (2026-08-20).
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub resting_order_value_breakdown: Vec<IndexedBalance>,
 }
 
 impl KalshiRestClient {
-    /// Get the account balance.
+    /// Get the account balance, optionally scoped to a subaccount and/or
+    /// exchange index.
     ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.

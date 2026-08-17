@@ -87,6 +87,45 @@ pub struct LiveData {
     pub extra: Map<String, Value>,
 }
 
+/// GET /live_data/events/{event_ticker} query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetEventLiveDataParams {
+    /// Optional chart range hint (e.g. `15min`, `1h`, `1d`). When the
+    /// underlying live data type supports it, restricts the returned
+    /// timeseries to the requested window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<String>,
+}
+
+/// Event-keyed live data: crypto price charts, commodity price timeseries,
+/// weather observations, etc. Added 2026-07-30.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EventLiveData {
+    /// Type of live data. Names the schema of `details`.
+    #[serde(rename = "type")]
+    pub live_data_type: String,
+    /// Live data details as a flexible object whose shape depends on `type`.
+    #[serde(default)]
+    pub details: Map<String, Value>,
+    /// Present for crypto live data. True when the event has matured and the
+    /// payload is a frozen historical snapshot.
+    #[serde(default)]
+    pub is_historical: Option<bool>,
+    /// Chart range the client should default to (e.g. `15min`, `1h`).
+    #[serde(default)]
+    pub default_range: Option<String>,
+    /// Chart range menu options.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub range_options: Vec<String>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetEventLiveDataResponse {
+    pub live_data: EventLiveData,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetGameStatsResponse {
     #[serde(default)]
@@ -183,6 +222,25 @@ impl KalshiRestClient {
         params: GetLiveDataByMilestoneParams,
     ) -> Result<GetLiveDataResponse, KalshiError> {
         let path = Self::full_path(&format!("/live_data/milestone/{milestone_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Get live data for an event by its event ticker: crypto price charts,
+    /// commodity price timeseries, weather observations, etc. (added
+    /// 2026-07-30).
+    pub async fn get_event_live_data(
+        &self,
+        event_ticker: &str,
+        params: GetEventLiveDataParams,
+    ) -> Result<GetEventLiveDataResponse, KalshiError> {
+        let path = Self::full_path(&format!("/live_data/events/{event_ticker}"));
         self.send(
             Method::GET,
             &path,

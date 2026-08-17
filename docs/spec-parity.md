@@ -91,6 +91,78 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Scope**: this crate models the Predictions exchange's REST and WebSocket surfaces only. The
+  Margin exchange (`/margin/*` endpoints, `margin_ticker` WS channel) and FIX are out of scope,
+  except `GET /margin/fee_tiers` (`get_margin_fee_tiers`), which predates this scoping decision and
+  is kept for backward compatibility. Changelog entries tagged only `Margin` or `FIX` are treated as
+  "no code change needed" for this reason unless they touch `/margin/fee_tiers`.
+
+- `subaccount` validation bounds were corrected from `0..=32` to `0..=63` across
+  `GetPositionsParams`, `GetOrdersParams`, and `CreateOrderRequest` (2026-08). The OpenAPI
+  `SubaccountQuery` / `SubaccountQueryDefaultPrimary` parameters document 0 for primary and 1-63 for
+  subaccounts (max 63 numbered subaccounts per user); the previous `> 32` checks were a pre-existing
+  bug unrelated to any single changelog entry, caught while reconciling subaccount-related fields.
+
+- `ErrorResponse.service` was deprecated 2026-07-28 and removed from all REST error bodies
+  2026-08-06. It has been removed from the public `ErrorResponse` struct (breaking) rather than kept
+  as `Option`, per the crate's policy of not preserving removed upstream fields — `code` is
+  documented as present on every error response and is the intended branch target.
+
+- The multivariate lookup surface was removed upstream on 2026-08-06: the `PUT
+  .../multivariate_event_collections/{collection_ticker}/lookup` REST endpoint and the WebSocket
+  `multivariate` channel (`multivariate_lookup` message type) no longer exist; subscriptions to the
+  channel now return an unknown-channel error. The crate removed the corresponding
+  `lookup_tickers_for_market_in_multivariate_event_collection` /
+  `get_multivariate_event_collection_lookup_history` REST methods and their types, the
+  `WsChannelV2::Multivariate` variant, and the `WsMultivariate` / `WsMultivariateRef` WS message
+  types (breaking). Use `POST .../multivariate_event_collections/{collection_ticker}` to create or
+  resolve a combo market, and the `multivariate_market_lifecycle` WS channel for market state
+  changes.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the OpenAPI schema on 2026-07-09 and are
+  removed from the crate (breaking) rather than kept as dead `Option` fields.
+  `WsMarketLifecycleV2.fractional_trading_enabled` was independently absent from the current
+  AsyncAPI `market_lifecycle_v2` payload and was removed for the same reason.
+
+- `exchange_index` (an `Option<i64>`, default 0) was added across many REST and WebSocket response
+  shapes in 2026-07/08 as Kalshi began provisioning sharded exchange instances: `Series`,
+  `EventData`, `MultivariateEventCollection`, `SubaccountBalance`, `GetExchangeStatusResponse`
+  (`exchange_index_statuses: Vec<ExchangeIndexStatus>`, with per-entry `description` added
+  2026-08-13), `WsMarketLifecycleV2` (`created` events), and `WsEventLifecycle`. `GetBalanceParams`,
+  `GetOrdersParams`, `GetPositionsParams`, and `GetFillsParams` all gained an `exchange_index` filter
+  field. `GetBalance` additionally gained a `subaccount` parameter — `get_balance` now takes a
+  `GetBalanceParams` argument instead of none (breaking).
+
+- `GET /trade-api/v2/account/intra_exchange_instance_transfers` history endpoints (added
+  2026-08-13) are **not yet implemented** — a known gap, tracked for a future refresh.
+
+- The `pyth_value` WebSocket channel (added 2026-07-23, requires authentication) mirrors the
+  `cfbenchmarks_value` pattern: `underlying_tickers` (not market tickers) for subscription
+  parameters, `["all"]` to track every available underlying. It emits `pyth_value` (per-underlying
+  USD value) and `pyth_value_underlying_list` (recently streamed underlyings) messages, modeled as
+  `WsPythValue` / `WsPythUnderlyingList` and routed through the standard `WsDataMessageV2` enum. The
+  `subscribe_underlyings` / `unsubscribe_underlyings` / `underlying_list` update-subscription
+  workflow is supported through `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` /
+  `UnderlyingList` plus `WsUpdateSubscriptionParamsV2.underlying_tickers`, validated the same way as
+  the CF Benchmarks index actions.
+
+- New `price_level_structure` enum values (seven `center_*_edge_*_cent` variants added 2026-07-23;
+  `center_deci_edge_centi_cent` added 2026-08-13; `center_centi_edge_centi_cent` added 2026-08-17 for
+  combo markets) require no crate change: `price_level_structure` is modeled as a raw `String`
+  everywhere (`Market`, `WsMarketLifecycleV2`) specifically so new values pass through losslessly.
+  Consumers should read valid order prices from the `price_ranges` array rather than branching on the
+  structure name, per Kalshi's guidance.
+
+- RFQ-scoped quote action endpoints (`GET`/`DELETE`/`PUT .../communications/rfqs/{rfq_id}/quotes/
+  {quote_id}[/accept|/confirm]`, added 2026-06-25/07-09) are modeled as `get_rfq_quote` /
+  `delete_rfq_quote` / `accept_rfq_quote` / `confirm_rfq_quote`. The older quote-ID-only methods
+  (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) remain for source compatibility but
+  are marked `#[deprecated]`, matching the upstream OpenAPI `deprecated: true` markers. `GetQuotesParams`
+  lost `market_ticker` / `event_ticker` (removed upstream 2026-06-20, breaking) and gained `min_ts` /
+  `max_ts` (2026-06-18) and `user_filter`; `quote_creator_user_id` / `rfq_creator_user_id` are marked
+  `#[deprecated]` to match the spec's `deprecated: true` on those filter parameters.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

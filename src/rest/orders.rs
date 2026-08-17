@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter by exchange shard. Omit to return results from all exchange
+    /// shards (2026-08-20).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -65,10 +70,10 @@ impl GetOrdersParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -255,10 +260,10 @@ impl CreateOrderRequest {
         }
 
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
+                "CreateOrderRequest: subaccount must be 0..=63".to_string(),
             ));
         }
 
@@ -441,6 +446,16 @@ pub struct UpdateOrderGroupLimitRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+}
+
+/// Query params for `PUT /portfolio/order_groups/{order_group_id}/limit`
+/// (`subaccount` added 2026-08-06).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateOrderGroupLimitParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -899,10 +914,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: UpdateOrderGroupLimitParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 

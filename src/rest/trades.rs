@@ -1,14 +1,14 @@
-//! Trades and historical trade/order/fill endpoints.
+//! Trades and historical trade/order/fill/position endpoints.
 //!
 //! Public trade feed plus the `/historical/*` family of endpoints that return
-//! archived fills, orders, markets, and the data-cutoff timestamps that
-//! separate live from historical datasets.
+//! archived fills, orders, positions, markets, and the data-cutoff timestamps
+//! that separate live from historical datasets.
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::orders::GetOrdersResponse;
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::portfolio::GetFillsResponse;
+use crate::rest::portfolio::{GetFillsResponse, GetPositionsResponse};
 use crate::types::{
     BookSide, FixedPointCount, FixedPointDollars, MveFilter, TradeTakerSide,
     deserialize_null_as_empty_vec,
@@ -116,8 +116,27 @@ pub struct GetHistoricalCutoffResponse {
     pub market_settled_ts: String,
     pub trades_created_ts: String,
     pub orders_updated_ts: String,
+    /// Settled positions archived from the live data set before this
+    /// timestamp must be accessed via `GET /historical/positions`. Unsettled
+    /// positions are always available via `GET /portfolio/positions`.
+    /// Added 2026-07-23.
+    #[serde(default)]
+    pub market_positions_last_updated_ts: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// GET /historical/positions query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl KalshiRestClient {
@@ -176,6 +195,20 @@ impl KalshiRestClient {
             false,
         )
         .await
+    }
+
+    /// List settled positions archived to the historical database. Positions
+    /// are archived per whole event; use `market_positions_last_updated_ts`
+    /// from [`get_historical_cutoff`](Self::get_historical_cutoff) to decide
+    /// whether a position is here or in `GET /portfolio/positions`
+    /// (added 2026-07-23). Requires auth.
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List historical trades.
