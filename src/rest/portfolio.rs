@@ -15,14 +15,43 @@ use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
+/// One exchange-index entry in [`GetBalanceResponse::balance_breakdown`].
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i64,
+    pub balance: FixedPointDollars,
+}
+
+/// `GET /portfolio/balance` query params.
+///
+/// Added 2026-08-13 (balance reads scoped by `exchange_index`): passing
+/// `subaccount` explicitly (including `0`, previously treated as omitted)
+/// returns that subaccount's `balance` on the requested exchange index.
+/// Omitting `subaccount` keeps the primary account's aggregate balance.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Scopes `portfolio_value`/`balance` to this exchange index. Both cover
+    /// all exchange indexes when omitted (defaults to 0 server-side).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
     pub portfolio_value: i64,
     pub updated_ts: i64,
     /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
+    /// The OpenAPI spec now marks this required, but it stays `Option` here since
+    /// it has historically been absent for non-direct members; see `docs/spec-parity.md`.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// Per-exchange-index balance breakdown. Added 2026-08-13. Omitted only
+    /// when using a subaccount-restricted API key.
+    #[serde(default)]
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
 }
 
 /// GET /portfolio/positions query params
@@ -86,12 +115,14 @@ impl GetPositionsParams {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
     pub ticker: String,
+    /// Exchange index this position is held on. Required per the current
+    /// OpenAPI spec; modeled as `Option` to tolerate older/partial payloads.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
 }
@@ -176,6 +207,10 @@ pub struct GetSettlementsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
     pub fill_id: String,
+    /// Exchange shard this fill occurred on. Required per the current OpenAPI
+    /// spec; modeled as `Option` to tolerate older/partial payloads.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub order_id: String,
     pub trade_id: String,
     pub ticker: String,
@@ -239,19 +274,17 @@ pub struct GetPortfolioRestingOrderTotalValueResponse {
 }
 
 impl KalshiRestClient {
-    /// Get the account balance.
+    /// Get the account balance, optionally scoped to a subaccount and/or
+    /// exchange index.
     ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.

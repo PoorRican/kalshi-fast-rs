@@ -6,10 +6,22 @@
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
-use crate::types::{FeeType, deserialize_null_as_empty_vec};
+use crate::types::{FeeType, deserialize_null_as_empty_vec, deserialize_string_or_number};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+
+/// Per-exchange-index breakdown of exchange operational status.
+///
+/// Added 2026-07-02 (per-index exchange status); `description` added 2026-08-13.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: i64,
+    pub description: String,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetExchangeStatusResponse {
@@ -17,40 +29,13 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementType {
-    Info,
-    Warning,
-    Error,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementStatus {
-    Active,
-    Inactive,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Announcement {
-    #[serde(rename = "type")]
-    pub r#type: AnnouncementType,
-    pub message: String,
-    pub delivery_time: String,
-    pub status: AnnouncementStatus,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetExchangeAnnouncementsResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub announcements: Vec<Announcement>,
+    /// Whether intra-exchange transfers are currently permitted. Added 2026-07-02.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-exchange-index status breakdown. Added 2026-07-02. Absent when the
+    /// per-index breakdown is unavailable.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -105,11 +90,20 @@ pub struct GetUserDataTimestampResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SeriesFeeChange {
-    pub id: i64,
+    /// Unique identifier for this fee change. Modeled as a flexible
+    /// string/number so it round-trips regardless of upstream encoding; the
+    /// OpenAPI spec documents this as a `string`.
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub id: String,
     pub series_ticker: String,
     pub fee_type: FeeType,
-    pub fee_multiplier: i64,
-    pub scheduled_ts: i64,
+    /// OpenAPI types this as `number`/`double`; an `i64` here would reject any
+    /// fractional multiplier (and even `1.0` written with a decimal point).
+    pub fee_multiplier: f64,
+    /// OpenAPI types this as `string`/`date-time`. Deserialized leniently from
+    /// string or number so both an ISO-8601 timestamp and a raw epoch value parse.
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub scheduled_ts: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -152,21 +146,6 @@ impl KalshiRestClient {
     /// Get the current exchange status (open, closed, etc.).
     pub async fn get_exchange_status(&self) -> Result<GetExchangeStatusResponse, KalshiError> {
         let path = Self::full_path("/exchange/status");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
-    /// Get exchange announcements.
-    pub async fn get_exchange_announcements(
-        &self,
-    ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {
-        let path = Self::full_path("/exchange/announcements");
         self.send(
             Method::GET,
             &path,

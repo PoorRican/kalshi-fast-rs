@@ -30,7 +30,11 @@ pub struct WsFill {
     pub ts: i64,
     pub ts_ms: i64,
     pub post_position_fp: String,
-    pub purchased_side: YesNo,
+    /// Deprecated by Kalshi alongside `side` / `action`; use `outcome_side` (or
+    /// `book_side`). Still marked required in the AsyncAPI, but modeled as
+    /// `Option` so a future removal does not break `WsFill` parsing outright.
+    #[serde(default)]
+    pub purchased_side: Option<YesNo>,
     #[serde(default)]
     pub created_time: Option<String>,
     #[serde(default)]
@@ -71,7 +75,9 @@ pub struct WsFillRef<'a> {
     pub ts_ms: i64,
     #[serde(borrow)]
     pub post_position_fp: Cow<'a, str>,
-    pub purchased_side: YesNo,
+    /// Deprecated alongside `side` / `action`; use `outcome_side` / `book_side`.
+    #[serde(default)]
+    pub purchased_side: Option<YesNo>,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
     #[serde(default)]

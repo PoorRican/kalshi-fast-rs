@@ -118,6 +118,10 @@ impl<'de> Deserialize<'de> for AnyJson {
     }
 }
 
+/// Error body returned by REST endpoints.
+///
+/// Branch on `code`, which is present on every error response. The legacy
+/// `service` field was deprecated 2026-07-28 and removed 2026-08-06.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ErrorResponse {
     #[serde(default)]
@@ -126,8 +130,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---
