@@ -52,6 +52,9 @@ pub struct WsQuoteCreated {
     pub quote_id: String,
     pub rfq_id: String,
     pub quote_creator_id: String,
+    /// Anonymized public communications ID of the RFQ creator (optional).
+    #[serde(default)]
+    pub rfq_creator_id: Option<String>,
     pub market_ticker: String,
     #[serde(default)]
     pub event_ticker: Option<String>,
@@ -64,6 +67,11 @@ pub struct WsQuoteCreated {
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
     pub created_ts: String,
+    /// Your own subaccount number, present only when your side of this quote
+    /// used a subaccount. The counterparty's subaccount is never disclosed.
+    /// Added 2026-07-30.
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,6 +79,9 @@ pub struct WsQuoteAccepted {
     pub quote_id: String,
     pub rfq_id: String,
     pub quote_creator_id: String,
+    /// Anonymized public communications ID of the RFQ creator (optional).
+    #[serde(default)]
+    pub rfq_creator_id: Option<String>,
     pub market_ticker: String,
     #[serde(default)]
     pub event_ticker: Option<String>,
@@ -86,6 +97,10 @@ pub struct WsQuoteAccepted {
     pub no_contracts_offered_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
+    /// Your own subaccount number, present only when your side of this quote
+    /// used a subaccount.
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,6 +113,10 @@ pub struct WsQuoteExecuted {
     pub client_order_id: String,
     pub market_ticker: String,
     pub executed_ts: String,
+    /// Your own subaccount number, present only when your side of this quote
+    /// used a subaccount.
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 /// Communications message payloads (RFQs and quotes).
@@ -215,6 +234,8 @@ pub struct WsQuoteCreatedRef<'a> {
     pub rfq_id: Cow<'a, str>,
     #[serde(borrow)]
     pub quote_creator_id: Cow<'a, str>,
+    #[serde(default, borrow)]
+    pub rfq_creator_id: Option<Cow<'a, str>>,
     #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
     #[serde(default, borrow)]
@@ -231,6 +252,10 @@ pub struct WsQuoteCreatedRef<'a> {
     pub rfq_target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
     #[serde(borrow)]
     pub created_ts: Cow<'a, str>,
+    /// Your own subaccount number, present only when your side of this quote
+    /// used a subaccount. Added 2026-07-30.
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 impl<'a> WsQuoteCreatedRef<'a> {
@@ -239,6 +264,7 @@ impl<'a> WsQuoteCreatedRef<'a> {
             quote_id: self.quote_id.into_owned(),
             rfq_id: self.rfq_id.into_owned(),
             quote_creator_id: self.quote_creator_id.into_owned(),
+            rfq_creator_id: self.rfq_creator_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
             event_ticker: self.event_ticker.map(Cow::into_owned),
             yes_bid_dollars: self.yes_bid_dollars.into_owned(),
@@ -247,6 +273,7 @@ impl<'a> WsQuoteCreatedRef<'a> {
             no_contracts_offered_fp: self.no_contracts_offered_fp.map(Cow::into_owned),
             rfq_target_cost_dollars: self.rfq_target_cost_dollars.map(Cow::into_owned),
             created_ts: self.created_ts.into_owned(),
+            subaccount: self.subaccount,
         }
     }
 }
@@ -259,6 +286,8 @@ pub struct WsQuoteAcceptedRef<'a> {
     pub rfq_id: Cow<'a, str>,
     #[serde(borrow)]
     pub quote_creator_id: Cow<'a, str>,
+    #[serde(default, borrow)]
+    pub rfq_creator_id: Option<Cow<'a, str>>,
     #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
     #[serde(default, borrow)]
@@ -277,6 +306,10 @@ pub struct WsQuoteAcceptedRef<'a> {
     pub no_contracts_offered_fp: Option<FixedPointCountRef<'a>>,
     #[serde(default, borrow)]
     pub rfq_target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
+    /// Your own subaccount number, present only when your side of this quote
+    /// used a subaccount.
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 impl<'a> WsQuoteAcceptedRef<'a> {
@@ -285,6 +318,7 @@ impl<'a> WsQuoteAcceptedRef<'a> {
             quote_id: self.quote_id.into_owned(),
             rfq_id: self.rfq_id.into_owned(),
             quote_creator_id: self.quote_creator_id.into_owned(),
+            rfq_creator_id: self.rfq_creator_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
             event_ticker: self.event_ticker.map(Cow::into_owned),
             yes_bid_dollars: self.yes_bid_dollars.into_owned(),
@@ -294,6 +328,7 @@ impl<'a> WsQuoteAcceptedRef<'a> {
             yes_contracts_offered_fp: self.yes_contracts_offered_fp.map(Cow::into_owned),
             no_contracts_offered_fp: self.no_contracts_offered_fp.map(Cow::into_owned),
             rfq_target_cost_dollars: self.rfq_target_cost_dollars.map(Cow::into_owned),
+            subaccount: self.subaccount,
         }
     }
 }
@@ -316,6 +351,10 @@ pub struct WsQuoteExecutedRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub executed_ts: Cow<'a, str>,
+    /// Your own subaccount number, present only when your side of this quote
+    /// used a subaccount.
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 impl<'a> WsQuoteExecutedRef<'a> {
@@ -329,6 +368,7 @@ impl<'a> WsQuoteExecutedRef<'a> {
             client_order_id: self.client_order_id.into_owned(),
             market_ticker: self.market_ticker.into_owned(),
             executed_ts: self.executed_ts.into_owned(),
+            subaccount: self.subaccount,
         }
     }
 }
@@ -358,5 +398,72 @@ impl<'a> WsCommunicationsRef<'a> {
                 WsCommunications::QuoteExecuted(msg.into_owned())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `quote_created` gained `subaccount` on 2026-07-30, matching
+    /// `quote_accepted` / `quote_executed`.
+    #[test]
+    fn quote_created_surfaces_subaccount_and_rfq_creator() {
+        let json = r#"{
+            "quote_id":"q1",
+            "rfq_id":"r1",
+            "quote_creator_id":"qc",
+            "rfq_creator_id":"rc",
+            "market_ticker":"TST",
+            "yes_bid_dollars":"0.4000",
+            "no_bid_dollars":"0.6000",
+            "created_ts":"2026-07-30T00:00:00Z",
+            "subaccount":12
+        }"#;
+
+        let owned: WsQuoteCreated = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.subaccount, Some(12));
+        assert_eq!(owned.rfq_creator_id.as_deref(), Some("rc"));
+
+        let borrowed: WsQuoteCreatedRef = serde_json::from_str(json).unwrap();
+        let round_tripped = borrowed.into_owned();
+        assert_eq!(round_tripped.subaccount, Some(12));
+        assert_eq!(round_tripped.rfq_creator_id.as_deref(), Some("rc"));
+    }
+
+    #[test]
+    fn quote_created_without_subaccount_parses() {
+        let json = r#"{
+            "quote_id":"q1",
+            "rfq_id":"r1",
+            "quote_creator_id":"qc",
+            "market_ticker":"TST",
+            "yes_bid_dollars":"0.4000",
+            "no_bid_dollars":"0.6000",
+            "created_ts":"2026-07-30T00:00:00Z"
+        }"#;
+        let owned: WsQuoteCreated = serde_json::from_str(json).unwrap();
+        assert!(owned.subaccount.is_none());
+        assert!(owned.rfq_creator_id.is_none());
+    }
+
+    #[test]
+    fn quote_executed_surfaces_subaccount() {
+        let json = r#"{
+            "quote_id":"q1",
+            "rfq_id":"r1",
+            "quote_creator_id":"qc",
+            "rfq_creator_id":"rc",
+            "order_id":"o1",
+            "client_order_id":"c1",
+            "market_ticker":"TST",
+            "executed_ts":"2026-07-30T00:00:00Z",
+            "subaccount":3
+        }"#;
+        let owned: WsQuoteExecuted = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.subaccount, Some(3));
+
+        let borrowed: WsQuoteExecutedRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().subaccount, Some(3));
     }
 }

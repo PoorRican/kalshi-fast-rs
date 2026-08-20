@@ -19,8 +19,6 @@ pub enum WsMsgType {
     MultivariateMarketLifecycle,
     EventLifecycle,
     EventFeeUpdate,
-    Multivariate,
-    MultivariateLookup,
     Communications,
     RfqCreated,
     RfqDeleted,
@@ -31,6 +29,8 @@ pub enum WsMsgType {
     UserOrder,
     CfbenchmarksValue,
     CfbenchmarksValueIndexlist,
+    PythValue,
+    PythUnderlyingList,
     Unknown(String),
 }
 
@@ -52,8 +52,6 @@ impl WsMsgType {
             WsMsgType::MultivariateMarketLifecycle => "multivariate_market_lifecycle",
             WsMsgType::EventLifecycle => "event_lifecycle",
             WsMsgType::EventFeeUpdate => "event_fee_update",
-            WsMsgType::Multivariate => "multivariate",
-            WsMsgType::MultivariateLookup => "multivariate_lookup",
             WsMsgType::Communications => "communications",
             WsMsgType::RfqCreated => "rfq_created",
             WsMsgType::RfqDeleted => "rfq_deleted",
@@ -64,6 +62,8 @@ impl WsMsgType {
             WsMsgType::UserOrder => "user_order",
             WsMsgType::CfbenchmarksValue => "cfbenchmarks_value",
             WsMsgType::CfbenchmarksValueIndexlist => "cfbenchmarks_value_indexlist",
+            WsMsgType::PythValue => "pyth_value",
+            WsMsgType::PythUnderlyingList => "pyth_value_underlying_list",
             WsMsgType::Unknown(value) => value.as_str(),
         }
     }
@@ -85,8 +85,6 @@ impl WsMsgType {
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
             "event_fee_update" => WsMsgType::EventFeeUpdate,
-            "multivariate" => WsMsgType::Multivariate,
-            "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
             "rfq_created" => WsMsgType::RfqCreated,
             "rfq_deleted" => WsMsgType::RfqDeleted,
@@ -97,6 +95,8 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythUnderlyingList,
             _ => return None,
         })
     }
@@ -118,8 +118,6 @@ impl WsMsgType {
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
             "event_fee_update" => WsMsgType::EventFeeUpdate,
-            "multivariate" => WsMsgType::Multivariate,
-            "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
             "rfq_created" => WsMsgType::RfqCreated,
             "rfq_deleted" => WsMsgType::RfqDeleted,
@@ -130,6 +128,8 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythUnderlyingList,
             _ => WsMsgType::Unknown(value),
         }
     }
@@ -194,5 +194,28 @@ mod tests {
     fn ws_msg_type_deserialize_unknown() {
         let msg_type: WsMsgType = serde_json::from_str("\"new_type\"").unwrap();
         assert!(matches!(msg_type, WsMsgType::Unknown(value) if value == "new_type"));
+    }
+
+    #[test]
+    fn ws_msg_type_pyth_round_trip() {
+        let value: WsMsgType = serde_json::from_str("\"pyth_value\"").unwrap();
+        assert_eq!(value, WsMsgType::PythValue);
+        assert_eq!(value.as_str(), "pyth_value");
+
+        let list: WsMsgType = serde_json::from_str("\"pyth_value_underlying_list\"").unwrap();
+        assert_eq!(list, WsMsgType::PythUnderlyingList);
+        assert_eq!(list.as_str(), "pyth_value_underlying_list");
+    }
+
+    /// The `multivariate` channel and its `multivariate_lookup` message were
+    /// removed by the exchange on 2026-08-06; they must now fall through to
+    /// `Unknown` rather than resolving to a dedicated variant.
+    #[test]
+    fn ws_msg_type_multivariate_lookup_is_unknown() {
+        let msg_type: WsMsgType = serde_json::from_str("\"multivariate_lookup\"").unwrap();
+        assert!(matches!(msg_type, WsMsgType::Unknown(value) if value == "multivariate_lookup"));
+
+        let msg_type: WsMsgType = serde_json::from_str("\"multivariate\"").unwrap();
+        assert!(matches!(msg_type, WsMsgType::Unknown(value) if value == "multivariate"));
     }
 }

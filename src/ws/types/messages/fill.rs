@@ -11,6 +11,11 @@ pub struct WsFill {
     pub client_order_id: Option<String>,
     #[serde(alias = "ticker")]
     pub market_ticker: String,
+    /// Exchange shard where the fill occurred. Added 2026-08-20; the AsyncAPI
+    /// marks it required, but it is kept optional so fills emitted before the
+    /// rollout still parse. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -49,6 +54,11 @@ pub struct WsFillRef<'a> {
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(alias = "ticker", borrow)]
     pub market_ticker: Cow<'a, str>,
+    /// Exchange shard where the fill occurred. Added 2026-08-20; the AsyncAPI
+    /// marks it required, but it is kept optional so fills emitted before the
+    /// rollout still parse. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -86,6 +96,7 @@ impl<'a> WsFillRef<'a> {
             order_id: self.order_id.into_owned(),
             client_order_id: self.client_order_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             side: self.side,
             action: self.action,
             outcome_side: self.outcome_side,
@@ -152,5 +163,33 @@ mod tests {
         assert!(matches!(fill.book_side, Some(BookSide::Bid)));
         assert!(fill.side.is_none());
         assert!(fill.action.is_none());
+        // Absent exchange_index must not fail the parse.
+        assert!(fill.exchange_index.is_none());
+    }
+
+    /// `exchange_index` was added to WebSocket fill records on 2026-08-20.
+    #[test]
+    fn ws_fill_exchange_index_parses() {
+        let json = r#"{
+            "trade_id":"t",
+            "order_id":"o",
+            "market_ticker":"T",
+            "exchange_index":4,
+            "outcome_side":"yes",
+            "book_side":"bid",
+            "count_fp":"1",
+            "yes_price_dollars":"0.01",
+            "is_taker":true,
+            "fee_cost":"0.00",
+            "ts":0,
+            "ts_ms":0,
+            "post_position_fp":"1.00",
+            "purchased_side":"yes"
+        }"#;
+        let fill: WsFill = serde_json::from_str(json).unwrap();
+        assert_eq!(fill.exchange_index, Some(4));
+
+        let borrowed: WsFillRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().exchange_index, Some(4));
     }
 }

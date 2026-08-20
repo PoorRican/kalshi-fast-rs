@@ -2,15 +2,15 @@
 
 pub(crate) use cargo_husky as _;
 use kalshi_fast::{
-    ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
+    ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderV2Request,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -264,6 +264,26 @@ fn get_markets_params_serializes_with_csv_fields() {
 }
 
 #[test]
+fn get_events_params_serializes_tickers_csv() {
+    let params = kalshi_fast::GetEventsParams {
+        limit: Some(10),
+        tickers: Some(vec!["EVT-1".into(), "EVT-2".into()]),
+        min_updated_ts: Some(1_700_000_000),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["limit"], 10);
+    assert_eq!(json["tickers"], "EVT-1,EVT-2");
+    assert_eq!(json["min_updated_ts"], 1_700_000_000i64);
+
+    let empty = kalshi_fast::GetEventsParams::default();
+    let json = serde_json::to_value(&empty).unwrap();
+    assert!(json.get("tickers").is_none());
+    assert!(json.get("min_updated_ts").is_none());
+}
+
+#[test]
 fn get_markets_params_omits_none_fields() {
     let params = GetMarketsParams {
         limit: Some(100),
@@ -307,32 +327,35 @@ fn get_positions_params_serializes_count_filter_csv() {
 }
 
 #[test]
-fn create_order_request_serializes_all_fields() {
-    let req = CreateOrderRequest {
+fn create_order_v2_request_serializes_all_fields() {
+    let req = CreateOrderV2Request {
         ticker: "TICK-123".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
+        side: BookSide::Bid,
+        count: "10.00".into(),
+        price: "0.5000".into(),
+        time_in_force: TimeInForce::GoodTillCanceled,
+        self_trade_prevention_type: SelfTradePreventionType::TakerAtCross,
         client_order_id: Some("my-order-1".into()),
-        count: Some(10),
-        r#type: Some(OrderType::Limit),
-        yes_price: Some(50),
-        time_in_force: Some(TimeInForce::GoodTillCanceled),
+        expiration_time: None,
         post_only: Some(true),
+        cancel_order_on_pause: None,
+        reduce_only: None,
         subaccount: Some(1),
-        ..Default::default()
+        order_group_id: None,
+        exchange_index: Some(-1),
     };
 
     let json = serde_json::to_value(&req).unwrap();
     assert_eq!(json["ticker"], "TICK-123");
-    assert_eq!(json["side"], "yes");
-    assert_eq!(json["action"], "buy");
+    assert_eq!(json["side"], "bid");
     assert_eq!(json["client_order_id"], "my-order-1");
-    assert_eq!(json["count"], 10);
-    assert_eq!(json["type"], "limit");
-    assert_eq!(json["yes_price"], 50);
+    assert_eq!(json["count"], "10.00");
+    assert_eq!(json["price"], "0.5000");
     assert_eq!(json["time_in_force"], "good_till_canceled");
+    assert_eq!(json["self_trade_prevention_type"], "taker_at_cross");
     assert_eq!(json["post_only"], true);
     assert_eq!(json["subaccount"], 1);
+    assert_eq!(json["exchange_index"], -1);
 }
 
 #[test]
@@ -486,13 +509,189 @@ fn get_balance_response_deserializes() {
     let json = r#"{
         "balance": 100000,
         "portfolio_value": 50000,
-        "updated_ts": 1700000000
+        "updated_ts": 1700000000,
+        "balance_dollars": "1000.0000",
+        "balance_breakdown": [
+            {"exchange_index": 0, "balance": "600.0000"},
+            {"exchange_index": 1, "balance": "400.0000"}
+        ]
     }"#;
 
     let resp: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.balance, 100000);
     assert_eq!(resp.portfolio_value, 50000);
     assert_eq!(resp.updated_ts, 1700000000);
+    assert_eq!(resp.balance_dollars, "1000.0000");
+    assert_eq!(resp.balance_breakdown.len(), 2);
+    assert_eq!(resp.balance_breakdown[1].exchange_index, 1);
+    assert_eq!(resp.balance_breakdown[1].balance, "400.0000");
+}
+
+#[test]
+fn get_balance_response_defaults_breakdown_when_absent() {
+    let json = r#"{
+        "balance": 1,
+        "portfolio_value": 2,
+        "updated_ts": 3,
+        "balance_dollars": "0.0100"
+    }"#;
+
+    let resp: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
+    assert!(resp.balance_breakdown.is_empty());
+}
+
+#[test]
+fn get_balance_params_serializes_correctly() {
+    let params = kalshi_fast::GetBalanceParams {
+        subaccount: Some(2),
+        exchange_index: Some(1),
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["subaccount"], 2);
+    assert_eq!(json["exchange_index"], 1);
+
+    // Both omitted -> balance/portfolio_value span every exchange index.
+    let empty = serde_json::to_value(kalshi_fast::GetBalanceParams::default()).unwrap();
+    assert_eq!(empty, serde_json::json!({}));
+}
+
+#[test]
+fn intra_exchange_instance_transfer_request_serializes_subaccounts() {
+    let body = kalshi_fast::IntraExchangeInstanceTransferRequest {
+        source: "event_contract".into(),
+        destination: "margined".into(),
+        amount: 5000,
+        source_exchange_shard: Some(0),
+        destination_exchange_shard: Some(1),
+        source_subaccount: Some(2),
+        destination_subaccount: Some(3),
+    };
+
+    let json = serde_json::to_value(&body).unwrap();
+    assert_eq!(json["source"], "event_contract");
+    assert_eq!(json["destination"], "margined");
+    assert_eq!(json["amount"], 5000);
+    assert_eq!(json["source_exchange_shard"], 0);
+    assert_eq!(json["destination_exchange_shard"], 1);
+    assert_eq!(json["source_subaccount"], 2);
+    assert_eq!(json["destination_subaccount"], 3);
+
+    let minimal = kalshi_fast::IntraExchangeInstanceTransferRequest {
+        source: "event_contract".into(),
+        destination: "margined".into(),
+        amount: 1,
+        source_exchange_shard: None,
+        destination_exchange_shard: None,
+        source_subaccount: None,
+        destination_subaccount: None,
+    };
+    let json = serde_json::to_value(&minimal).unwrap();
+    assert!(json.get("source_subaccount").is_none());
+    assert!(json.get("destination_subaccount").is_none());
+}
+
+#[test]
+fn get_intra_exchange_instance_transfers_response_deserializes() {
+    let json = r#"{
+        "transfers": [{
+            "transfer_id": "tr-1",
+            "source": "event_contract",
+            "destination": "margined",
+            "source_exchange_shard": 0,
+            "destination_exchange_shard": 1,
+            "amount": "50.0000",
+            "status": "pending",
+            "created_ts": 1771113600
+        }],
+        "cursor": "c1"
+    }"#;
+
+    let resp: kalshi_fast::GetIntraExchangeInstanceTransfersResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.transfers.len(), 1);
+    assert_eq!(resp.transfers[0].transfer_id, "tr-1");
+    assert_eq!(resp.transfers[0].amount, "50.0000");
+    assert_eq!(
+        resp.transfers[0].status,
+        kalshi_fast::IntraExchangeInstanceTransferStatus::Pending
+    );
+    assert_eq!(resp.cursor, Some("c1".into()));
+
+    let single = r#"{
+        "transfer": {
+            "transfer_id": "tr-2",
+            "source": "margined",
+            "destination": "event_contract",
+            "source_exchange_shard": 1,
+            "destination_exchange_shard": 0,
+            "amount": "1.0000",
+            "status": "complete",
+            "created_ts": 1771113601
+        }
+    }"#;
+    let resp: kalshi_fast::GetIntraExchangeInstanceTransferResponse =
+        serde_json::from_str(single).unwrap();
+    assert_eq!(resp.transfer.transfer_id, "tr-2");
+    assert_eq!(
+        resp.transfer.status,
+        kalshi_fast::IntraExchangeInstanceTransferStatus::Complete
+    );
+}
+
+#[test]
+fn target_balance_allocation_round_trips() {
+    let json = r#"{
+        "allocations": [
+            {"exchange_index": 0, "percent": 70},
+            {"exchange_index": 1, "percent": 30}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetTargetBalanceAllocationResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.allocations.len(), 2);
+    assert_eq!(resp.allocations[0].percent, 70);
+
+    let body = kalshi_fast::SetTargetBalanceAllocationRequest {
+        allocations: resp.allocations,
+    };
+    assert!(body.validate().is_ok());
+    let body_json = serde_json::to_value(&body).unwrap();
+    assert_eq!(body_json["allocations"][1]["exchange_index"], 1);
+
+    // Empty allocations disable automatic rebalancing.
+    assert!(
+        kalshi_fast::SetTargetBalanceAllocationRequest::default()
+            .validate()
+            .is_ok()
+    );
+
+    // Percentages must total 100.
+    let bad = kalshi_fast::SetTargetBalanceAllocationRequest {
+        allocations: vec![kalshi_fast::TargetBalanceAllocation {
+            exchange_index: 0,
+            percent: 99,
+        }],
+    };
+    assert!(bad.validate().is_err());
+}
+
+#[test]
+fn get_portfolio_resting_order_total_value_response_deserializes() {
+    let json = r#"{
+        "total_resting_order_value": 1234,
+        "resting_order_value_breakdown": [
+            {"exchange_index": 0, "balance": "10.0000"},
+            {"exchange_index": 3, "balance": "2.3400"}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetPortfolioRestingOrderTotalValueResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.total_resting_order_value, 1234);
+    assert_eq!(resp.resting_order_value_breakdown.len(), 2);
+    assert_eq!(resp.resting_order_value_breakdown[1].exchange_index, 3);
+    assert_eq!(resp.resting_order_value_breakdown[1].balance, "2.3400");
 }
 
 #[test]
@@ -541,6 +740,140 @@ fn get_series_response_deserializes() {
     let resp: kalshi_fast::GetSeriesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.series.ticker, "SERIES-1");
     assert_eq!(resp.series.title.as_deref(), Some("Example Series"));
+    assert_eq!(resp.series.exchange_index, None);
+}
+
+#[test]
+fn get_series_response_deserializes_exchange_index() {
+    let json = r#"{
+        "series": {"ticker": "SERIES-1", "title": "Example Series", "exchange_index": 2}
+    }"#;
+
+    let resp: kalshi_fast::GetSeriesResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.series.exchange_index, Some(2));
+}
+
+#[test]
+fn get_event_live_data_response_deserializes() {
+    let json = r#"{
+        "live_data": {
+            "type": "crypto_price_chart",
+            "details": {"points": [[1735689600000, "104123.45"]]},
+            "is_historical": false,
+            "default_range": "15min",
+            "range_options": ["15min", "1h", "1d"]
+        }
+    }"#;
+
+    let resp: kalshi_fast::GetEventLiveDataResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.live_data.live_data_type, "crypto_price_chart");
+    assert!(resp.live_data.details.contains_key("points"));
+    assert_eq!(resp.live_data.is_historical, Some(false));
+    assert_eq!(resp.live_data.default_range.as_deref(), Some("15min"));
+    assert_eq!(resp.live_data.range_options.len(), 3);
+}
+
+#[test]
+fn get_event_live_data_response_deserializes_minimal() {
+    let json = r#"{"live_data": {"type": "weather_observations", "details": {}}}"#;
+
+    let resp: kalshi_fast::GetEventLiveDataResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.live_data.live_data_type, "weather_observations");
+    assert!(resp.live_data.is_historical.is_none());
+    assert!(resp.live_data.default_range.is_none());
+    assert!(resp.live_data.range_options.is_empty());
+}
+
+#[test]
+fn get_event_live_data_params_serializes_correctly() {
+    let params = kalshi_fast::GetEventLiveDataParams {
+        range: Some("1h".into()),
+    };
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["range"], "1h");
+
+    let empty = serde_json::to_value(kalshi_fast::GetEventLiveDataParams::default()).unwrap();
+    assert_eq!(empty, serde_json::json!({}));
+}
+
+#[test]
+fn get_weather_index_response_deserializes() {
+    let json = r#"{
+        "city": "miami",
+        "config_version": "miami-temperature-v1.0",
+        "units": "fahrenheit",
+        "timeseries": [
+            {"t": 1755705600000, "v": 88.25, "status": "normal", "contributors": 3},
+            {
+                "t": 1755705660000,
+                "status": "incomplete",
+                "stations": [
+                    {
+                        "station_id": "KMIA1M",
+                        "code": "pending",
+                        "source": "hf_asos",
+                        "temp_f": 88.3,
+                        "received_at_ms": 1755705662000
+                    },
+                    {"station_id": "KOPF1M", "code": "missing"}
+                ]
+            }
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetWeatherIndexResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.city, "miami");
+    assert_eq!(resp.units, "fahrenheit");
+    assert_eq!(
+        resp.config_version.as_deref(),
+        Some("miami-temperature-v1.0")
+    );
+    assert_eq!(resp.timeseries.len(), 2);
+
+    let normal = &resp.timeseries[0];
+    assert_eq!(normal.status, "normal");
+    assert_eq!(normal.v, Some(88.25));
+    assert_eq!(normal.contributors, Some(3));
+    assert!(normal.stations.is_empty());
+
+    // `v` is absent (not 0) on incomplete points.
+    let incomplete = &resp.timeseries[1];
+    assert_eq!(incomplete.status, "incomplete");
+    assert!(incomplete.v.is_none());
+    assert!(incomplete.contributors.is_none());
+    assert_eq!(incomplete.stations.len(), 2);
+    assert_eq!(incomplete.stations[0].station_id, "KMIA1M");
+    assert_eq!(incomplete.stations[0].code, "pending");
+    assert_eq!(incomplete.stations[0].source.as_deref(), Some("hf_asos"));
+    assert_eq!(incomplete.stations[0].temp_f, Some(88.3));
+    assert!(incomplete.stations[0].obs_time_ms.is_none());
+    assert!(incomplete.stations[1].source.is_none());
+    assert!(incomplete.stations[1].temp_f.is_none());
+}
+
+#[test]
+fn get_weather_index_response_deserializes_empty_window() {
+    let json = r#"{"city": "miami", "units": "fahrenheit", "timeseries": null}"#;
+
+    let resp: kalshi_fast::GetWeatherIndexResponse = serde_json::from_str(json).unwrap();
+    assert!(resp.timeseries.is_empty());
+    assert!(resp.config_version.is_none());
+}
+
+#[test]
+fn get_weather_index_params_serializes_correctly() {
+    let params = kalshi_fast::GetWeatherIndexParams {
+        from: Some(1_755_705_600_000),
+        to: Some(1_755_709_200_000),
+        last_sec: None,
+        detailed: Some(true),
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["from"], 1_755_705_600_000i64);
+    assert_eq!(json["to"], 1_755_709_200_000i64);
+    assert_eq!(json["detailed"], true);
+    assert!(json.get("last_sec").is_none());
 }
 
 #[test]
@@ -620,7 +953,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "yes_bid_size_fp": "10.00",
             "yes_ask_size_fp": "11.00",
             "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
             "notional_value": 100,
             "notional_value_dollars": "1.0000",
             "previous_yes_bid": 50,
@@ -859,11 +1191,11 @@ fn get_positions_response_deserializes() {
     let json = r#"{
         "market_positions": [{
             "ticker": "MKT-1",
+            "exchange_index": 1,
             "total_traded_dollars": "12.3400",
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -881,8 +1213,46 @@ fn get_positions_response_deserializes() {
     let resp: kalshi_fast::GetPositionsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.market_positions.len(), 1);
     assert_eq!(resp.market_positions[0].position_fp, "5.00");
+    assert_eq!(resp.market_positions[0].exchange_index, 1);
     assert_eq!(resp.event_positions.len(), 1);
     assert_eq!(resp.cursor, Some("abc123".into()));
+}
+
+#[test]
+fn get_positions_params_serializes_exchange_index() {
+    let params = GetPositionsParams {
+        limit: Some(10),
+        exchange_index: Some(2),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["limit"], 10);
+    assert_eq!(json["exchange_index"], 2);
+    assert!(json.get("cursor").is_none());
+}
+
+#[test]
+fn get_historical_positions_params_serializes_correctly() {
+    let params = kalshi_fast::GetHistoricalPositionsParams {
+        ticker: Some("MKT-1".into()),
+        event_ticker: Some("EVT-1".into()),
+        limit: Some(50),
+        cursor: Some("c1".into()),
+    };
+    assert!(params.validate().is_ok());
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["ticker"], "MKT-1");
+    assert_eq!(json["event_ticker"], "EVT-1");
+    assert_eq!(json["limit"], 50);
+    assert_eq!(json["cursor"], "c1");
+
+    let bad = kalshi_fast::GetHistoricalPositionsParams {
+        limit: Some(1001),
+        ..Default::default()
+    };
+    assert!(bad.validate().is_err());
 }
 
 #[test]
@@ -890,11 +1260,11 @@ fn positions_page_from_response() {
     let json = r#"{
         "market_positions": [{
             "ticker": "MKT-1",
+            "exchange_index": 1,
             "total_traded_dollars": "12.3400",
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -926,6 +1296,8 @@ fn get_orders_response_deserializes() {
             "ticker": "MKT-1",
             "side": "yes",
             "action": "buy",
+            "outcome_side": "yes",
+            "book_side": "bid",
             "type": "limit",
             "status": "resting",
             "yes_price_dollars": "0.5500",
@@ -936,28 +1308,33 @@ fn get_orders_response_deserializes() {
             "taker_fill_cost_dollars": "0.0000",
             "maker_fill_cost_dollars": "0.0000",
             "taker_fees_dollars": "0.0000",
-            "maker_fees_dollars": "0.0000"
+            "maker_fees_dollars": "0.0000",
+            "exchange_index": 0
         }]
     }"#;
 
     let resp: kalshi_fast::GetOrdersResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.orders.len(), 1);
     assert_eq!(resp.orders[0].client_order_id, "client-1");
+    assert!(matches!(resp.orders[0].outcome_side, YesNo::Yes));
+    assert!(matches!(resp.orders[0].book_side, BookSide::Bid));
+    assert_eq!(resp.orders[0].exchange_index, Some(0));
     assert!(resp.cursor.is_none());
 }
 
 #[test]
-fn create_order_response_deserializes() {
+fn get_order_response_deserializes_without_legacy_side_fields() {
+    // `side` / `action` are deprecated upstream and may be omitted.
     let json = r#"{
         "order": {
             "order_id": "ord-123",
             "user_id": "user-1",
             "client_order_id": "client-1",
             "ticker": "MKT-1",
-            "side": "yes",
-            "action": "buy",
+            "outcome_side": "no",
+            "book_side": "ask",
             "type": "limit",
-            "status": "resting",
+            "status": "canceled",
             "yes_price_dollars": "0.5500",
             "no_price_dollars": "0.4500",
             "fill_count_fp": "0.00",
@@ -970,41 +1347,45 @@ fn create_order_response_deserializes() {
         }
     }"#;
 
-    let resp: kalshi_fast::CreateOrderResponse = serde_json::from_str(json).unwrap();
+    let resp: kalshi_fast::GetOrderResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.order.order_id, "ord-123");
     assert_eq!(resp.order.ticker, "MKT-1");
+    assert_eq!(resp.order.status, OrderStatus::Canceled);
+    assert!(matches!(resp.order.outcome_side, YesNo::No));
+    assert!(matches!(resp.order.book_side, BookSide::Ask));
+    assert_eq!(resp.order.exchange_index, None);
 }
 
 #[test]
-fn cancel_order_response_deserializes() {
+fn create_order_v2_response_deserializes() {
     let json = r#"{
-        "order": {
-            "order_id": "ord-123",
-            "user_id": "user-1",
-            "client_order_id": "client-1",
-            "ticker": "MKT-1",
-            "side": "yes",
-            "action": "buy",
-            "type": "limit",
-            "status": "canceled",
-            "yes_price_dollars": "0.5500",
-            "no_price_dollars": "0.4500",
-            "fill_count_fp": "0.00",
-            "remaining_count_fp": "5.00",
-            "initial_count_fp": "10.00",
-            "taker_fill_cost_dollars": "0.0000",
-            "maker_fill_cost_dollars": "0.0000",
-            "taker_fees_dollars": "0.0000",
-            "maker_fees_dollars": "0.0000"
-        },
-        "reduced_by": 5,
-        "reduced_by_fp": "5.00"
+        "order_id": "ord-123",
+        "client_order_id": "client-1",
+        "fill_count": "0.00",
+        "remaining_count": "10.00",
+        "ts_ms": 1715793600123
     }"#;
 
-    let resp: kalshi_fast::CancelOrderResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.order.status, OrderStatus::Canceled);
-    assert_eq!(resp.reduced_by, 5);
-    assert_eq!(resp.reduced_by_fp, "5.00");
+    let resp: kalshi_fast::CreateOrderV2Response = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.order_id, "ord-123");
+    assert_eq!(resp.remaining_count, "10.00");
+    assert_eq!(resp.average_fill_price, None);
+    assert_eq!(resp.ts_ms, 1715793600123);
+}
+
+#[test]
+fn cancel_order_v2_response_deserializes() {
+    let json = r#"{
+        "order_id": "ord-123",
+        "client_order_id": "client-1",
+        "reduced_by": "5.00",
+        "ts_ms": 1715793660456
+    }"#;
+
+    let resp: kalshi_fast::CancelOrderV2Response = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.order_id, "ord-123");
+    assert_eq!(resp.reduced_by, "5.00");
+    assert_eq!(resp.ts_ms, 1715793660456);
 }
 
 #[test]
@@ -1032,7 +1413,8 @@ fn get_trades_response_deserializes() {
             "taker_side": "yes",
             "taker_outcome_side": "yes",
             "taker_book_side": "bid",
-            "created_time": "2026-04-16T12:00:00Z"
+            "created_time": "2026-04-16T12:00:00Z",
+            "is_block_trade": false
         }],
         "cursor": "c1"
     }"#;
@@ -1040,15 +1422,13 @@ fn get_trades_response_deserializes() {
     let resp: GetTradesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.trades.len(), 1);
     assert_eq!(resp.trades[0].count_fp, "2.00");
-    // Normalized direction fields added 2026-05-07.
+    // Normalized direction fields added 2026-05-07; both are required by the spec.
     assert!(matches!(
         resp.trades[0].taker_outcome_side,
-        Some(TradeTakerSide::Yes)
+        TradeTakerSide::Yes
     ));
-    assert!(matches!(
-        resp.trades[0].taker_book_side,
-        Some(BookSide::Bid)
-    ));
+    assert!(matches!(resp.trades[0].taker_book_side, BookSide::Bid));
+    assert!(!resp.trades[0].is_block_trade);
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
@@ -1070,16 +1450,39 @@ fn get_exchange_status_response_deserializes() {
 }
 
 #[test]
-fn get_exchange_announcements_response_deserializes() {
+fn get_exchange_status_response_deserializes_per_index_statuses() {
     let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": false,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "description": "Primary shard",
+                "exchange_active": true,
+                "trading_active": true,
+                "intra_exchange_transfers_active": false
+            },
+            {
+                "exchange_index": 1,
+                "description": "Secondary shard",
+                "exchange_active": true,
+                "trading_active": false,
+                "intra_exchange_transfers_active": true
+            }
         ]
     }"#;
 
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(false));
+    assert_eq!(resp.exchange_index_statuses.len(), 2);
+    assert_eq!(resp.exchange_index_statuses[1].exchange_index, 1);
+    assert_eq!(
+        resp.exchange_index_statuses[1].description,
+        "Secondary shard"
+    );
+    assert!(!resp.exchange_index_statuses[1].trading_active);
+    assert!(resp.exchange_index_statuses[1].intra_exchange_transfers_active);
 }
 
 #[test]
@@ -1116,13 +1519,25 @@ fn get_user_data_timestamp_response_deserializes() {
 fn get_series_fee_changes_response_deserializes() {
     let json = r#"{
         "series_fee_change_arr": [
-            {"id":1,"series_ticker":"SERIES-1","fee_type":"flat","fee_multiplier":5,"scheduled_ts":1700000000}
+            {
+                "id":"fc_1",
+                "series_ticker":"SERIES-1",
+                "fee_type":"flat",
+                "fee_multiplier":0.5,
+                "scheduled_ts":"2026-01-01T00:00:00Z"
+            }
         ]
     }"#;
 
     let resp: GetSeriesFeeChangesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.series_fee_change_arr.len(), 1);
+    assert_eq!(resp.series_fee_change_arr[0].id, "fc_1");
     assert_eq!(resp.series_fee_change_arr[0].series_ticker, "SERIES-1");
+    assert!((resp.series_fee_change_arr[0].fee_multiplier - 0.5).abs() < f64::EPSILON);
+    assert_eq!(
+        resp.series_fee_change_arr[0].scheduled_ts,
+        "2026-01-01T00:00:00Z"
+    );
 }
 
 #[test]
@@ -1130,12 +1545,15 @@ fn get_fills_response_deserializes() {
     let json = r#"{
         "fills": [{
             "fill_id": "f1",
+            "exchange_index": 2,
             "order_id": "o1",
             "trade_id": "t1",
             "ticker": "MKT-1",
             "market_ticker": "MKT-1",
             "side": "yes",
             "action": "buy",
+            "outcome_side": "yes",
+            "book_side": "bid",
             "count_fp": "1.00",
             "yes_price_dollars": "0.5500",
             "no_price_dollars": "0.4500",
@@ -1147,7 +1565,55 @@ fn get_fills_response_deserializes() {
 
     let resp: GetFillsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.fills.len(), 1);
+    assert_eq!(resp.fills[0].exchange_index, 2);
+    assert_eq!(resp.fills[0].outcome_side, YesNo::Yes);
+    assert_eq!(resp.fills[0].book_side, BookSide::Bid);
+    #[allow(deprecated)]
+    {
+        assert_eq!(resp.fills[0].side, Some(YesNo::Yes));
+        assert!(matches!(resp.fills[0].action, Some(BuySell::Buy)));
+    }
     assert_eq!(resp.cursor, Some("c1".into()));
+}
+
+#[test]
+fn fill_deserializes_without_deprecated_side_and_action() {
+    let json = r#"{
+        "fill_id": "f1",
+        "exchange_index": 0,
+        "order_id": "o1",
+        "trade_id": "t1",
+        "ticker": "MKT-1",
+        "market_ticker": "MKT-1",
+        "outcome_side": "no",
+        "book_side": "ask",
+        "count_fp": "1.00",
+        "yes_price_dollars": "0.5500",
+        "no_price_dollars": "0.4500",
+        "is_taker": false,
+        "fee_cost": "0.0100"
+    }"#;
+
+    let fill: kalshi_fast::Fill = serde_json::from_str(json).unwrap();
+    assert_eq!(fill.exchange_index, 0);
+    assert_eq!(fill.outcome_side, YesNo::No);
+    assert_eq!(fill.book_side, BookSide::Ask);
+    #[allow(deprecated)]
+    {
+        assert!(fill.side.is_none());
+        assert!(fill.action.is_none());
+    }
+}
+
+#[test]
+fn get_fills_params_serializes_exchange_index() {
+    let params = GetFillsParams {
+        exchange_index: Some(3),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["exchange_index"], 3);
 }
 
 #[test]
@@ -1155,6 +1621,7 @@ fn get_settlements_response_deserializes() {
     let json = r#"{
         "settlements": [{
             "ticker": "MKT-1",
+            "exchange_index": 1,
             "event_ticker": "EVT-1",
             "market_result": "yes",
             "yes_count_fp": "1.00",
@@ -1170,6 +1637,7 @@ fn get_settlements_response_deserializes() {
 
     let resp: GetSettlementsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.settlements.len(), 1);
+    assert_eq!(resp.settlements[0].exchange_index, 1);
     assert!(resp.cursor.is_none());
 }
 
@@ -1234,13 +1702,22 @@ fn get_account_endpoint_costs_response_deserializes() {
 
 #[test]
 fn get_subaccount_balances_response_deserializes() {
+    // Since 2026-07-02 there is one entry per exchange index, so a subaccount
+    // funded on two shards shows up as two rows.
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [
+            {"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000},
+            {"subaccount_number":1,"exchange_index":1,"balance":"250.0000","updated_ts":1700000001}
+        ]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.subaccount_balances.len(), 1);
+    assert_eq!(resp.subaccount_balances.len(), 2);
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[1].subaccount_number, 1);
+    assert_eq!(resp.subaccount_balances[1].exchange_index, 1);
+    assert_eq!(resp.subaccount_balances[1].balance, "250.0000");
 }
 
 #[test]
@@ -1402,13 +1879,13 @@ fn get_events_params_validates_limit_bounds() {
 #[test]
 fn get_positions_params_validates_subaccount_bounds() {
     let params = GetPositionsParams {
-        subaccount: Some(32),
+        subaccount: Some(63),
         ..Default::default()
     };
     assert!(params.validate().is_ok());
 
     let params = GetPositionsParams {
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1428,16 +1905,32 @@ fn get_orders_params_validates_limit_bounds() {
     assert!(params.validate().is_err());
 
     let params = GetOrdersParams {
-        limit: Some(201),
+        limit: Some(1001),
         ..Default::default()
     };
     assert!(params.validate().is_err());
 
     let params = GetOrdersParams {
-        limit: Some(200),
+        limit: Some(1000),
         ..Default::default()
     };
     assert!(params.validate().is_ok());
+}
+
+#[test]
+fn get_orders_params_serializes_exchange_index_filter() {
+    let params = GetOrdersParams {
+        ticker: Some("MKT-1".into()),
+        exchange_index: Some(0),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["ticker"], "MKT-1");
+    assert_eq!(json["exchange_index"], 0);
+
+    // Omitted by default so unfiltered requests span all exchange shards.
+    let json = serde_json::to_value(&GetOrdersParams::default()).unwrap();
+    assert!(json.get("exchange_index").is_none());
 }
 
 #[test]
@@ -1459,139 +1952,84 @@ fn get_orders_params_validates_event_ticker_count() {
 #[test]
 fn get_orders_params_validates_subaccount_bounds() {
     let params = GetOrdersParams {
-        subaccount: Some(33),
+        subaccount: Some(63),
+        ..Default::default()
+    };
+    assert!(params.validate().is_ok());
+
+    let params = GetOrdersParams {
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
 }
 
+// The legacy `CreateOrderRequest` validation tests were dropped along with the
+// V1 order mutation endpoints, which are no longer in the OpenAPI spec. The V2
+// request shape is validated server-side (`price`/`count` are required fields).
+
 #[test]
-fn create_order_request_validate_requires_count_or_count_fp() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
+fn order_group_params_serialize_subaccount_and_exchange_index() {
+    let json = serde_json::to_value(kalshi_fast::OrderGroupParams {
+        subaccount: Some(3),
+        exchange_index: Some(0),
+    })
+    .unwrap();
+    assert_eq!(json["subaccount"], 3);
+    assert_eq!(json["exchange_index"], 0);
+
+    let json = serde_json::to_value(kalshi_fast::OrderGroupParams::default()).unwrap();
+    assert!(json.get("subaccount").is_none());
+    assert!(json.get("exchange_index").is_none());
 }
 
 #[test]
-fn create_order_request_validate_rejects_count_mismatch() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(2),
-        count_fp: Some("1.0".into()),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
+fn create_order_group_request_serializes_exchange_index() {
+    let json = serde_json::to_value(kalshi_fast::CreateOrderGroupRequest {
+        subaccount: Some(1),
+        contracts_limit: Some(25),
+        contracts_limit_fp: None,
+        exchange_index: Some(0),
+    })
+    .unwrap();
+    assert_eq!(json["subaccount"], 1);
+    assert_eq!(json["contracts_limit"], 25);
+    assert_eq!(json["exchange_index"], 0);
 }
 
 #[test]
-fn create_order_request_validate_rejects_conflicting_prices() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        yes_price_dollars: Some("0.10".into()),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
+fn order_group_responses_deserialize_current_schema() {
+    let json = r#"{
+        "order_groups": [{
+            "id": "og-1",
+            "contracts_limit_fp": "25.00",
+            "is_auto_cancel_enabled": true,
+            "exchange_index": 0
+        }]
+    }"#;
+    let resp: kalshi_fast::GetOrderGroupsResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.order_groups.len(), 1);
+    assert_eq!(
+        resp.order_groups[0].contracts_limit_fp.as_deref(),
+        Some("25.00")
+    );
+    assert_eq!(resp.order_groups[0].exchange_index, Some(0));
 
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        no_price: Some(90),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
+    let json = r#"{
+        "is_auto_cancel_enabled": false,
+        "contracts_limit_fp": "50.00",
+        "orders": ["ord-1", "ord-2"],
+        "exchange_index": 0
+    }"#;
+    let resp: kalshi_fast::GetOrderGroupResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.orders, vec!["ord-1".to_string(), "ord-2".to_string()]);
+    assert_eq!(resp.contracts_limit_fp.as_deref(), Some("50.00"));
 
-#[test]
-fn create_order_request_validate_market_order_no_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Market),
-        yes_price: Some(10),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_limit_order_requires_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Limit),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_subaccount_bounds() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        subaccount: Some(32),
-        ..Default::default()
-    };
-    assert!(req.validate().is_ok());
-
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        subaccount: Some(33),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_sell_position_floor() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        sell_position_floor: Some(1),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_ok_with_yes_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        r#type: Some(OrderType::Limit),
-        ..Default::default()
-    };
-    assert!(req.validate().is_ok());
+    let json = r#"{"order_group_id": "og-1", "subaccount": 0, "exchange_index": 0}"#;
+    let resp: kalshi_fast::CreateOrderGroupResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.order_group_id, "og-1");
+    assert_eq!(resp.subaccount, 0);
+    assert_eq!(resp.exchange_index, Some(0));
 }
 
 // ============================================================================
@@ -1672,10 +2110,71 @@ fn event_data_deserializes_with_partial_product_metadata() {
     assert_eq!(event.event_ticker, "EVT-1");
     let meta = event.product_metadata.unwrap();
     assert!(meta.image_url.is_none());
+    assert!(meta.cadence.is_none());
     assert_eq!(
         meta.extra.get("new_product_flag").and_then(|v| v.as_bool()),
         Some(true)
     );
+}
+
+#[test]
+fn event_data_deserializes_product_metadata_cadence() {
+    let json = r#"{
+        "event_ticker": "EVT-1",
+        "product_metadata": {
+            "cadence": "fifteen_min",
+            "image_url": "https://example.com/img.png",
+            "market_details": [],
+            "settlement_sources": []
+        }
+    }"#;
+
+    let event: EventData = serde_json::from_str(json).unwrap();
+    let meta = event.product_metadata.unwrap();
+    assert_eq!(meta.cadence.as_deref(), Some("fifteen_min"));
+    assert_eq!(
+        meta.image_url.as_deref(),
+        Some("https://example.com/img.png")
+    );
+
+    // Unknown future cadences must round-trip losslessly (free string, not enum).
+    let future =
+        r#"{"event_ticker": "EVT-2", "product_metadata": {"cadence": "quarter_hourly_v2"}}"#;
+    let event: EventData = serde_json::from_str(future).unwrap();
+    assert_eq!(
+        event.product_metadata.unwrap().cadence.as_deref(),
+        Some("quarter_hourly_v2")
+    );
+}
+
+#[test]
+fn event_data_deserializes_settlement_sources() {
+    let json = r#"{
+        "event_ticker": "EVT-1",
+        "settlement_sources": [
+            {"name": "Official Source", "url": "https://example.com/source"}
+        ]
+    }"#;
+
+    let event: EventData = serde_json::from_str(json).unwrap();
+    assert_eq!(event.settlement_sources.len(), 1);
+    assert_eq!(
+        event.settlement_sources[0].name.as_deref(),
+        Some("Official Source")
+    );
+    assert_eq!(
+        event.settlement_sources[0].url.as_deref(),
+        Some("https://example.com/source")
+    );
+
+    // The spec marks the array nullable; null and absence both decode as empty.
+    let null_json = r#"{"event_ticker": "EVT-2", "settlement_sources": null}"#;
+    let event: EventData = serde_json::from_str(null_json).unwrap();
+    assert!(event.settlement_sources.is_empty());
+
+    let absent_json = r#"{"event_ticker": "EVT-3"}"#;
+    let event: EventData = serde_json::from_str(absent_json).unwrap();
+    assert!(event.settlement_sources.is_empty());
 }
 
 #[test]
@@ -1741,19 +2240,193 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
 }
 
 #[test]
+fn market_tolerates_removed_deprecated_fields() {
+    // `response_price_units` and `fractional_trading_enabled` were removed from
+    // the REST schema on 2026-07-09. They are no longer modelled; stale servers
+    // that still emit them must not break deserialization.
+    let json = r#"{
+        "market": {
+            "ticker": "MKT-1",
+            "market_type": "binary",
+            "response_price_units": "usd_cent",
+            "fractional_trading_enabled": true,
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
+        }
+    }"#;
+
+    let resp: kalshi_fast::GetMarketResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.market.ticker, "MKT-1");
+    assert_eq!(
+        resp.market
+            .extra
+            .get("response_price_units")
+            .and_then(|v| v.as_str()),
+        Some("usd_cent")
+    );
+    assert_eq!(
+        resp.market
+            .extra
+            .get("fractional_trading_enabled")
+            .and_then(|v| v.as_bool()),
+        Some(true)
+    );
+}
+
+#[test]
+fn market_price_level_structure_accepts_unknown_values() {
+    // price_level_structure is an open string in the spec; new structures ship
+    // regularly. price_ranges is the authoritative tick source.
+    let json = r#"{
+        "market": {
+            "ticker": "MKT-1",
+            "market_type": "binary",
+            "price_level_structure": "center_deci_edge_centi_cent",
+            "price_ranges": [
+                {"start": "0.0000", "end": "0.0100", "step": "0.0001"},
+                {"start": "0.0100", "end": "0.9900", "step": "0.0010"},
+                {"start": "0.9900", "end": "1.0000", "step": "0.0001"}
+            ]
+        }
+    }"#;
+
+    let resp: kalshi_fast::GetMarketResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        resp.market.price_level_structure.as_deref(),
+        Some("center_deci_edge_centi_cent")
+    );
+    let ranges = resp.market.price_ranges.as_ref().unwrap();
+    assert_eq!(ranges.len(), 3);
+    assert_eq!(ranges[0].start, "0.0000");
+    assert_eq!(ranges[0].end, "0.0100");
+    assert_eq!(ranges[0].step, "0.0001");
+    assert_eq!(ranges[1].step, "0.0010");
+
+    // A structure name Kalshi has not shipped yet must still round-trip.
+    let future = r#"{"market": {"ticker": "MKT-2", "price_level_structure": "center_milli_edge_micro_cent"}}"#;
+    let resp: kalshi_fast::GetMarketResponse = serde_json::from_str(future).unwrap();
+    assert_eq!(
+        resp.market.price_level_structure.as_deref(),
+        Some("center_milli_edge_micro_cent")
+    );
+}
+
+#[test]
 fn get_api_keys_response_deserializes_typed() {
     let json = r#"{
         "api_keys": [{
             "api_key_id": "key-1",
             "name": "test key",
             "scopes": ["read", "write"]
-        }]
+        }, {
+            "api_key_id": "key-2",
+            "name": "scoped key",
+            "scopes": ["read::portfolio_balance", "write::trade", "read::block_trade_accept", "write::block_trade_accept"],
+            "subaccount": 7
+        }],
+        "api_key_region_expiration_ts": 1700000000
     }"#;
 
     let resp: kalshi_fast::GetApiKeysResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.api_keys.len(), 1);
+    assert_eq!(resp.api_keys.len(), 2);
     assert_eq!(resp.api_keys[0].api_key_id, "key-1");
     assert_eq!(resp.api_keys[0].scopes, vec!["read", "write"]);
+    // Absent subaccount means the key is unrestricted (added 2026-07-02).
+    assert_eq!(resp.api_keys[0].subaccount, None);
+    assert_eq!(resp.api_keys[1].subaccount, Some(7));
+    // Newer child scopes round-trip as plain strings; no closed enum.
+    assert_eq!(
+        resp.api_keys[1].scopes,
+        vec![
+            "read::portfolio_balance",
+            "write::trade",
+            "read::block_trade_accept",
+            "write::block_trade_accept"
+        ]
+    );
+    // Location-attestation expiry, added 2026-08-16.
+    assert_eq!(resp.api_key_region_expiration_ts, Some(1700000000));
+
+    // Absent when the account has never attested.
+    let resp: kalshi_fast::GetApiKeysResponse =
+        serde_json::from_str(r#"{"api_keys": []}"#).unwrap();
+    assert_eq!(resp.api_key_region_expiration_ts, None);
+}
+
+#[test]
+fn api_key_requests_serialize_subaccount_restriction() {
+    let body = kalshi_fast::CreateApiKeyRequest {
+        name: "k".to_string(),
+        public_key: "pem".to_string(),
+        scopes: vec!["read::portfolio_balance".to_string()],
+        subaccount: Some(63),
+    };
+    let json = serde_json::to_value(&body).unwrap();
+    assert_eq!(json["subaccount"], 63);
+    assert!(body.validate().is_ok());
+
+    // Omitted when unrestricted.
+    let body = kalshi_fast::CreateApiKeyRequest {
+        name: "k".to_string(),
+        public_key: "pem".to_string(),
+        scopes: vec![],
+        subaccount: None,
+    };
+    let json = serde_json::to_value(&body).unwrap();
+    assert!(json.get("subaccount").is_none());
+    assert!(json.get("scopes").is_none());
+
+    let body = kalshi_fast::GenerateApiKeyRequest {
+        name: "k".to_string(),
+        scopes: vec!["write::trade".to_string()],
+        subaccount: Some(0),
+    };
+    let json = serde_json::to_value(&body).unwrap();
+    assert_eq!(json["subaccount"], 0);
+    assert!(body.validate().is_ok());
+
+    // Spec bound is 0..=63.
+    let body = kalshi_fast::GenerateApiKeyRequest {
+        name: "k".to_string(),
+        scopes: vec![],
+        subaccount: Some(64),
+    };
+    assert!(body.validate().is_err());
+}
+
+#[test]
+fn get_account_api_usage_level_volume_progress_response_deserializes() {
+    let json = r#"{
+        "volume_progress": [{
+            "computed_ts": 1700000000,
+            "trailing_30d_volume_fp": "12345.00",
+            "goals": [
+                {"level":"expert","earn_volume_goal_fp":"10000.00","keep_volume_goal_fp":"5000.00"},
+                {"level":"premier","earn_volume_goal_fp":"100000.00","keep_volume_goal_fp":"50000.00"}
+            ]
+        }]
+    }"#;
+
+    let resp: kalshi_fast::GetAccountApiUsageLevelVolumeProgressResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.volume_progress.len(), 1);
+    assert_eq!(resp.volume_progress[0].computed_ts, 1700000000);
+    assert_eq!(resp.volume_progress[0].trailing_30d_volume_fp, "12345.00");
+    assert_eq!(resp.volume_progress[0].goals.len(), 2);
+    assert_eq!(resp.volume_progress[0].goals[0].level, "expert");
+    assert_eq!(
+        resp.volume_progress[0].goals[0].earn_volume_goal_fp,
+        "10000.00"
+    );
+    assert_eq!(
+        resp.volume_progress[0].goals[1].keep_volume_goal_fp,
+        "50000.00"
+    );
+
+    // Tolerates missing/null arrays.
+    let resp: kalshi_fast::GetAccountApiUsageLevelVolumeProgressResponse =
+        serde_json::from_str(r#"{"volume_progress": null}"#).unwrap();
+    assert!(resp.volume_progress.is_empty());
 }
 
 #[test]
@@ -1771,7 +2444,12 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
             "created_ts": "2023-11-07T05:31:56Z",
             "updated_ts": "2023-11-07T05:31:56Z",
             "status": "open",
-            "rfq_target_cost_dollars": "100.0000"
+            "rfq_target_cost_dollars": "100.0000",
+            "post_only": true,
+            "creator_subaccount": 3,
+            "rfq_creator_subaccount": 0,
+            "yes_contracts_fp": "4.25",
+            "no_contracts_fp": "5.75"
         }]
     }"#;
     let quotes: kalshi_fast::GetQuotesResponse = serde_json::from_str(quotes_json).unwrap();
@@ -1781,16 +2459,23 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
         quotes.quotes[0].rfq_target_cost_dollars.as_deref(),
         Some("100.0000")
     );
+    assert_eq!(quotes.quotes[0].post_only, Some(true));
+    assert_eq!(quotes.quotes[0].creator_subaccount, Some(3));
+    assert_eq!(quotes.quotes[0].rfq_creator_subaccount, Some(0));
+    // Fractional quote quantities (2026-06-11).
+    assert_eq!(quotes.quotes[0].yes_contracts_fp.as_deref(), Some("4.25"));
+    assert_eq!(quotes.quotes[0].no_contracts_fp.as_deref(), Some("5.75"));
 
     let rfqs_json = r#"{
         "rfqs": [{
             "id": "r-1",
             "creator_id": "u-1",
             "market_ticker": "MKT-1",
-            "contracts_fp": "10.00",
+            "contracts_fp": "10.25",
             "target_cost_dollars": "100.0000",
             "status": "open",
-            "created_ts": "2023-11-07T05:31:56Z"
+            "created_ts": "2023-11-07T05:31:56Z",
+            "creator_subaccount": 7
         }]
     }"#;
     let rfqs: kalshi_fast::GetRFQsResponse = serde_json::from_str(rfqs_json).unwrap();
@@ -1799,14 +2484,66 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
         rfqs.rfqs[0].target_cost_dollars.as_deref(),
         Some("100.0000")
     );
+    // Fractional RFQ quantities (2026-06-11).
+    assert_eq!(rfqs.rfqs[0].contracts_fp, "10.25");
+    assert_eq!(rfqs.rfqs[0].creator_subaccount, Some(7));
+}
+
+/// `GET /communications/quotes` dropped `market_ticker` / `event_ticker` on
+/// 2026-06-20 and gained `min_ts` / `max_ts` on 2026-06-18.
+#[test]
+fn get_quotes_params_serialize_time_filters() {
+    let params = kalshi_fast::GetQuotesParams {
+        min_ts: Some(1_760_000_000),
+        max_ts: Some(1_760_086_400),
+        rfq_id: Some("r-1".to_string()),
+        user_filter: Some("self".to_string()),
+        ..Default::default()
+    };
+    let value = serde_json::to_value(&params).unwrap();
+    assert_eq!(value["min_ts"], 1_760_000_000_i64);
+    assert_eq!(value["max_ts"], 1_760_086_400_i64);
+    assert_eq!(value["rfq_id"], "r-1");
+    assert_eq!(value["user_filter"], "self");
+    assert!(value.get("market_ticker").is_none());
+    assert!(value.get("event_ticker").is_none());
+}
+
+/// Quote creation carries the post-only flag and the subaccount scope.
+#[test]
+fn create_quote_request_serializes_post_only_and_subaccount() {
+    let body = kalshi_fast::CreateQuoteRequest {
+        rfq_id: "r-1".to_string(),
+        yes_bid: "0.5200".to_string(),
+        no_bid: "0.4800".to_string(),
+        rest_remainder: true,
+        post_only: Some(true),
+        subaccount: Some(2),
+    };
+    let value = serde_json::to_value(&body).unwrap();
+    assert_eq!(value["post_only"], true);
+    assert_eq!(value["subaccount"], 2);
+
+    let without = kalshi_fast::CreateQuoteRequest {
+        rfq_id: "r-1".to_string(),
+        yes_bid: "0.5200".to_string(),
+        no_bid: "0.4800".to_string(),
+        rest_remainder: true,
+        post_only: None,
+        subaccount: None,
+    };
+    let value = serde_json::to_value(&without).unwrap();
+    assert!(value.get("post_only").is_none());
+    assert!(value.get("subaccount").is_none());
 }
 
 #[test]
-fn multivariate_collections_and_lookup_responses_deserialize_typed() {
+fn multivariate_collections_response_deserializes_typed() {
     let json = r#"{
         "multivariate_contracts": [{
             "collection_ticker": "COL-1",
             "series_ticker": "SER-1",
+            "exchange_index": 3,
             "title": "Collection",
             "description": "Desc",
             "open_date": "2023-11-07T05:31:56Z",
@@ -1833,94 +2570,66 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
+    // exchange_index added 2026-08-06; optional in the spec.
+    assert_eq!(resp.multivariate_contracts[0].exchange_index, Some(3));
 
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
+    // Payloads predating exchange_index still decode.
+    let legacy = json.replace("\"exchange_index\": 3,", "");
+    let resp: kalshi_fast::GetMultivariateEventCollectionsResponse =
+        serde_json::from_str(&legacy).unwrap();
+    assert_eq!(resp.multivariate_contracts[0].exchange_index, None);
 }
 
 #[test]
 fn batch_order_responses_deserialize_typed() {
     let create_json = r#"{
         "orders": [{
+            "order_id": "o-1",
             "client_order_id": "c-1",
-            "order": {
-                "order_id": "o-1",
-                "user_id": "user-1",
-                "client_order_id": "c-1",
-                "ticker": "MKT-1",
-                "side": "yes",
-                "action": "buy",
-                "type": "limit",
-                "status": "resting",
-                "yes_price_dollars": "0.5500",
-                "no_price_dollars": "0.4500",
-                "fill_count_fp": "0.00",
-                "remaining_count_fp": "10.00",
-                "initial_count_fp": "10.00",
-                "taker_fill_cost_dollars": "0.0000",
-                "maker_fill_cost_dollars": "0.0000",
-                "taker_fees_dollars": "0.0000",
-                "maker_fees_dollars": "0.0000"
-            },
+            "fill_count": "0.00",
+            "remaining_count": "10.00",
+            "ts_ms": 1715793600123,
             "error": null
+        }, {
+            "client_order_id": "c-2",
+            "error": {"code": "insufficient_balance", "message": "nope"}
         }]
     }"#;
-    let created: kalshi_fast::BatchCreateOrdersResponse =
+    let created: kalshi_fast::BatchCreateOrdersV2Response =
         serde_json::from_str(create_json).unwrap();
-    assert_eq!(created.orders.len(), 1);
-    assert_eq!(
-        created.orders[0]
-            .order
-            .as_ref()
-            .map(|o| o.order_id.as_str()),
-        Some("o-1")
-    );
+    assert_eq!(created.orders.len(), 2);
+    assert_eq!(created.orders[0].order_id.as_deref(), Some("o-1"));
+    assert_eq!(created.orders[0].remaining_count.as_deref(), Some("10.00"));
+    assert!(created.orders[1].order_id.is_none());
+    assert!(created.orders[1].error.is_some());
 
     let cancel_json = r#"{
         "orders": [{
             "order_id": "o-1",
-            "order": {
-                "order_id": "o-1",
-                "user_id": "user-1",
-                "client_order_id": "c-1",
-                "ticker": "MKT-1",
-                "side": "yes",
-                "action": "buy",
-                "type": "limit",
-                "status": "canceled",
-                "yes_price_dollars": "0.5500",
-                "no_price_dollars": "0.4500",
-                "fill_count_fp": "0.00",
-                "remaining_count_fp": "0.00",
-                "initial_count_fp": "10.00",
-                "taker_fill_cost_dollars": "0.0000",
-                "maker_fill_cost_dollars": "0.0000",
-                "taker_fees_dollars": "0.0000",
-                "maker_fees_dollars": "0.0000"
-            },
-            "reduced_by": 1,
-            "reduced_by_fp": "1.00",
+            "client_order_id": "c-1",
+            "reduced_by": "1.00",
+            "ts_ms": 1715793660456,
             "error": null
         }]
     }"#;
-    let canceled: kalshi_fast::BatchCancelOrdersResponse =
+    let canceled: kalshi_fast::BatchCancelOrdersV2Response =
         serde_json::from_str(cancel_json).unwrap();
     assert_eq!(canceled.orders.len(), 1);
-    assert_eq!(canceled.orders[0].reduced_by_fp, "1.00");
+    assert_eq!(canceled.orders[0].reduced_by, "1.00");
+
+    // Batch cancel entries carry optional subaccount / exchange routing.
+    let req = serde_json::to_value(kalshi_fast::BatchCancelOrdersV2Request {
+        orders: vec![kalshi_fast::BatchCancelOrderV2RequestOrder {
+            order_id: "o-1".into(),
+            subaccount: Some(2),
+            exchange_index: Some(-1),
+            market_ticker: Some("MKT-1".into()),
+        }],
+    })
+    .unwrap();
+    assert_eq!(req["orders"][0]["subaccount"], 2);
+    assert_eq!(req["orders"][0]["exchange_index"], -1);
+    assert_eq!(req["orders"][0]["market_ticker"], "MKT-1");
 }
 
 #[test]
@@ -1928,12 +2637,15 @@ fn fills_deserialize_current_schema() {
     let json = r#"{
         "fills": [{
             "fill_id": "f-1",
+            "exchange_index": 0,
             "order_id": "o-1",
             "trade_id": "t-1",
             "ticker": "MKT-1",
             "market_ticker": "MKT-1",
             "side": "yes",
             "action": "buy",
+            "outcome_side": "yes",
+            "book_side": "bid",
             "count_fp": "1.00",
             "yes_price_dollars": "0.5500",
             "no_price_dollars": "0.4500",
@@ -1953,6 +2665,7 @@ fn settlements_deserialize_current_schema() {
     let json = r#"{
         "settlements": [{
             "ticker": "MKT-1",
+            "exchange_index": 1,
             "event_ticker": "EVT-1",
             "market_result": "yes",
             "yes_count_fp": "1.00",
@@ -1978,17 +2691,17 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         "queue_positions": [{
             "order_id": "o-1",
             "market_ticker": "MKT-1",
-            "queue_position": 4,
             "queue_position_fp": "4.00"
         }]
     }"#;
     let queue: kalshi_fast::GetOrderQueuePositionsResponse =
         serde_json::from_str(queue_json).unwrap();
     assert_eq!(queue.queue_positions.len(), 1);
-    assert_eq!(
-        queue.queue_positions[0].queue_position_fp.as_deref(),
-        Some("4.00")
-    );
+    assert_eq!(queue.queue_positions[0].queue_position_fp, "4.00");
+
+    let single: kalshi_fast::GetOrderQueuePositionResponse =
+        serde_json::from_str(r#"{"queue_position_fp": "4.00"}"#).unwrap();
+    assert_eq!(single.queue_position_fp, "4.00");
 
     let forecast_json = r#"{
         "forecast_history": [{

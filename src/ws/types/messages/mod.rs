@@ -24,9 +24,6 @@ pub use lifecycle::*;
 mod positions;
 pub use positions::*;
 
-mod multivariate;
-pub use multivariate::*;
-
 mod order_groups;
 pub use order_groups::*;
 
@@ -38,3 +35,6 @@ pub use communications::*;
 
 mod cfbenchmarks;
 pub use cfbenchmarks::*;
+
+mod pyth;
+pub use pyth::*;

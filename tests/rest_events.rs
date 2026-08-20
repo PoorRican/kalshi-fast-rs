@@ -205,6 +205,85 @@ async fn test_get_event_by_ticker_with_nested_markets() {
 }
 
 #[tokio::test]
+async fn test_get_events_tickers_filter() {
+    let client = common::demo_client();
+
+    let seed = tokio::time::timeout(
+        common::TEST_TIMEOUT,
+        client.get_events(GetEventsParams {
+            limit: Some(3),
+            status: Some(EventStatus::Open),
+            ..Default::default()
+        }),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    let wanted: Vec<String> = seed.events.iter().map(|e| e.event_ticker.clone()).collect();
+    if wanted.is_empty() {
+        eprintln!("skipping: no open events on demo");
+        return;
+    }
+
+    let resp = tokio::time::timeout(
+        common::TEST_TIMEOUT,
+        client.get_events(GetEventsParams {
+            tickers: Some(wanted.clone()),
+            ..Default::default()
+        }),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    let requested: HashSet<&str> = wanted.iter().map(String::as_str).collect();
+    assert!(!resp.events.is_empty(), "tickers filter returned no events");
+    for event in &resp.events {
+        assert!(
+            requested.contains(event.event_ticker.as_str()),
+            "tickers filter returned unrequested event {}",
+            event.event_ticker
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_get_events_settlement_sources() {
+    let client = common::demo_client();
+
+    let resp = tokio::time::timeout(
+        common::TEST_TIMEOUT,
+        client.get_events(GetEventsParams {
+            limit: Some(20),
+            status: Some(EventStatus::Open),
+            ..Default::default()
+        }),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    if resp.events.is_empty() {
+        eprintln!("skipping: no open events on demo");
+        return;
+    }
+
+    let mut with_sources = 0usize;
+    for event in &resp.events {
+        for source in &event.settlement_sources {
+            assert!(
+                source.name.is_some() || source.url.is_some(),
+                "settlement source on {} carries neither name nor url",
+                event.event_ticker
+            );
+            with_sources += 1;
+        }
+    }
+    eprintln!("settlement_sources entries observed: {with_sources}");
+}
+
+#[tokio::test]
 async fn test_get_events_with_milestones_flag() {
     let client = common::demo_client();
 

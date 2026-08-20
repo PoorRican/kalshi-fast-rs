@@ -3,7 +3,7 @@
 mod common;
 
 use kalshi_fast::{
-    CreateOrderGroupRequest, KalshiRestClient, SubaccountQueryParams, UpdateOrderGroupLimitRequest,
+    CreateOrderGroupRequest, OrderGroupParams, SubaccountQueryParams, UpdateOrderGroupLimitRequest,
 };
 use std::time::Duration;
 
@@ -41,13 +41,20 @@ async fn test_order_group_lifecycle() {
     .expect("timeout")
     .expect("get_order_group failed");
 
-    assert_eq!(get_resp.contracts_limit, Some(100));
+    assert_eq!(
+        get_resp
+            .contracts_limit_fp
+            .as_deref()
+            .and_then(|v| v.parse::<f64>().ok()),
+        Some(100.0)
+    );
 
-    // 3. Update the order group limit
+    // 3. Update the order group limit (supports `subaccount` since 2026-08-06)
     let _update_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
             .update_order_group_limit(
                 &group_id,
+                OrderGroupParams::default(),
                 UpdateOrderGroupLimitRequest {
                     contracts_limit: Some(200),
                     ..Default::default()
@@ -69,12 +76,18 @@ async fn test_order_group_lifecycle() {
     .expect("timeout")
     .expect("get_order_group after update failed");
 
-    assert_eq!(get_resp2.contracts_limit, Some(200));
+    assert_eq!(
+        get_resp2
+            .contracts_limit_fp
+            .as_deref()
+            .and_then(|v| v.parse::<f64>().ok()),
+        Some(200.0)
+    );
 
     // 4. Reset order group
     let _reset_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
-            .reset_order_group(&group_id, SubaccountQueryParams::default())
+            .reset_order_group(&group_id, OrderGroupParams::default())
             .await
     })
     .await
@@ -84,7 +97,7 @@ async fn test_order_group_lifecycle() {
     // 5. Trigger order group
     let _trigger_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
-            .trigger_order_group(&group_id, SubaccountQueryParams::default())
+            .trigger_order_group(&group_id, OrderGroupParams::default())
             .await
     })
     .await
@@ -94,7 +107,7 @@ async fn test_order_group_lifecycle() {
     // 6. Delete order group (cleanup)
     let _delete_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
-            .delete_order_group(&group_id, SubaccountQueryParams::default())
+            .delete_order_group(&group_id, OrderGroupParams::default())
             .await
     })
     .await

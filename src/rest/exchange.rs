@@ -1,8 +1,12 @@
-//! Exchange status, announcements, and schedule.
+//! Exchange status and schedule.
 //!
 //! Public endpoints exposing operational state of the Kalshi exchange: whether
-//! trading is active, current announcements, standard and maintenance hours,
-//! and timestamps/fee changes useful for cache invalidation.
+//! trading is active (globally and per exchange index/shard), standard and
+//! maintenance hours, and timestamps/fee changes useful for cache invalidation.
+//!
+//! Note: `GET /exchange/announcements` was removed from the Kalshi API on
+//! 2026-07-04. Use [`KalshiRestClient::get_exchange_schedule`] for downtime
+//! windows instead.
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
@@ -11,46 +15,41 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Response for `GET /exchange/status`.
+///
+/// The top-level `exchange_active` / `trading_active` /
+/// `intra_exchange_transfers_active` flags reflect the default exchange index
+/// (`0`); [`Self::exchange_index_statuses`] carries the per-shard breakdown
+/// (added 2026-07-02, shard `description` added 2026-08-13).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    /// True if intra-exchange transfers are currently permitted. `None` on
+    /// deployments predating the per-index status fields.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementType {
-    Info,
-    Warning,
-    Error,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementStatus {
-    Active,
-    Inactive,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Announcement {
-    #[serde(rename = "type")]
-    pub r#type: AnnouncementType,
-    pub message: String,
-    pub delivery_time: String,
-    pub status: AnnouncementStatus,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetExchangeAnnouncementsResponse {
+    /// Status of each exchange index. Empty when the per-index breakdown is
+    /// unavailable.
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub announcements: Vec<Announcement>,
+    pub exchange_index_statuses: Vec<ExchangeIndexStatus>,
+}
+
+/// Status of a single exchange index (shard).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    /// Identifier for this exchange shard.
+    pub exchange_index: u32,
+    /// Human-readable description of this exchange shard.
+    pub description: String,
+    /// False if this exchange index is no longer taking any state changes.
+    pub exchange_active: bool,
+    /// True if trading is currently permitted on this exchange index.
+    pub trading_active: bool,
+    /// True if intra-exchange transfers are permitted on this exchange index.
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -105,11 +104,16 @@ pub struct GetUserDataTimestampResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SeriesFeeChange {
-    pub id: i64,
+    /// Unique identifier for this fee change.
+    pub id: String,
+    /// Series ticker this fee change applies to.
     pub series_ticker: String,
+    /// New fee type for the series.
     pub fee_type: FeeType,
-    pub fee_multiplier: i64,
-    pub scheduled_ts: i64,
+    /// New fee multiplier for the series.
+    pub fee_multiplier: f64,
+    /// RFC3339 timestamp when this fee change is scheduled to take effect.
+    pub scheduled_ts: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -150,23 +154,11 @@ pub struct GetMarginFeeTiersResponse {
 
 impl KalshiRestClient {
     /// Get the current exchange status (open, closed, etc.).
+    ///
+    /// Includes the per-exchange-index breakdown in
+    /// [`GetExchangeStatusResponse::exchange_index_statuses`] when available.
     pub async fn get_exchange_status(&self) -> Result<GetExchangeStatusResponse, KalshiError> {
         let path = Self::full_path("/exchange/status");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
-    /// Get exchange announcements.
-    pub async fn get_exchange_announcements(
-        &self,
-    ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {
-        let path = Self::full_path("/exchange/announcements");
         self.send(
             Method::GET,
             &path,

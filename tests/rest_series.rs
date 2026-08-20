@@ -34,4 +34,13 @@ async fn test_series_cross_consistency() {
         first.ticker
     );
     assert_eq!(detail_resp.series.title, first.title);
+    // `exchange_index` was added to series responses on 2026-07-30; when the
+    // list response carries it, the detail response must agree.
+    if first.exchange_index.is_some() {
+        assert_eq!(
+            detail_resp.series.exchange_index, first.exchange_index,
+            "series {} exchange_index differs between list and detail",
+            first.ticker
+        );
+    }
 }

@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
     client
         .update_order_group_limit(
             &order_group.order_group_id,
+            SubaccountQueryParams::default(),
             UpdateOrderGroupLimitRequest {
                 contracts_limit_fp: Some("50.00".to_string()),
                 ..Default::default()
@@ -36,20 +37,23 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
 
-    let rfq = client
-        .create_rfq(CreateRFQRequest {
-            market_ticker,
-            contracts: None,
-            contracts_fp: Some("10.00".to_string()),
-            target_cost_centi_cents: None,
-            target_cost_dollars: None,
-            rest_remainder: true,
-            replace_existing: None,
-            subtrader_id: None,
-            subaccount: None,
-        })
-        .await?;
+    // `target_cost_centi_cents` is deprecated upstream; `target_cost_dollars` replaces it.
+    #[allow(deprecated)]
+    let rfq_request = CreateRFQRequest {
+        market_ticker,
+        contracts: None,
+        contracts_fp: Some("10.00".to_string()),
+        target_cost_centi_cents: None,
+        target_cost_dollars: None,
+        rest_remainder: true,
+        replace_existing: None,
+        subtrader_id: None,
+        subaccount: None,
+    };
+    let rfq = client.create_rfq(rfq_request).await?;
     println!("created rfq_id={}", rfq.id);
+
+    let rfq_id = rfq.id.clone();
 
     let quote = client
         .create_quote(CreateQuoteRequest {
@@ -57,10 +61,23 @@ async fn main() -> anyhow::Result<()> {
             yes_bid: "0.5200".to_string(),
             no_bid: "0.4800".to_string(),
             rest_remainder: true,
+            post_only: None,
             subaccount: None,
         })
         .await?;
     println!("created quote_id={}", quote.id);
+
+    // Quote actions are RFQ-scoped: always pass the RFQ ID alongside the quote ID.
+    // The quote-ID-only endpoints still work but are deprecated upstream, and
+    // `rfq_id` is expected to become required in a future migration.
+    let fetched = client.get_rfq_quote(&rfq_id, &quote.id).await?;
+    println!(
+        "quote status={} yes_bid={}",
+        fetched.quote.status, fetched.quote.yes_bid_dollars
+    );
+
+    let _ = client.delete_rfq_quote(&rfq_id, &quote.id).await;
+    let _ = client.delete_rfq(&rfq_id).await;
 
     // Optional cleanup for the order group in demo environments.
     let _ = client

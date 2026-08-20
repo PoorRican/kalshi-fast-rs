@@ -91,6 +91,7 @@ pub struct WsOrderbookDeltaRef<'a> {
 }
 
 impl<'a> WsOrderbookDeltaRef<'a> {
+    #[allow(deprecated)]
     pub fn into_owned(self) -> WsOrderbookDelta {
         WsOrderbookDelta {
             market_ticker: self.market_ticker.into_owned(),
@@ -124,6 +125,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn ws_orderbook_delta_timestamps_are_optional() {
         let json_missing_both = r#"{
             "market_ticker":"TEST",

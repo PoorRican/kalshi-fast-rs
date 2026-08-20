@@ -155,14 +155,22 @@ pub struct MveSelectedLeg {
     pub extra: Map<String, Value>,
 }
 
+/// One band of a market's valid price grid.
+///
+/// This is the authoritative source of truth for a market's tradeable prices:
+/// snap order and quote prices to the `step` of the band containing the price
+/// rather than keying logic off [`Market::price_level_structure`].
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PriceRange {
+    /// Starting price for this range, in fixed-point dollars.
     #[serde(alias = "min_price")]
-    pub start: String,
+    pub start: FixedPointDollars,
+    /// Ending price for this range, in fixed-point dollars.
     #[serde(alias = "max_price")]
-    pub end: String,
+    pub end: FixedPointDollars,
+    /// Price step / tick size for this range, in fixed-point dollars.
     #[serde(alias = "increment")]
-    pub step: String,
+    pub step: FixedPointDollars,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -207,9 +215,15 @@ pub struct Market {
     #[serde(default)]
     pub event_id: Option<i64>,
     #[serde(default)]
-    pub response_price_units: Option<String>,
-    #[serde(default)]
     pub settlement_timer_seconds: Option<i64>,
+    /// Label for the market's price grid, e.g. `linear_cent`, `tapered_deci_cent`,
+    /// `center_whole_edge_half_cent`, `center_deci_edge_centi_cent`.
+    ///
+    /// Deliberately kept as a free `String` rather than an enum: the OpenAPI
+    /// spec types this as an open `string`, and Kalshi adds new structures
+    /// regularly (seven on 2026-07-23, another on 2026-08-13). Do not branch on
+    /// this value — consume [`Market::price_ranges`] dynamically instead, which
+    /// carries the `{start, end, step}` bands that actually define valid prices.
     #[serde(default)]
     pub price_level_structure: Option<String>,
     #[serde(default)]
@@ -283,8 +297,6 @@ pub struct Market {
     #[serde(default)]
     pub open_interest_fp: Option<String>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub notional_value: Option<i64>,
     #[serde(default)]
     pub notional_value_dollars: Option<FixedPointDollars>,
@@ -340,6 +352,8 @@ pub struct Market {
     pub primary_participant_key: Option<String>,
     #[serde(default)]
     pub is_provisional: Option<bool>,
+    /// Valid price bands for orders on this market. Authoritative over
+    /// [`Market::price_level_structure`].
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
     #[serde(default, flatten)]

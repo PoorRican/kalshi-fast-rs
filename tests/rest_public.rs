@@ -3,11 +3,12 @@
 mod common;
 
 use kalshi_fast::{
-    BatchGetMarketCandlesticksParams, EventStatus, GetEventCandlesticksParams, GetEventsParams,
-    GetIncentiveProgramsParams, GetMarketCandlesticksParams, GetMarketsParams, GetMilestonesParams,
-    GetMultivariateEventCollectionLookupHistoryParams, GetMultivariateEventCollectionsParams,
-    GetMultivariateEventsParams, GetSeriesFeeChangesParams, GetSeriesListParams,
-    GetStructuredTargetsParams, GetTradesParams, MarketStatusQuery,
+    BatchGetMarketCandlesticksParams, EventStatus, GetEventCandlesticksParams,
+    GetEventLiveDataParams, GetEventsParams, GetIncentiveProgramsParams,
+    GetMarketCandlesticksParams, GetMarketsParams, GetMilestonesParams,
+    GetMultivariateEventCollectionsParams, GetMultivariateEventsParams, GetSeriesFeeChangesParams,
+    GetSeriesListParams, GetStructuredTargetsParams, GetTradesParams, GetWeatherIndexParams,
+    MarketStatusQuery,
 };
 
 fn assert_market_list_shape(market: &kalshi_fast::Market) {
@@ -299,20 +300,15 @@ async fn test_get_exchange_status() {
     if let Some(ts) = resp.exchange_estimated_resume_time.as_deref() {
         assert!(!ts.is_empty());
     }
-}
 
-#[tokio::test]
-async fn test_get_exchange_announcements() {
-    let client = common::demo_client();
-    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_exchange_announcements().await
-    })
-    .await
-    .expect("timeout")
-    .expect("request failed");
-
-    if let Some(first) = resp.announcements.first() {
-        assert!(!first.message.is_empty());
+    // Per-index breakdown (added 2026-07-02, `description` added 2026-08-13).
+    // Absent when the exchange does not publish a per-index breakdown.
+    for status in &resp.exchange_index_statuses {
+        assert!(
+            !status.description.is_empty(),
+            "exchange index {} missing description",
+            status.exchange_index
+        );
     }
 }
 
@@ -358,7 +354,8 @@ async fn test_get_series_fee_changes() {
     .expect("request failed");
 
     if let Some(first) = resp.series_fee_change_arr.first() {
-        assert!(first.scheduled_ts > 0);
+        assert!(!first.id.is_empty());
+        assert!(!first.scheduled_ts.is_empty());
     }
 }
 
@@ -513,41 +510,10 @@ async fn test_get_multivariate_event_collection() {
     assert_eq!(resp.multivariate_contract.collection_ticker, ticker);
 }
 
-#[tokio::test]
-async fn test_get_multivariate_event_collection_lookup_history() {
-    let client = common::demo_client();
-
-    let collections_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client
-            .get_multivariate_event_collections(GetMultivariateEventCollectionsParams {
-                limit: Some(1),
-                ..Default::default()
-            })
-            .await
-    })
-    .await
-    .expect("timeout")
-    .expect("request failed");
-
-    if collections_resp.multivariate_contracts.is_empty() {
-        return;
-    }
-
-    let ticker = collections_resp.multivariate_contracts[0]
-        .collection_ticker
-        .clone();
-    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client
-            .get_multivariate_event_collection_lookup_history(
-                &ticker,
-                GetMultivariateEventCollectionLookupHistoryParams::default(),
-            )
-            .await
-    })
-    .await
-    .expect("timeout")
-    .expect("request failed");
-}
+// `test_get_multivariate_event_collection_lookup_history` was removed on
+// 2026-08-06 along with the multivariate lookup surface itself: both
+// `GET` and `PUT /multivariate_event_collections/{collection_ticker}/lookup`
+// no longer exist in the OpenAPI spec.
 
 #[tokio::test]
 async fn test_get_structured_targets() {
@@ -781,6 +747,89 @@ async fn test_get_incentive_programs() {
     .await
     .expect("timeout")
     .expect("request failed");
+}
+
+/// Live data for an event may not exist on demo; a 4xx from the exchange is an
+/// acceptable outcome, but a decode failure is not.
+fn assert_not_a_decode_failure(err: kalshi_fast::KalshiError) {
+    match err {
+        kalshi_fast::KalshiError::Http { .. } => {}
+        other => panic!("unexpected error: {other}"),
+    }
+}
+
+#[tokio::test]
+async fn test_get_event_live_data() {
+    let client = common::demo_client();
+
+    let events_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_events(GetEventsParams {
+                limit: Some(1),
+                status: Some(EventStatus::Open),
+                ..Default::default()
+            })
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    if events_resp.events.is_empty() {
+        return;
+    }
+
+    let event_ticker = events_resp.events[0].event_ticker.clone();
+    let result = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_event_live_data(&event_ticker, GetEventLiveDataParams::default())
+            .await
+    })
+    .await
+    .expect("timeout");
+
+    match result {
+        Ok(resp) => assert!(!resp.live_data.live_data_type.is_empty()),
+        Err(err) => assert_not_a_decode_failure(err),
+    }
+}
+
+#[tokio::test]
+async fn test_get_weather_index() {
+    let client = common::demo_client();
+
+    let result = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_weather_index(
+                "miami",
+                GetWeatherIndexParams {
+                    last_sec: Some(600),
+                    detailed: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+    })
+    .await
+    .expect("timeout");
+
+    match result {
+        Ok(resp) => {
+            assert_eq!(resp.city, "miami");
+            assert_eq!(resp.units, "fahrenheit");
+            for point in &resp.timeseries {
+                assert!(point.t > 0);
+                assert!(!point.status.is_empty());
+                // `v` is absent (never 0) on incomplete points.
+                if point.status == "incomplete" {
+                    assert!(point.v.is_none());
+                } else {
+                    assert!(point.v.is_some());
+                }
+            }
+        }
+        Err(err) => assert_not_a_decode_failure(err),
+    }
 }
 
 #[tokio::test]

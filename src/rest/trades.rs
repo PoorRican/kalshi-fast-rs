@@ -26,19 +26,22 @@ pub struct Trade {
     pub yes_price_dollars: FixedPointDollars,
     pub no_price_dollars: FixedPointDollars,
     /// Deprecated 2026-05-07. Use `taker_outcome_side` / `taker_book_side`.
-    /// Optional to tolerate eventual removal by the exchange.
+    /// Still present but optional in the spec, so it stays an `Option`.
+    #[deprecated(
+        since = "0.8.0",
+        note = "use taker_outcome_side / taker_book_side instead"
+    )]
     #[serde(default)]
     pub taker_side: Option<TradeTakerSide>,
-    /// Normalized taker outcome side (yes | no). Added 2026-05-07.
-    #[serde(default)]
-    pub taker_outcome_side: Option<TradeTakerSide>,
-    /// Normalized taker book side (bid | ask). Added 2026-05-07.
-    #[serde(default)]
-    pub taker_book_side: Option<BookSide>,
+    /// Normalized taker outcome side (yes | no). Added 2026-05-07; required by
+    /// the spec.
+    pub taker_outcome_side: TradeTakerSide,
+    /// Normalized taker book side (bid | ask). Added 2026-05-07; required by
+    /// the spec.
+    pub taker_book_side: BookSide,
     pub created_time: String,
-    /// True for block trades matched off-book (e.g. via RFQ). Added 2026-05-29.
-    /// Defaults to `false` for payloads predating this field.
-    #[serde(default)]
+    /// True for block trades matched off-book (e.g. via RFQ). Added 2026-05-29;
+    /// required by the spec.
     pub is_block_trade: bool,
 }
 
@@ -116,6 +119,11 @@ pub struct GetHistoricalCutoffResponse {
     pub market_settled_ts: String,
     pub trades_created_ts: String,
     pub orders_updated_ts: String,
+    /// Positions settled before this timestamp must be read from
+    /// `GET /historical/positions` rather than `GET /portfolio/positions`.
+    /// Added 2026-07-23; optional in the spec.
+    #[serde(default)]
+    pub market_positions_last_updated_ts: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

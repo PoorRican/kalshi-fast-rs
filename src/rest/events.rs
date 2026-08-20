@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, MarketMetadata, SettlementSource};
+use crate::types::{EventStatus, deserialize_null_as_empty_vec, serialize_csv_opt};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -29,8 +29,20 @@ pub struct GetEventsParams {
     pub status: Option<EventStatus>, // open|closed|settled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+
+    /// Filter to a specific set of event tickers. Serialized comma-separated.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub tickers: Option<Vec<String>>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events whose metadata was updated after this Unix timestamp
+    /// (seconds). Useful for efficient change polling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
@@ -83,6 +95,37 @@ pub struct Milestone {
     pub status: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+/// Additional metadata carried inline on an event (`EventData.product_metadata`).
+///
+/// The OpenAPI spec types this as a free-form object, so unknown keys are kept
+/// losslessly in [`EventProductMetadata::extra`]. The named fields mirror the
+/// shape returned by `GET /events/{event_ticker}/metadata`
+/// ([`EventMetadata`]), plus `cadence`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct EventProductMetadata {
+    /// How often the event recurs, e.g. `fifteen_min`. Absent when the event
+    /// has no cadence set.
+    ///
+    /// Kept as a free `String`: the spec does not enumerate the value set, so
+    /// an enum would silently lose future cadences.
+    #[serde(default)]
+    pub cadence: Option<String>,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub featured_image_url: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub market_details: Vec<MarketMetadata>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    #[serde(default)]
+    pub competition: Option<String>,
+    #[serde(default)]
+    pub competition_scope: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -145,7 +188,12 @@ pub struct EventData {
     #[serde(default)]
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
-    pub product_metadata: Option<EventMetadata>,
+    pub product_metadata: Option<EventProductMetadata>,
+    /// Official sources used to determine the markets within this event.
+    /// Mirrors the field already present on the series object; the spec marks
+    /// the array nullable, so a JSON `null` decodes as empty.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

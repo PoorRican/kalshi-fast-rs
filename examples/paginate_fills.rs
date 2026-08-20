@@ -14,13 +14,18 @@ async fn main() -> anyhow::Result<()> {
     )?;
     let client = KalshiRestClient::new(KalshiEnvironment::production()).with_auth(auth);
 
-    let mut pager = client.fills_pager(GetFillsParams::default());
+    // Omit `exchange_index` to fetch fills across every exchange shard, or set
+    // it to scope the listing to a single shard.
+    let mut pager = client.fills_pager(GetFillsParams {
+        exchange_index: None,
+        ..Default::default()
+    });
     let mut total_fills = 0;
 
     while let Some(fills) = pager.next_page().await? {
         total_fills += fills.len();
         for fill in fills {
-            println!("{:?}", fill.ticker);
+            println!("[{}] {}", fill.exchange_index, fill.ticker);
         }
     }
 

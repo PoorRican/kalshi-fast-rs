@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -49,6 +49,37 @@ pub struct GetAccountApiLimitsResponse {
     pub grants: Vec<ApiUsageLevelGrant>,
 }
 
+/// Volume thresholds for one volume-based API usage level.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal unlocks (e.g. `"expert"`, `"premier"`).
+    pub level: String,
+    /// Trailing-30d volume (fixed-point contract count) needed to earn the level.
+    pub earn_volume_goal_fp: FixedPointCount,
+    /// Trailing-30d volume (fixed-point contract count) needed to keep the level.
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// One cron-computed volume-progress snapshot toward volume-based usage tiers.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) this progress was computed at; the trailing
+    /// 30-day window ends here.
+    pub computed_ts: i64,
+    /// Trailing 30-day volume as a fixed-point contract count.
+    pub trailing_30d_volume_fp: FixedPointCount,
+    /// Earn/keep thresholds per volume-based level.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 /// Token cost for one API v2 endpoint whose cost differs from the default.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EndpointTokenCost {
@@ -76,9 +107,17 @@ pub struct CreateSubaccountResponse {
     pub subaccount_number: u32,
 }
 
+/// Balance for one subaccount on one exchange shard.
+///
+/// Since 2026-07-02 the exchange returns one entry **per exchange index**, so a
+/// subaccount funded on multiple indexes appears as multiple entries rather than
+/// a single combined row.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange shard the balance is held on. Added 2026-07-02; required by the
+    /// spec, so it is a plain field rather than an `Option`.
+    pub exchange_index: u32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -144,8 +183,16 @@ pub struct EmptyResponse {}
 pub struct ApiKey {
     pub api_key_id: String,
     pub name: String,
+    /// Scopes granted to this key. Modelled as free-form strings rather than a
+    /// closed enum so newly-minted scopes (e.g. `read::block_trade_accept`,
+    /// `read::portfolio_balance`, `write::trade`) round-trip without a crate
+    /// release.
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// Sub-account (0-63) this key is restricted to. `None` means the key is
+    /// unrestricted. Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -154,6 +201,11 @@ pub struct ApiKey {
 pub struct GetApiKeysResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub api_keys: Vec<ApiKey>,
+    /// Unix timestamp (seconds) when the account's location attestation for API
+    /// key requests expires; a past value means the attestation has lapsed.
+    /// `None` when the account has never attested. Added 2026-08-16.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +214,23 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the new key to a single sub-account (0-63). Omit for an
+    /// unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+impl CreateApiKeyRequest {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        if let Some(sub) = self.subaccount
+            && sub > 63
+        {
+            return Err(KalshiError::InvalidParams(
+                "CreateApiKeyRequest: subaccount must be 0..=63".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +245,23 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the new key to a single sub-account (0-63). Omit for an
+    /// unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+impl GenerateApiKeyRequest {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        if let Some(sub) = self.subaccount
+            && sub > 63
+        {
+            return Err(KalshiError::InvalidParams(
+                "GenerateApiKeyRequest: subaccount must be 0..=63".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -226,6 +312,46 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Get the account's trailing-30d volume progress toward volume-based API
+    /// usage tiers (Expert, Premier, Paragon, Prime, Prestige) on the
+    /// predictions (`event_contract`) lane. Added 2026-06-11.
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-serve upgrade to a permanent Advanced API usage-level grant on the
+    /// predictions lane. Requires at least one of the account's last 100
+    /// Predictions orders to have been created via API. Added 2026-06-11.
+    ///
+    /// Costs 30 tokens against the Predictions write bucket. Returns `403` when
+    /// no API-created order is found. Inspect the resulting tier with
+    /// [`KalshiRestClient::get_account_api_limits`].
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
     /// List API v2 endpoints whose token cost differs from the default cost.
     ///
     /// Public endpoint (no auth required per the OpenAPI spec).
@@ -258,7 +384,11 @@ impl KalshiRestClient {
         .await
     }
 
-    /// Get balances for all subaccounts.
+    /// Get balances for all subaccounts, including the primary account.
+    ///
+    /// Since 2026-07-02 the exchange returns **one entry per exchange index**:
+    /// a subaccount holding funds on several shards appears as several
+    /// [`SubaccountBalance`] rows distinguished by `exchange_index`.
     ///
     /// **Requires auth.**
     pub async fn get_subaccount_balances(
@@ -344,6 +474,7 @@ impl KalshiRestClient {
         &self,
         body: CreateApiKeyRequest,
     ) -> Result<CreateApiKeyResponse, KalshiError> {
+        body.validate()?;
         let path = Self::full_path("/api_keys");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
@@ -353,6 +484,7 @@ impl KalshiRestClient {
         &self,
         body: GenerateApiKeyRequest,
     ) -> Result<GenerateApiKeyResponse, KalshiError> {
+        body.validate()?;
         let path = Self::full_path("/api_keys/generate");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await

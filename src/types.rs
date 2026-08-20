@@ -126,8 +126,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---
@@ -137,6 +135,7 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
@@ -305,7 +304,7 @@ impl Serialize for OrderStatus {
 
 /// --- Yes/No (Side) ---
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub enum YesNo {
@@ -478,7 +477,7 @@ impl Serialize for SelfTradePreventionType {
 ///
 /// Normalized direction field added 2026-05-07. `bid` is equivalent to `yes`,
 /// `ask` to `no` in Kalshi's binary contract model.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BookSide {
     Bid,

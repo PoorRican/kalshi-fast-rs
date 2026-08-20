@@ -365,6 +365,80 @@ async fn test_get_markets_mve_filter_only() {
     }
 }
 
+#[tokio::test]
+async fn test_get_markets_price_ranges_are_authoritative() {
+    let client = common::demo_client();
+
+    let resp = tokio::time::timeout(
+        common::TEST_TIMEOUT,
+        client.get_markets(GetMarketsParams {
+            limit: Some(20),
+            status: Some(MarketStatusQuery::Open),
+            ..Default::default()
+        }),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    if resp.markets.is_empty() {
+        eprintln!("skipping: no open markets on demo");
+        return;
+    }
+
+    for market in &resp.markets {
+        let Some(ranges) = market.price_ranges.as_ref() else {
+            continue;
+        };
+        assert!(
+            !ranges.is_empty(),
+            "price_ranges present but empty for {}",
+            market.ticker
+        );
+
+        let mut prev_end: Option<f64> = None;
+        for range in ranges {
+            let start: f64 = range.start.parse().expect("range start parses as f64");
+            let end: f64 = range.end.parse().expect("range end parses as f64");
+            let step: f64 = range.step.parse().expect("range step parses as f64");
+
+            assert!(
+                start < end,
+                "price range must be ascending for {}: {} .. {}",
+                market.ticker,
+                range.start,
+                range.end
+            );
+            assert!(
+                step > 0.0,
+                "price range step must be positive for {}: {}",
+                market.ticker,
+                range.step
+            );
+            if let Some(prev) = prev_end {
+                assert!(
+                    start >= prev,
+                    "price ranges must not overlap for {}: {} < {}",
+                    market.ticker,
+                    range.start,
+                    prev
+                );
+            }
+            prev_end = Some(end);
+        }
+
+        // The structure label is informational only; it must never be used to
+        // derive tick sizes, so we only assert it is non-empty when present.
+        if let Some(structure) = market.price_level_structure.as_ref() {
+            assert!(
+                !structure.is_empty(),
+                "price_level_structure present but empty for {}",
+                market.ticker
+            );
+        }
+    }
+}
+
 /// Diagnostic: audit which `Option<_>` fields on `Market` are `None` across a
 /// batch of live demo markets. Intended to be run with `-- --nocapture` to
 /// gather evidence before any breaking type tightening.

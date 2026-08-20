@@ -212,13 +212,6 @@ impl WsEnvelope {
                 seq,
                 msg: parse_msg(&msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageV2::Data(WsDataMessageV2::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_msg(&msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -270,6 +263,18 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythUnderlyingList => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::PythUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                }))
+            }
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
                 sid,
@@ -437,13 +442,6 @@ impl<'a> WsEnvelopeRef<'a> {
                 seq,
                 msg: parse_borrowed_msg(msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageRef::Data(WsDataMessageRef::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_borrowed_msg(msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
@@ -495,6 +493,18 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythUnderlyingList => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::PythUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                }))
+            }
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
                 sid,
@@ -601,11 +611,6 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsEventFeeUpdate,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariate,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -631,6 +636,16 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 macro_rules! data_message_position {
@@ -646,12 +661,13 @@ macro_rules! data_message_position {
             | Self::MultivariateMarketLifecycle { $field, .. }
             | Self::EventLifecycle { $field, .. }
             | Self::EventFeeUpdate { $field, .. }
-            | Self::Multivariate { $field, .. }
             | Self::Communications { $field, .. }
             | Self::OrderGroupUpdates { $field, .. }
             | Self::UserOrder { $field, .. }
             | Self::CfbenchmarksValue { $field, .. }
-            | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
+            | Self::CfbenchmarksValueIndexlist { $field, .. }
+            | Self::PythValue { $field, .. }
+            | Self::PythUnderlyingList { $field, .. } => *$field,
         }
     };
 }
@@ -718,11 +734,6 @@ pub enum WsDataMessageRef<'a> {
         seq: Option<u64>,
         msg: WsEventFeeUpdateRef<'a>,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariateRef<'a>,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -747,6 +758,16 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -819,11 +840,6 @@ impl<'a> WsDataMessageRef<'a> {
                 seq,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::Multivariate { sid, seq, msg } => WsDataMessageV2::Multivariate {
-                sid,
-                seq,
-                msg: msg.into_owned(),
-            },
             WsDataMessageRef::Communications { sid, seq, msg } => WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -848,6 +864,18 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1182,6 +1210,126 @@ mod tests {
                 assert!(msg.fee_multiplier_override.is_none());
             }
             _ => panic!("expected event_fee_update data message"),
+        }
+    }
+
+    /// The `pyth_value` channel (2026-07-23) emits `pyth_value` ticks and
+    /// `pyth_value_underlying_list` discovery responses. Both must route through
+    /// the strict wire path and the envelope fallback, owned and borrowed.
+    #[test]
+    fn ws_message_pyth_value_routes_on_both_paths() {
+        let json = r#"{
+            "type":"pyth_value",
+            "sid":5,
+            "seq":6,
+            "msg":{
+                "underlying_ticker":"Metal.XAU/USD",
+                "value_usd":"2412.12345678",
+                "source_ts_ms":1704067200123,
+                "received_at":1704067200456
+            }
+        }"#;
+
+        match WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { sid, seq, msg }) => {
+                assert_eq!(sid, Some(5));
+                assert_eq!(seq, Some(6));
+                assert_eq!(msg.underlying_ticker, "Metal.XAU/USD");
+                assert_eq!(msg.value_usd, "2412.12345678");
+                assert_eq!(msg.source_ts_ms, 1704067200123);
+                assert_eq!(msg.received_at, 1704067200456);
+            }
+            other => panic!("expected pyth_value data message, got {other:?}"),
+        }
+
+        let borrowed = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        assert_eq!(borrowed.subscription_id(), Some(5));
+        assert_eq!(borrowed.sequence(), Some(6));
+        match borrowed.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "Metal.XAU/USD");
+            }
+            other => panic!("expected pyth_value data message, got {other:?}"),
+        }
+
+        // Envelope fallback path.
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            env.into_message().unwrap(),
+            WsMessageV2::Data(WsDataMessageV2::PythValue { .. })
+        ));
+    }
+
+    #[test]
+    fn ws_message_pyth_underlying_list_routes_on_both_paths() {
+        let json = r#"{
+            "type":"pyth_value_underlying_list",
+            "id":3,
+            "sid":5,
+            "seq":7,
+            "msg":{"underlying_tickers":["Metal.XAG/USD","Metal.XAU/USD"]}
+        }"#;
+
+        match WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythUnderlyingList { sid, seq, msg }) => {
+                assert_eq!(sid, Some(5));
+                assert_eq!(seq, Some(7));
+                assert_eq!(msg.underlying_tickers, ["Metal.XAG/USD", "Metal.XAU/USD"]);
+            }
+            other => panic!("expected pyth underlying list, got {other:?}"),
+        }
+
+        let borrowed = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match borrowed.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythUnderlyingList { msg, .. }) => {
+                assert_eq!(msg.underlying_tickers.len(), 2);
+            }
+            other => panic!("expected pyth underlying list, got {other:?}"),
+        }
+    }
+
+    /// The `multivariate` channel was removed on 2026-08-06. A stale
+    /// `multivariate_lookup` frame must degrade to `Unknown` (preserving
+    /// sid/seq for cursor accounting) instead of failing to parse.
+    #[test]
+    fn ws_message_multivariate_lookup_degrades_to_unknown() {
+        let json =
+            r#"{"type":"multivariate_lookup","sid":11,"seq":12,"msg":{"collection_ticker":"C"}}"#;
+
+        match WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            WsMessageV2::Unknown {
+                msg_type: WsMsgType::Unknown(value),
+                sid,
+                seq,
+                ..
+            } => {
+                assert_eq!(value, "multivariate_lookup");
+                assert_eq!(sid, Some(11));
+                assert_eq!(seq, Some(12));
+            }
+            other => panic!("expected unknown message, got {other:?}"),
+        }
+
+        let borrowed = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        assert_eq!(borrowed.subscription_id(), Some(11));
+        assert_eq!(borrowed.sequence(), Some(12));
+    }
+
+    /// `multivariate_market_lifecycle` shares the `market_lifecycle_v2` payload
+    /// shape and must keep routing to its own variant.
+    #[test]
+    fn ws_message_multivariate_market_lifecycle_still_routes() {
+        let json = r#"{
+            "type":"multivariate_market_lifecycle",
+            "sid":1,
+            "msg":{"event_type":"created","market_ticker":"C-MKT","exchange_index":2}
+        }"#;
+        match WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::MultivariateMarketLifecycle { msg, .. }) => {
+                assert_eq!(msg.market_ticker, "C-MKT");
+                assert_eq!(msg.exchange_index, Some(2));
+            }
+            other => panic!("expected multivariate market lifecycle, got {other:?}"),
         }
     }
 

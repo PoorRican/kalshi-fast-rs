@@ -1,7 +1,16 @@
-//! Order endpoints: orders listing, single-order lookups, create/amend/decrease/cancel,
-//! batch operations, queue positions, order groups, and FCM subtrader views.
+//! Order endpoints: orders listing, single-order lookups, V2 event-order
+//! create/amend/decrease/cancel, batch operations, queue positions, order groups,
+//! and FCM subtrader views.
 //!
 //! All endpoints require authentication.
+//!
+//! The legacy V1 order mutation endpoints (`POST /portfolio/orders`,
+//! `DELETE /portfolio/orders/{order_id}`, `POST /portfolio/orders/{order_id}/amend`,
+//! `POST /portfolio/orders/{order_id}/decrease`, and `POST`/`DELETE
+//! /portfolio/orders/batched`) were announced as deprecated on 2026-06-18 and are no
+//! longer present in the Kalshi OpenAPI spec. Use the V2 event-order methods
+//! ([`KalshiRestClient::create_order_v2`] and friends) instead. `GET /portfolio/orders`
+//! and `GET /portfolio/orders/{order_id}` are unaffected and remain available.
 
 use crate::KalshiError;
 use crate::rest::account::{EmptyResponse, SubaccountQueryParams};
@@ -39,22 +48,27 @@ pub struct GetOrdersParams {
     pub status: Option<OrderStatus>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u32>, // default 100, max 200
+    pub limit: Option<u32>, // default 100, max 1000
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter results by exchange shard. Omit to return orders from all exchange
+    /// shards. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetOrdersParams {
     pub fn validate(&self) -> Result<(), KalshiError> {
         if let Some(limit) = self.limit
-            && (limit == 0 || limit > 200)
+            && (limit == 0 || limit > 1000)
         {
             return Err(KalshiError::InvalidParams(
-                "GET /portfolio/orders: limit must be 1..=200".to_string(),
+                "GET /portfolio/orders: limit must be 1..=1000".to_string(),
             ));
         }
         if let Some(evts) = &self.event_ticker
@@ -65,10 +79,10 @@ impl GetOrdersParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -81,18 +95,18 @@ pub struct Order {
     pub user_id: String,
     pub client_order_id: String,
     pub ticker: String,
-    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
+    /// Deprecated upstream; still returned. Use [`Order::outcome_side`].
+    #[deprecated(since = "0.8.0", note = "use outcome_side (or book_side) instead")]
     #[serde(default)]
     pub side: Option<YesNo>,
-    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `book_side`.
+    /// Deprecated upstream; still returned. Use [`Order::book_side`].
+    #[deprecated(since = "0.8.0", note = "use book_side (or outcome_side) instead")]
     #[serde(default)]
     pub action: Option<BuySell>,
-    /// Normalized outcome side (yes | no). Added 2026-05-07.
-    #[serde(default)]
-    pub outcome_side: Option<YesNo>,
-    /// Normalized book side (bid | ask). Added 2026-05-07.
-    #[serde(default)]
-    pub book_side: Option<BookSide>,
+    /// Normalized outcome side (yes | no).
+    pub outcome_side: YesNo,
+    /// Normalized book side (bid | ask).
+    pub book_side: BookSide,
     #[serde(rename = "type")]
     pub order_type: OrderType,
     pub status: OrderStatus,
@@ -119,6 +133,9 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Exchange shard that owns this order. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -129,222 +146,8 @@ pub struct GetOrdersResponse {
     pub cursor: Option<String>,
 }
 
-/// Create Order body
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct CreateOrderRequest {
-    /// required
-    pub ticker: String,
-    /// required: yes|no
-    pub side: YesNo,
-    /// required: buy|sell
-    pub action: BuySell,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_order_id: Option<String>,
-
-    /// Provide count or count_fp; if both provided they must match.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub count_fp: Option<FixedPointCount>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<OrderType>,
-
-    /// cents 1..=99
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yes_price: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub no_price: Option<u32>,
-
-    /// fixed-point dollars strings
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yes_price_dollars: Option<FixedPointDollars>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub no_price_dollars: Option<FixedPointDollars>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expiration_ts: Option<i64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_in_force: Option<TimeInForce>,
-
-    /// Maximum cost in cents; when specified, order auto has FoK behavior.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub buy_max_cost: Option<u32>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub post_only: Option<bool>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reduce_only: Option<bool>,
-
-    /// Deprecated: use reduce_only instead; only accepts 0.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sell_position_floor: Option<u32>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub self_trade_prevention_type: Option<SelfTradePreventionType>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub order_group_id: Option<String>,
-
-    /// If true, cancel if exchange pauses while order open.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cancel_order_on_pause: Option<bool>,
-
-    /// default 0
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subaccount: Option<u32>,
-}
-
-impl CreateOrderRequest {
-    pub fn validate(&self) -> Result<(), KalshiError> {
-        if self.count.is_none() && self.count_fp.is_none() {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: must provide count or count_fp".to_string(),
-            ));
-        }
-
-        if let (Some(count), Some(count_fp)) = (self.count, self.count_fp.as_deref())
-            && let Ok(fp_val) = count_fp.parse::<f64>()
-        {
-            let count_val = count as f64;
-            if (fp_val - count_val).abs() > 1e-9 {
-                return Err(KalshiError::InvalidParams(
-                    "CreateOrderRequest: count and count_fp must match".to_string(),
-                ));
-            }
-        }
-
-        let has_yes_cents = self.yes_price.is_some();
-        let has_no_cents = self.no_price.is_some();
-        let has_yes_dollars = self.yes_price_dollars.is_some();
-        let has_no_dollars = self.no_price_dollars.is_some();
-
-        if has_yes_cents && has_yes_dollars {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: cannot set both yes_price and yes_price_dollars".to_string(),
-            ));
-        }
-        if has_no_cents && has_no_dollars {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: cannot set both no_price and no_price_dollars".to_string(),
-            ));
-        }
-        if (has_yes_cents || has_yes_dollars) && (has_no_cents || has_no_dollars) {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: cannot set both yes and no prices".to_string(),
-            ));
-        }
-
-        if matches!(self.r#type, Some(OrderType::Market))
-            && (has_yes_cents || has_no_cents || has_yes_dollars || has_no_dollars)
-        {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: market orders cannot include price fields".to_string(),
-            ));
-        }
-
-        if matches!(self.r#type, Some(OrderType::Limit))
-            && !(has_yes_cents || has_no_cents || has_yes_dollars || has_no_dollars)
-        {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: limit orders require a price".to_string(),
-            ));
-        }
-
-        if let Some(sub) = self.subaccount
-            && sub > 32
-        {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
-            ));
-        }
-
-        if let Some(floor) = self.sell_position_floor
-            && floor != 0
-        {
-            return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: sell_position_floor must be 0 (deprecated)".to_string(),
-            ));
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CreateOrderResponse {
-    pub order: Order,
-}
-
-/// DELETE /portfolio/orders/{order_id} supports optional query parameter subaccount
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct CancelOrderParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subaccount: Option<u32>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CancelOrderResponse {
-    pub order: Order,
-    pub reduced_by: i64,
-    pub reduced_by_fp: FixedPointCount,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetOrderResponse {
-    pub order: Order,
-}
-
-#[derive(Debug, Clone, Serialize, Default)]
-pub struct AmendOrderRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subaccount: Option<u32>,
-    pub ticker: String,
-    pub side: YesNo,
-    pub action: BuySell,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_order_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub updated_client_order_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yes_price: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub no_price: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yes_price_dollars: Option<FixedPointDollars>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub no_price_dollars: Option<FixedPointDollars>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub count_fp: Option<FixedPointCount>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AmendOrderResponse {
-    pub old_order: Order,
-    pub order: Order,
-}
-
-#[derive(Debug, Clone, Serialize, Default)]
-pub struct DecreaseOrderRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subaccount: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reduce_by: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reduce_by_fp: Option<FixedPointCount>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reduce_to: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reduce_to_fp: Option<FixedPointCount>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DecreaseOrderResponse {
     pub order: Order,
 }
 
@@ -354,6 +157,8 @@ pub struct GetOrderQueuePositionsParams {
     pub market_tickers: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_ticker: Option<String>,
+    /// Defaults to the primary account. Subaccount-restricted keys may omit this
+    /// (their locked subaccount is inferred) but may not target another subaccount.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
 }
@@ -374,18 +179,16 @@ pub struct GetOrderQueuePositionsResponse {
 pub struct OrderQueuePosition {
     pub order_id: String,
     pub market_ticker: String,
-    pub queue_position: i64,
-    #[serde(default)]
-    pub queue_position_fp: Option<FixedPointCount>,
+    /// Number of preceding shares before the order in the queue.
+    pub queue_position_fp: FixedPointCount,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetOrderQueuePositionResponse {
-    pub queue_position: i64,
-    #[serde(default)]
-    pub queue_position_fp: Option<FixedPointCount>,
+    /// Number of preceding shares before the order in the queue.
+    pub queue_position_fp: FixedPointCount,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -397,107 +200,84 @@ pub struct GetOrderGroupsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OrderGroup {
     pub id: String,
-    #[serde(default)]
-    pub contracts_limit: Option<i64>,
+    /// Current maximum contracts allowed over a rolling 15-second window.
     #[serde(default)]
     pub contracts_limit_fp: Option<FixedPointCount>,
     pub is_auto_cancel_enabled: bool,
+    /// Exchange shard this order group is bound to.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// Query params shared by the order-group endpoints that accept both
+/// `subaccount` and `exchange_index`
+/// (`DELETE`/`PUT .../reset`/`PUT .../trigger`/`PUT .../limit`).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct OrderGroupParams {
+    /// Subaccount number (0 for primary, 1-63 for subaccounts). Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Exchange shard index.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
+}
+
+impl From<SubaccountQueryParams> for OrderGroupParams {
+    fn from(params: SubaccountQueryParams) -> Self {
+        Self {
+            subaccount: params.subaccount,
+            exchange_index: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CreateOrderGroupRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Whole contracts only. Provide `contracts_limit` or `contracts_limit_fp`;
+    /// if both are provided they must match.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// Exchange shard index. Defaults to 0 server-side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateOrderGroupResponse {
     pub order_group_id: String,
-    /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
+    /// 0 = primary account, 1–63 = subaccount.
+    pub subaccount: u32,
     #[serde(default)]
-    pub subaccount: Option<u32>,
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetOrderGroupResponse {
     pub is_auto_cancel_enabled: bool,
-    #[serde(default)]
-    pub contracts_limit: Option<i64>,
+    /// Current maximum contracts allowed over a rolling 15-second window.
     #[serde(default)]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// IDs of the orders that belong to this order group.
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub orders: Vec<Order>,
+    pub orders: Vec<String>,
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct UpdateOrderGroupLimitRequest {
+    /// Whole contracts only. Provide `contracts_limit` or `contracts_limit_fp`;
+    /// if both are provided they must match.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct BatchCreateOrdersRequest {
-    pub orders: Vec<CreateOrderRequest>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BatchCreateOrdersResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub orders: Vec<BatchCreateOrdersIndividualResponse>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BatchCreateOrdersIndividualResponse {
-    #[serde(default)]
-    pub client_order_id: Option<String>,
-    #[serde(default)]
-    pub order: Option<Order>,
-    #[serde(default)]
-    pub error: Option<ErrorResponse>,
-    #[serde(default, flatten)]
-    pub extra: Map<String, Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BatchCancelOrdersRequestOrder {
-    pub order_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subaccount: Option<u32>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct BatchCancelOrdersRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ids: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub orders: Option<Vec<BatchCancelOrdersRequestOrder>>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BatchCancelOrdersResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub orders: Vec<BatchCancelOrdersIndividualResponse>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BatchCancelOrdersIndividualResponse {
-    pub order_id: String,
-    #[serde(default)]
-    pub order: Option<Order>,
-    pub reduced_by: i64,
-    pub reduced_by_fp: FixedPointCount,
-    #[serde(default)]
-    pub error: Option<ErrorResponse>,
-    #[serde(default, flatten)]
-    pub extra: Map<String, Value>,
 }
 
 pub type GetFcmOrdersResponse = GetOrdersResponse;
@@ -529,14 +309,14 @@ pub struct CreateOrderV2Request {
     pub cancel_order_on_pause: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reduce_only: Option<bool>,
-    /// 0 = primary; 1–32 = subaccount.
+    /// 0 = primary; 1–63 = subaccount.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
-    /// Exchange shard index; currently only 0 is supported.
+    /// Exchange shard index. Defaults to 0. Use `-1` to auto-route by market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -558,8 +338,12 @@ pub struct CreateOrderV2Response {
 pub struct CancelOrderV2Params {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Exchange shard index. Use `-1` to auto-route by `market_ticker`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i32>,
+    /// Required when `exchange_index` is `-1` (auto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -584,8 +368,9 @@ pub struct AmendOrderV2Request {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// Exchange shard index. Defaults to 0. Use `-1` to auto-route by market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -613,8 +398,12 @@ pub struct DecreaseOrderV2Request {
     pub reduce_by: Option<FixedPointCount>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reduce_to: Option<FixedPointCount>,
+    /// Exchange shard index. Defaults to 0. Use `-1` to auto-route by `market_ticker`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i32>,
+    /// Required when `exchange_index` is `-1` (auto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -660,10 +449,16 @@ pub struct BatchCreateOrdersV2Response {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchCancelOrderV2RequestOrder {
     pub order_id: String,
+    /// 0 = primary; 1–63 = subaccount. Subaccount-restricted API keys must omit
+    /// this or pass their locked subaccount.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Exchange shard index. Defaults to 0. Use `-1` to auto-route by `market_ticker`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exchange_index: Option<u32>,
+    pub exchange_index: Option<i32>,
+    /// Required when `exchange_index` is `-1` (auto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -739,58 +534,6 @@ impl KalshiRestClient {
             .await
     }
 
-    /// Place a new order.
-    ///
-    /// **Requires auth.**
-    pub async fn create_order(
-        &self,
-        body: CreateOrderRequest,
-    ) -> Result<CreateOrderResponse, KalshiError> {
-        let path = Self::full_path("/portfolio/orders");
-        body.validate()?;
-        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
-            .await
-    }
-
-    /// Cancel an order by ID.
-    ///
-    /// **Requires auth.**
-    pub async fn cancel_order(
-        &self,
-        order_id: &str,
-        params: CancelOrderParams,
-    ) -> Result<CancelOrderResponse, KalshiError> {
-        let path = Self::full_path(&format!("/portfolio/orders/{order_id}"));
-        self.send(
-            Method::DELETE,
-            &path,
-            Some(&params),
-            Option::<&()>::None,
-            true,
-        )
-        .await
-    }
-
-    pub async fn amend_order(
-        &self,
-        order_id: &str,
-        body: AmendOrderRequest,
-    ) -> Result<AmendOrderResponse, KalshiError> {
-        let path = Self::full_path(&format!("/portfolio/orders/{order_id}/amend"));
-        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
-            .await
-    }
-
-    pub async fn decrease_order(
-        &self,
-        order_id: &str,
-        body: DecreaseOrderRequest,
-    ) -> Result<DecreaseOrderResponse, KalshiError> {
-        let path = Self::full_path(&format!("/portfolio/orders/{order_id}/decrease"));
-        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
-            .await
-    }
-
     pub async fn get_order(&self, order_id: &str) -> Result<GetOrderResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/orders/{order_id}"));
         self.send(
@@ -798,30 +541,6 @@ impl KalshiRestClient {
             &path,
             Option::<&()>::None,
             Option::<&()>::None,
-            true,
-        )
-        .await
-    }
-
-    pub async fn batch_create_orders(
-        &self,
-        body: BatchCreateOrdersRequest,
-    ) -> Result<BatchCreateOrdersResponse, KalshiError> {
-        let path = Self::full_path("/portfolio/orders/batched");
-        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
-            .await
-    }
-
-    pub async fn batch_cancel_orders(
-        &self,
-        body: BatchCancelOrdersRequest,
-    ) -> Result<BatchCancelOrdersResponse, KalshiError> {
-        let path = Self::full_path("/portfolio/orders/batched");
-        self.send(
-            Method::DELETE,
-            &path,
-            Option::<&()>::None,
-            Some(&body),
             true,
         )
         .await
@@ -861,6 +580,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Create an order group with a contracts limit measured over a rolling
+    /// 15-second window. Users can have up to 100,000 order groups at a time.
+    ///
+    /// **Requires auth.**
     pub async fn create_order_group(
         &self,
         body: CreateOrderGroupRequest,
@@ -883,8 +606,9 @@ impl KalshiRestClient {
     pub async fn delete_order_group(
         &self,
         order_group_id: &str,
-        params: SubaccountQueryParams,
+        params: impl Into<OrderGroupParams>,
     ) -> Result<EmptyResponse, KalshiError> {
+        let params = params.into();
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}"));
         self.send(
             Method::DELETE,
@@ -896,21 +620,29 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Update an order group's contracts limit.
+    ///
+    /// Accepts `subaccount` (added 2026-08-06) and `exchange_index` query params.
+    ///
+    /// **Requires auth.**
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: impl Into<OrderGroupParams>,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
+        let params = params.into();
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
     pub async fn reset_order_group(
         &self,
         order_group_id: &str,
-        params: SubaccountQueryParams,
+        params: impl Into<OrderGroupParams>,
     ) -> Result<EmptyResponse, KalshiError> {
+        let params = params.into();
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/reset"));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Some(&params), Some(&body), true)
@@ -920,8 +652,9 @@ impl KalshiRestClient {
     pub async fn trigger_order_group(
         &self,
         order_group_id: &str,
-        params: SubaccountQueryParams,
+        params: impl Into<OrderGroupParams>,
     ) -> Result<EmptyResponse, KalshiError> {
+        let params = params.into();
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/trigger"));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Some(&params), Some(&body), true)
@@ -932,7 +665,7 @@ impl KalshiRestClient {
 
     /// Place a new order via the V2 event-order endpoint.
     ///
-    /// Uses `BookSide` + single fixed-point `price`. Lower rate-limit cost than legacy.
+    /// Uses `BookSide` + single fixed-point `price`.
     ///
     /// **Requires auth.**
     pub async fn create_order_v2(
@@ -995,6 +728,9 @@ impl KalshiRestClient {
 
     /// Submit a batch of orders via the V2 event-order endpoint.
     ///
+    /// Subaccount-restricted API keys may use this endpoint; per-order
+    /// `subaccount` values must match the key's locked subaccount or be omitted.
+    ///
     /// **Requires auth.**
     pub async fn batch_create_orders_v2(
         &self,
@@ -1006,6 +742,9 @@ impl KalshiRestClient {
     }
 
     /// Cancel a batch of orders via the V2 event-order endpoint.
+    ///
+    /// Subaccount-restricted API keys may use this endpoint; per-order
+    /// `subaccount` values must match the key's locked subaccount or be omitted.
     ///
     /// **Requires auth.**
     pub async fn batch_cancel_orders_v2(

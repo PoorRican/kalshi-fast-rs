@@ -6,7 +6,7 @@
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
-use crate::types::{FeeType, deserialize_null_as_empty_vec};
+use crate::types::{FeeType, FixedPointCount, deserialize_null_as_empty_vec};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -83,14 +83,20 @@ pub struct Series {
     pub product_metadata: Option<Map<String, Value>>,
     #[serde(default)]
     pub volume: Option<i64>,
+    /// Total number of contracts traded across all events in this series, as a
+    /// fixed-point string. Only populated when `include_volume=true`.
     #[serde(default)]
-    pub volume_fp: Option<String>,
+    pub volume_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub latest_event_ticker: Option<String>,
     #[serde(default)]
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Target exchange instance (shard) for new events in this series.
+    /// Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -105,6 +111,10 @@ pub struct GetSeriesListParams {
     /// If true, includes total volume traded across all events in each series.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_volume: Option<bool>,
+    /// Filter to series whose metadata was updated after this Unix timestamp
+    /// (in seconds). Useful for polling only what changed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

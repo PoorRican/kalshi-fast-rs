@@ -8,6 +8,254 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.8.0] - 2026-08-20
+
+Spec reconciliation against OpenAPI 3.28.0 / AsyncAPI 2.0.0, covering the 87
+changelog entries published between the previous watermark (2026-06-08) and
+2026-08-20.
+
+**Version bump rationale.** `VERSIONING.md` (pre-1.0): *"Minor releases are for
+any intentional breaking change to the public Rust API"*, and *"Bump `minor` if
+deprecated or removed upstream fields/endpoints force a breaking Rust API
+change."* Upstream removed six order-mutation endpoints, the exchange
+announcements endpoint, the multivariate lookup endpoint and WebSocket channel,
+and several response fields — all of which force source-breaking Rust changes.
+Minor bump: **0.7.0 → 0.8.0**.
+
+### Compatibility
+
+- Docs snapshot: 2026-08-20
+- OpenAPI: 3.28.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-08-20
+
+### Upstream changelog disposition
+
+All 87 entries after the 2026-06-08 watermark. Entries the crate does not model
+are grouped; every other entry maps to a concrete diff or an explicit
+justification.
+
+**Out of scope — no change needed (22 entries).** The crate models the
+Predictions REST and WebSocket surface only.
+
+- *Margin exchange (11)*: margin fee-tier active rates; perps mark prices; perps
+  volume/OI notional fields; tick size on margin markets; subaccount on margin
+  positions; margin risk per-market metric limits; `margin_used` omitted for
+  jointly-margined positions; `is_portfolio` flag; margin order `order_reason`;
+  sided leverage estimates; margin order groups bound to one `exchange_index`;
+  exit triggers on margin positions. The crate has no `/margin/*` market,
+  position, risk, or order types.
+- *FIX protocol (11)*: RFQ quote identity; trade entries in FIX market data;
+  post-only on FIX quotes; FIX exchange index routing; AcceptQuote reject
+  reasons; cancel/replace reject reasons; Tag 2446; subaccount-restricted RFQ
+  sessions; `LastMkt<30>` on execution reports; combo-validation rejects;
+  `MDEntryDate`/`MDEntryTime`. The crate has no FIX transport.
+
+**Operational / server-side only — no schema change (15 entries).**
+
+| Entry | Justification |
+|---|---|
+| 2026-06-18 Sanity limits on orderbook subscriptions | Session limits enforced server-side; no message or field change |
+| 2026-06-18 Block-trade accept API key permissions | New scope strings only; scopes modeled as `Vec<String>` |
+| 2026-06-19 RFQ/quote retention reduced to 7 days | Retention policy; no schema change |
+| 2026-06-23 Get Quote cost reduced to 2 tokens | Token cost only; surfaced via `get_account_endpoint_costs` |
+| 2026-06-25 API usage tier qualification halved | Server-side thresholds |
+| 2026-06-30 Trade-scoped API key permissions | New `write::trade` scope string only |
+| 2026-07-22 Incentive programs on hidden events excluded | Server-side filtering of an existing response |
+| 2026-07-23 Order groups limited to 25,000 per user | Server-side limit |
+| 2026-07-23 Subaccount-restricted keys can open WebSocket sessions | Changelog states "No new fields are introduced" |
+| 2026-07-30 Subaccount-restricted keys: order queue positions, batch orders, order groups | Authorization scope only; `subaccount` params already modeled |
+| 2026-08-13 Order group maximum raised to 100,000 | Server-side limit |
+| 2026-08-20 VPC peering for Prime members | Connectivity/infrastructure |
+| 2026-08-20 Maker fee exemption for independent NFL combo markets | Fee policy; no schema change |
+| 2026-08-24 Upcoming exchange sharding | Announcement; the `exchange_index` fields it implies are covered by their own entries |
+| 2026-08-27 Tapered sub-cent pricing on combo markets | Changelog: "No API fields or message formats change" — consume `price_ranges` |
+
+**Mapped to concrete diffs (50 entries).** See the sections below; each bullet
+names the originating changelog date.
+
+### Added
+
+- [Rust API] `GET /exchange/status` gained `intra_exchange_transfers_active` and
+  `exchange_index_statuses: Vec<ExchangeIndexStatus>` (2026-07-02), each entry
+  carrying `exchange_index`, `description` (2026-08-13), `exchange_active`,
+  `trading_active`, and `intra_exchange_transfers_active`.
+- [Rust API] `Series::exchange_index` (2026-07-30).
+- [Rust API] `get_event_live_data()` for `GET /live_data/events/{event_ticker}`
+  with an optional `range` filter, plus `EventLiveData` /
+  `GetEventLiveDataResponse` / `GetEventLiveDataParams` (2026-07-30).
+- [Rust API] `get_weather_index()` for `GET /live_data/weather/{city}`, plus
+  `GetWeatherIndexParams`, `GetWeatherIndexResponse`, `WeatherIndexPoint`, and
+  `WeatherIndexStationReading` (2026-08-20). `WeatherIndexPoint::v` is
+  `Option<f64>` — absent, not `0.0`, on `incomplete` points.
+- [Rust API] `EventData::settlement_sources` (2026-06-18) and
+  `GetEventsParams::tickers` (2026-06-18).
+- [Rust API] `EventProductMetadata` with `cadence` (2026-07-30);
+  `EventData::product_metadata` now uses it.
+- [Rust API] `FeeType::QuadraticWithComboMakerFees` (2026-08-22).
+- [Upstream] `GetSeriesListParams::min_updated_ts`,
+  `GetMilestonesParams::min_updated_ts`, `GetEventsParams::min_updated_ts`, and
+  `GetIncentiveProgramsParams::incentive_description` — spec'd filters the crate
+  was missing.
+- [Rust API] `IncentiveProgram::incentive_description` (spec-required).
+- [Rust API] `pyth_value` WebSocket channel (2026-07-23): `WsChannelV2::PythValue`,
+  `WsMsgType::{PythValue, PythUnderlyingList}`, `WsPythValue` / `WsPythUnderlyingList`
+  (and borrowed twins), `underlying_tickers` on both subscription param structs, and
+  `WsUpdateAction::{SubscribeUnderlyings, UnsubscribeUnderlyings, UnderlyingList}`.
+  `validate_update` rejects mixing underlying actions with market targets and
+  requires `underlying_tickers` for the add/remove actions.
+- [Rust API] `market_lifecycle_v2` gained `strike_type`, `cap_strike`, and
+  `custom_strike` (2026-06-18), `price_ranges` with the new `WsPriceRange` type
+  (2026-07-02), and `exchange_index` (2026-07-30, also on `event_lifecycle`).
+- [Rust API] `WsTrade::is_block_trade` (2026-08-13) and `WsFill::exchange_index`
+  (2026-08-20).
+- [Rust API] `subaccount` on `WsQuoteCreated` (2026-07-30) — and on
+  `WsQuoteAccepted` / `WsQuoteExecuted`, plus `rfq_creator_id`, which the specs
+  declare and the crate had been silently dropping.
+- [Rust API] RFQ-scoped quote methods `get_rfq_quote`, `delete_rfq_quote`,
+  `accept_rfq_quote`, and `confirm_rfq_quote` (2026-06-25, 2026-07-09).
+- [Rust API] `GetQuotesParams::{min_ts, max_ts}` (2026-06-18) and `user_filter`
+  on `GetQuotesParams` / `GetRFQsParams`; `post_only` on `Quote` and
+  `CreateQuoteRequest`; `creator_subaccount` on `RFQ` and `Quote`, plus
+  `Quote::rfq_creator_subaccount` (2026-08-20).
+- [Rust API] `exchange_index` on `MarketPosition`, `Settlement`, `Fill`, `Order`,
+  `OrderGroup`, `MultivariateEventCollection`, and as an optional filter on
+  `GetOrdersParams` / `GetPositionsParams` / `GetFillsParams` (2026-08-20).
+- [Rust API] `GetBalanceParams` (`subaccount`, `exchange_index`) plus
+  `GetBalanceResponse::balance_breakdown` and
+  `GetPortfolioRestingOrderTotalValueResponse::resting_order_value_breakdown`,
+  both over the new shared `IndexedBalance` type (2026-08-13, 2026-08-20).
+- [Rust API] `get_historical_positions()` with the full pagination family
+  (2026-07-23), and `GetHistoricalCutoffResponse::market_positions_last_updated_ts`.
+- [Rust API] Intra-exchange-instance transfer support (2026-08-13, 2026-08-20):
+  `intra_exchange_instance_transfer()` with `source_subaccount` /
+  `destination_subaccount`, the paginated history endpoints, and
+  `IntraExchangeInstanceTransfer` / `IntraExchangeInstanceTransferStatus`.
+- [Rust API] `get_target_balance_allocation()` / `set_target_balance_allocation()`
+  (2026-08-20), validating that allocation percents total exactly 100.
+- [Rust API] `ApiKey::subaccount` and `subaccount` on the API-key create/generate
+  requests (2026-07-02), plus `GetApiKeysResponse::api_key_region_expiration_ts`
+  (2026-08-16).
+- [Rust API] `get_account_api_usage_level_volume_progress()` and
+  `upgrade_account_api_usage_level()` (2026-06-11).
+- [Rust API] `SubaccountBalance::exchange_index` (2026-07-02).
+- [Rust API] `OrderGroupParams` (`subaccount`, `exchange_index`) for the
+  order-group endpoints (2026-08-06).
+
+### Changed
+
+- [Rust API] `PriceRange::{start,end,step}` retyped `String` →
+  `FixedPointDollars` (type alias; source compatible).
+- [Rust API] `Series::volume_fp` retyped to `Option<FixedPointCount>` (type
+  alias; source compatible).
+- [Rust API] The normalized direction fields are now `required` in the specs and
+  are modeled as plain (non-`Option`) types: `Order::{outcome_side, book_side}`,
+  `Fill::{outcome_side, book_side}`, and
+  `Trade::{taker_outcome_side, taker_book_side}`.
+- [Rust API] `GetOrderGroupResponse::orders` retyped `Vec<Order>` → `Vec<String>`
+  — the schema declares an array of order IDs, not order objects.
+- [Rust API] `exchange_index` is `i32` on request bodies and queries that accept
+  `-1` (auto-route by market ticker) and `u32` where the schema sets
+  `minimum: 0`.
+- [Rust API] `WsChannelV2::CfbenchmarksValue::is_private()` now returns `true`;
+  both value feeds are documented as requiring authentication, so subscribing on
+  an unauthenticated client fails client-side instead of at the server.
+- [Upstream] `GetOrdersParams` now accepts `limit` up to 1000 (was 200), matching
+  the shared `LimitQuery` maximum.
+- [Upstream] Subaccount validation now enforces `0..=63` (was `0..=32`), matching
+  the range the OpenAPI states throughout. Subaccounts 33–63 were previously
+  rejected client-side.
+
+### Deprecated
+
+- [Rust API] The quote-ID-only communications endpoints (`get_quote`,
+  `delete_quote`, `accept_quote`, `confirm_quote`) are marked `#[deprecated]`
+  (2026-06-25, 2026-07-09). They remain `deprecated: true` but present in the
+  OpenAPI, so they are kept. Use the RFQ-scoped replacements.
+- [Rust API] The legacy direction fields `Order::{side, action}`,
+  `Fill::{side, action}`, and `Trade::taker_side` are marked `#[deprecated]`.
+  They are still present in the specs, so they remain `Option` rather than being
+  removed. Use `outcome_side` / `book_side` (`taker_*` on `Trade`).
+- [Rust API] `CreateRFQRequest::target_cost_centi_cents` is marked
+  `#[deprecated]` (`deprecated: true` upstream). Use `target_cost_dollars`.
+
+### Removed
+
+- [Rust API] `get_exchange_announcements()` and the `Announcement`,
+  `AnnouncementType`, `AnnouncementStatus`, and
+  `GetExchangeAnnouncementsResponse` types — `GET /exchange/announcements` was
+  removed upstream on 2026-07-04. Use `get_exchange_schedule()`.
+- [Rust API] `Market::response_price_units` and
+  `Market::fractional_trading_enabled`, and `MarketPosition::resting_orders_count`
+  — removed from the schema on 2026-07-09.
+- [Rust API] `ErrorResponse::service` — deprecated 2026-07-28, removed
+  2026-08-06. Branch on `code`, which is present on every error response.
+- [Rust API] `GetQuotesParams::{market_ticker, event_ticker}` — these filters
+  were removed from `GET /communications/quotes` on 2026-06-20.
+- [Rust API] The six legacy V1 order-mutation methods — `create_order`,
+  `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`,
+  `batch_cancel_orders` — and their 15 request/response types. The 2026-06-18
+  changelog announced these as *deprecated*, but OpenAPI 3.28.0 no longer
+  declares the paths at all (`/portfolio/orders` and
+  `/portfolio/orders/{order_id}` retain only `GET`). Use the `*_v2` event-order
+  methods.
+- [Rust API] The multivariate lookup surface, removed upstream on 2026-08-06:
+  `lookup_tickers_for_market_in_multivariate_event_collection()`,
+  `get_multivariate_event_collection_lookup_history()`, and their types; plus
+  the `multivariate` WebSocket channel — `WsChannelV2::Multivariate`,
+  `WsMsgType::{Multivariate, MultivariateLookup}`, the `WsDataMessage`
+  variants, and the `WsMultivariate*` types. Use
+  `multivariate_market_lifecycle` and the RFQ APIs.
+- [Rust API] `WsMarketLifecycleV2::fractional_trading_enabled` and
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` — absent from both the
+  OpenAPI and the AsyncAPI as of the 2026-07-09 field removal.
+- [Rust API] `OrderQueuePosition::queue_position`,
+  `GetOrderQueuePositionResponse::queue_position`, and `contracts_limit` on
+  `OrderGroup` / `GetOrderGroupResponse` — the integer twins were dropped from
+  the schemas in favor of the fixed-point fields.
+
+### Fixed
+
+- [Rust API] `SeriesFeeChange` field types corrected to match the OpenAPI
+  (`id: i64 → String`, `fee_multiplier: i64 → f64`,
+  `scheduled_ts: i64 → String`). The previous shape could not decode a live
+  `/series/fee_changes` response.
+- [Rust API] `GetLiveDatasParams::milestone_ids` uses OpenAPI `form` /
+  `explode: true` repeated query parameters, which `serde_urlencoded` cannot
+  emit from a struct field — every `get_live_data_batch()` call previously
+  failed to serialize. The params struct now flattens to key/value pairs at call
+  time and additionally accepts `include_player_stats`.
+
+### Breaking
+
+- [Rust API] Removed items listed under **Removed** above.
+- [Rust API] `EventData::product_metadata` retyped `Option<EventMetadata>` →
+  `Option<EventProductMetadata>`. Field-for-field source compatible, but code
+  naming `EventMetadata` in that position must change.
+- [Rust API] `SeriesFeeChange` field retypes (see **Fixed**).
+- [Rust API] `GetLiveDatasParams` no longer derives `Serialize` and gained a
+  field; construct it with `..Default::default()`.
+- [Rust API] `IncentiveProgram` gained a required `incentive_description` field.
+- [Rust API] `get_balance()` now takes a `GetBalanceParams` argument; pass
+  `GetBalanceParams::default()` to preserve the previous behavior.
+  `GetBalanceResponse::balance_dollars` is promoted from `Option` to required.
+- [Rust API] `update_order_group_limit()` takes a params argument, and
+  `delete_order_group()` / `reset_order_group()` / `trigger_order_group()` take
+  `impl Into<OrderGroupParams>` — existing `SubaccountQueryParams` call sites
+  still compile via the provided `From` conversion.
+- [Rust API] `MarketPosition`, `Settlement`, and `Fill` gained a required
+  `exchange_index`, so payloads omitting it no longer deserialize. Likewise
+  `SubaccountBalance::exchange_index`, which additionally means
+  `subaccount_number` is no longer unique within a subaccount-balances response.
+- [Rust API] `WsUpdateSubscriptionParamsV2::underlying_tickers` has no `Default`,
+  so every struct literal must supply it.
+- [Rust API] Removed enum variants (`WsChannelV2`, `WsMsgType`,
+  `WsDataMessageV2` / `WsDataMessageRef`, `WsMarketLifecycleEventType`) and
+  added variants both break exhaustive `match` arms.
+- [Rust API] Structs that gained fields break exhaustive struct literals; all
+  are `Default`-constructible unless noted above.
+
+
 ## [0.7.0] - 2026-08-12
 
 ### Compatibility

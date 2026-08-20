@@ -34,12 +34,27 @@
 
 mod common;
 
-use kalshi_fast::{
-    CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, KalshiRestClient, MarketStatusQuery,
-};
+use kalshi_fast::{CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, MarketStatusQuery};
 use std::time::Duration;
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// `target_cost_centi_cents` is deprecated upstream (use `target_cost_dollars`),
+/// but it is still a field on the request struct, so construction needs the allow.
+#[allow(deprecated)]
+fn new_rfq_request(market_ticker: &str) -> CreateRFQRequest {
+    CreateRFQRequest {
+        market_ticker: market_ticker.to_string(),
+        contracts: Some(1),
+        contracts_fp: None,
+        target_cost_centi_cents: None,
+        target_cost_dollars: None,
+        rest_remainder: false,
+        replace_existing: None,
+        subtrader_id: None,
+        subaccount: None,
+    }
+}
 
 #[tokio::test]
 #[ignore = "demo environment returns 409 already_exists; see module doc"]
@@ -70,19 +85,7 @@ async fn test_rfq_lifecycle() {
 
     // 1. Create an RFQ
     let create_resp = tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
-        client
-            .create_rfq(CreateRFQRequest {
-                market_ticker: market_ticker.clone(),
-                contracts: Some(1),
-                contracts_fp: None,
-                target_cost_centi_cents: None,
-                target_cost_dollars: None,
-                rest_remainder: false,
-                replace_existing: None,
-                subtrader_id: None,
-                subaccount: None,
-            })
-            .await
+        client.create_rfq(new_rfq_request(&market_ticker)).await
     })
     .await
     .expect("timeout")
@@ -139,19 +142,7 @@ async fn test_quote_lifecycle() {
 
     // 1. Create an RFQ as prerequisite
     let rfq_resp = tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
-        client
-            .create_rfq(CreateRFQRequest {
-                market_ticker: market_ticker.clone(),
-                contracts: Some(1),
-                contracts_fp: None,
-                target_cost_centi_cents: None,
-                target_cost_dollars: None,
-                rest_remainder: false,
-                replace_existing: None,
-                subtrader_id: None,
-                subaccount: None,
-            })
-            .await
+        client.create_rfq(new_rfq_request(&market_ticker)).await
     })
     .await
     .expect("timeout")
@@ -167,6 +158,7 @@ async fn test_quote_lifecycle() {
                 yes_bid: "0.01".to_string(),
                 no_bid: "0.01".to_string(),
                 rest_remainder: false,
+                post_only: None,
                 subaccount: None,
             })
             .await
@@ -177,24 +169,24 @@ async fn test_quote_lifecycle() {
 
     let quote_id = quote_resp.id.clone();
 
-    // 3. Get the quote and verify
+    // 3. Get the quote (RFQ-scoped) and verify
     let get_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_quote(&quote_id).await
+        client.get_rfq_quote(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")
-    .expect("get_quote failed");
+    .expect("get_rfq_quote failed");
 
     assert_eq!(get_resp.quote.id, quote_id);
     assert_eq!(get_resp.quote.rfq_id, rfq_id);
 
-    // 4. Delete the quote (cleanup)
+    // 4. Delete the quote (RFQ-scoped, cleanup)
     let _delete_quote = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.delete_quote(&quote_id).await
+        client.delete_rfq_quote(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")
-    .expect("delete_quote failed");
+    .expect("delete_rfq_quote failed");
 
     // 5. Delete the RFQ (cleanup)
     let _delete_rfq = tokio::time::timeout(common::TEST_TIMEOUT, async {
