@@ -77,7 +77,7 @@ pub struct WsSubscriptionInfo {
     #[serde(default)]
     pub shard_factor: Option<u32>,
     #[serde(default)]
-    pub shard_key: Option<String>,
+    pub shard_key: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -99,8 +99,8 @@ pub struct WsSubscriptionInfoRef<'a> {
     pub skip_ticker_ack: Option<bool>,
     #[serde(default)]
     pub shard_factor: Option<u32>,
-    #[serde(default, borrow)]
-    pub shard_key: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub shard_key: Option<u32>,
 }
 
 impl<'a> WsSubscriptionInfoRef<'a> {
@@ -121,7 +121,7 @@ impl<'a> WsSubscriptionInfoRef<'a> {
             send_initial_snapshot: self.send_initial_snapshot,
             skip_ticker_ack: self.skip_ticker_ack,
             shard_factor: self.shard_factor,
-            shard_key: self.shard_key.map(Cow::into_owned),
+            shard_key: self.shard_key,
         }
     }
 }
