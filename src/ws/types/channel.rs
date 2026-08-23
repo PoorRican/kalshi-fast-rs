@@ -8,7 +8,6 @@ pub enum WsChannelV2 {
     Trade,
     MarketLifecycleV2,
     MultivariateMarketLifecycle,
-    Multivariate,
     OrderbookDelta,
     Fill,
     MarketPositions,
@@ -17,6 +16,8 @@ pub enum WsChannelV2 {
     UserOrders,
     /// CF Benchmarks reference index value feed. Added 2026-06-08 (AsyncAPI 2.0.0).
     CfbenchmarksValue,
+    /// Pyth price feed for configured underlying tickers. Added 2026-07-23.
+    PythValue,
 }
 
 impl WsChannelV2 {
@@ -26,7 +27,6 @@ impl WsChannelV2 {
             WsChannelV2::Trade => "trade",
             WsChannelV2::MarketLifecycleV2 => "market_lifecycle_v2",
             WsChannelV2::MultivariateMarketLifecycle => "multivariate_market_lifecycle",
-            WsChannelV2::Multivariate => "multivariate",
             WsChannelV2::OrderbookDelta => "orderbook_delta",
             WsChannelV2::Fill => "fill",
             WsChannelV2::MarketPositions => "market_positions",
@@ -34,6 +34,7 @@ impl WsChannelV2 {
             WsChannelV2::OrderGroupUpdates => "order_group_updates",
             WsChannelV2::UserOrders => "user_orders",
             WsChannelV2::CfbenchmarksValue => "cfbenchmarks_value",
+            WsChannelV2::PythValue => "pyth_value",
         }
     }
 
@@ -46,6 +47,8 @@ impl WsChannelV2 {
                 | WsChannelV2::Communications
                 | WsChannelV2::OrderGroupUpdates
                 | WsChannelV2::UserOrders
+                | WsChannelV2::CfbenchmarksValue
+                | WsChannelV2::PythValue
         )
     }
 }
@@ -67,10 +70,11 @@ mod tests {
         assert!(WsChannelV2::MarketPositions.is_private());
         assert!(WsChannelV2::Communications.is_private());
         assert!(WsChannelV2::OrderGroupUpdates.is_private());
+        assert!(WsChannelV2::CfbenchmarksValue.is_private());
+        assert!(WsChannelV2::PythValue.is_private());
 
         assert!(!WsChannelV2::Ticker.is_private());
         assert!(!WsChannelV2::Trade.is_private());
         assert!(!WsChannelV2::MarketLifecycleV2.is_private());
-        assert!(!WsChannelV2::Multivariate.is_private());
     }
 }

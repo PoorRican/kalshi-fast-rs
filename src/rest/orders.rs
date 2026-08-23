@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict results to one exchange index. Omit for all exchange indexes.
+    /// Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +124,10 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Identifier for the exchange shard this order lives on. Added as part
+    /// of exchange sharding (2026-07/08).
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -196,6 +205,10 @@ pub struct CreateOrderRequest {
     /// default 0
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Exchange shard index. Defaults to 0. Pass -1 to auto-route by market ticker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl CreateOrderRequest {
@@ -321,6 +334,9 @@ pub struct AmendOrderRequest {
     pub count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub count_fp: Option<FixedPointCount>,
+    /// Exchange shard index. Defaults to 0. Pass -1 to auto-route by market ticker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -402,6 +418,11 @@ pub struct OrderGroup {
     #[serde(default)]
     pub contracts_limit_fp: Option<FixedPointCount>,
     pub is_auto_cancel_enabled: bool,
+    /// Identifier for the exchange shard this order group lives on. Added as
+    /// part of exchange sharding; order groups are bound to a single
+    /// exchange index (2026-08-13).
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -414,6 +435,9 @@ pub struct CreateOrderGroupRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// Exchange shard the group is bound to. Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -422,6 +446,8 @@ pub struct CreateOrderGroupResponse {
     /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
     #[serde(default)]
     pub subaccount: Option<u32>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -433,6 +459,8 @@ pub struct GetOrderGroupResponse {
     pub contracts_limit_fp: Option<FixedPointCount>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub orders: Vec<Order>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -471,6 +499,12 @@ pub struct BatchCancelOrdersRequestOrder {
     pub order_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Exchange shard index. Defaults to 0. Pass -1 to auto-route by market ticker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+    /// Market ticker. Required when `exchange_index` is -1 (auto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -899,10 +933,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 

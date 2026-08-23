@@ -206,8 +206,10 @@ pub struct Market {
     pub series_id: Option<i64>,
     #[serde(default)]
     pub event_id: Option<i64>,
+    /// Identifier for the exchange shard this market lives on. Added as part
+    /// of exchange sharding (2026-07/08).
     #[serde(default)]
-    pub response_price_units: Option<String>,
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub settlement_timer_seconds: Option<i64>,
     #[serde(default)]
@@ -282,8 +284,6 @@ pub struct Market {
     pub open_interest: Option<i64>,
     #[serde(default)]
     pub open_interest_fp: Option<String>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]
     pub notional_value: Option<i64>,
     #[serde(default)]

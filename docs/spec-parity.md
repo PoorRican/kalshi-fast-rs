@@ -91,6 +91,51 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Exchange sharding (2026-07/08) added an `exchange_index` field to most portfolio, order, order-group,
+  market, event, series, and multivariate-collection response shapes. Even where the OpenAPI/AsyncAPI
+  now mark it `required`, it is modeled as `Option<i64>` across the crate — consistent with how every
+  other field added to an *existing* struct is modeled here — so older/cached payloads without the
+  field still parse. Plain `integer` fields typed like this (not an enum) are represented directly as
+  `i64`; there is no dedicated `ExchangeIndex` newtype.
+- `SubaccountQueryParams` (shared by the single-order-group endpoints: get/delete/reset/trigger/limit)
+  gained an `exchange_index` query field to match the OpenAPI `ExchangeIndexQuery` parameter added to
+  those endpoints. `GET /portfolio/order_groups` (list) does not accept `exchange_index` upstream; the
+  field is harmlessly unused there when left `None`.
+- `price_level_structure` (REST `Market.price_level_structure`, WS `market_lifecycle_v2`) is modeled as
+  a raw `String`, not an enum, so new structure names Kalshi has introduced since the last refresh
+  (`center_whole_edge_half_cent` and siblings, `center_deci_edge_centi_cent`) round-trip with no crate
+  changes. Consult the live OpenAPI/AsyncAPI for the current enum values; do not hardcode logic against
+  the label — read `Market.price_ranges` / the WS `price_ranges` field for actual tick bands instead.
+- `FeeType::QuadraticWithComboMakerFees` (serialized `quadratic_with_maker_fees` sibling
+  `quadratic_with_combo_maker_fees`) was added to the OpenAPI enum; the existing `#[serde(other)]
+  Unknown` catch-all means this was never a hard-failure gap, but the variant is now named explicitly.
+- The following fields were fully removed from the live OpenAPI schema (not deprecated-and-present) and
+  were removed from the crate rather than kept as optional compatibility fields, per the refresh
+  workflow's default: `Market.response_price_units`, `Market.fractional_trading_enabled`,
+  `MarketPosition.resting_orders_count` (removed 2026-07-09), and `ErrorResponse.service` (deprecated
+  2026-07-28, removed 2026-08-06 — use `code` instead, which is present on every error response).
+- `GET /exchange/announcements` and the entire "multivariate lookup" surface — the REST endpoint
+  `PUT /multivariate_event_collections/{ticker}/lookup` plus the `multivariate` WebSocket channel
+  (message type `multivariate_lookup`) — were removed from the live docs (2026-07-04 and 2026-08-06
+  respectively) and have been deleted from the crate's public API, including the `WsChannelV2::
+  Multivariate` / `WsMsgType::Multivariate(Lookup)` enum variants. Use `MultivariateMarketLifecycle`
+  for multivariate market state changes, and `POST /multivariate_event_collections/{ticker}` for
+  create/resolve.
+- `GET /communications/quotes` dropped its `market_ticker` / `event_ticker` filters (2026-06-20) in
+  favor of RFQ-scoped lookup/action endpoints (`.../rfqs/{rfq_id}/quotes/{quote_id}...`, added
+  2026-06-25/2026-07-09). The crate exposes both the RFQ-scoped methods (`get_quote_scoped`,
+  `delete_quote_scoped`, `accept_quote_scoped`, `confirm_quote_scoped`) and the still-supported but
+  upstream-deprecated quote-ID-only methods; prefer the scoped ones for new code.
+- `WsChannelV2::CfbenchmarksValue` requires authentication per the AsyncAPI description, but was
+  missing from `WsChannelV2::is_private()` (which gates the client-side `AuthRequired` pre-check on
+  `subscribe_v2`). Fixed as part of this refresh; `PythValue` (added 2026-07-23, also authenticated)
+  was added to the same list from the start.
+- The `pyth_value` channel mirrors `cfbenchmarks_value`'s shape: `WsUpdateAction` gained
+  `SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList`, and
+  `WsSubscriptionParamsV2` / `WsUpdateSubscriptionParamsV2` gained `underlying_tickers`. The
+  subscription tracker folds underlying add/remove updates into the resubscribe state the same way it
+  already did for CF Benchmarks index IDs.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

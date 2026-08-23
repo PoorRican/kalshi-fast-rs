@@ -50,6 +50,10 @@ pub struct IncentiveProgram {
     pub target_size: Option<i32>,
     #[serde(default)]
     pub target_size_fp: Option<FixedPointCount>,
+    /// Maximum reward per account, in centi-cents. Applies to some incentive
+    /// program types (e.g. `margin_maker_volume`, added 2026-08-27).
+    #[serde(default)]
+    pub max_reward_per_account: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -85,6 +89,98 @@ pub struct LiveData {
     pub milestone_id: String,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// Live data keyed by event ticker (e.g. crypto price charts, commodity
+/// price timeseries, weather observations). `details`' shape depends on `type`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EventLiveData {
+    #[serde(rename = "type")]
+    pub live_data_type: String,
+    #[serde(default)]
+    pub details: Map<String, Value>,
+    /// Present for crypto live data: true when the event has matured and the
+    /// payload is a frozen historical snapshot.
+    #[serde(default)]
+    pub is_historical: Option<bool>,
+    /// Chart range the client should default to (e.g. `15min`, `1h`).
+    #[serde(default)]
+    pub default_range: Option<String>,
+    /// Chart range menu options.
+    #[serde(default)]
+    pub range_options: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetEventLiveDataResponse {
+    pub live_data: EventLiveData,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetEventLiveDataParams {
+    /// Optional chart range hint (e.g. `15min`, `1h`, `1d`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<String>,
+}
+
+/// One point in a [`GetWeatherIndexResponse`] timeseries.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WeatherIndexPoint {
+    /// Event minute, unix milliseconds UTC.
+    pub t: i64,
+    /// Published index value, Fahrenheit rounded to 0.01. Absent on
+    /// `incomplete` points, which have no canonical value yet.
+    #[serde(default)]
+    pub v: Option<f64>,
+    /// `normal`, `degraded`, or (with `detailed=true`) `incomplete`.
+    pub status: String,
+    /// Number of accepted member stations backing the point. Absent on
+    /// `incomplete` points.
+    #[serde(default)]
+    pub contributors: Option<i64>,
+    /// Per-station audit readings (only with `detailed=true`).
+    #[serde(default)]
+    pub stations: Option<Vec<WeatherIndexStationReading>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WeatherIndexStationReading {
+    pub station_id: String,
+    /// Disposition: `ok`, `missing`, `late`, a QC rejection (`range`,
+    /// `rate_spatial`, `extreme`), or `pending`.
+    pub code: String,
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Raw reported temperature in Fahrenheit (unrounded). Absent for `missing` members.
+    #[serde(default)]
+    pub temp_f: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetWeatherIndexResponse {
+    pub city: String,
+    #[serde(default)]
+    pub config_version: Option<String>,
+    /// Always `fahrenheit`.
+    pub units: String,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub timeseries: Vec<WeatherIndexPoint>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetWeatherIndexParams {
+    /// Window start, unix milliseconds (inclusive). Defaults to `to` minus 24h.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<i64>,
+    /// Window end, unix milliseconds (inclusive). Defaults to now.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<i64>,
+    /// Trailing window in seconds; mutually exclusive with `from`/`to`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_sec: Option<i64>,
+    /// Include per-station audit readings on every point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detailed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -183,6 +279,42 @@ impl KalshiRestClient {
         params: GetLiveDataByMilestoneParams,
     ) -> Result<GetLiveDataResponse, KalshiError> {
         let path = Self::full_path(&format!("/live_data/milestone/{milestone_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Get live data for an event by ticker (e.g. crypto price charts,
+    /// commodity price timeseries, weather observations).
+    pub async fn get_event_live_data(
+        &self,
+        event_ticker: &str,
+        params: GetEventLiveDataParams,
+    ) -> Result<GetEventLiveDataResponse, KalshiError> {
+        let path = Self::full_path(&format!("/live_data/events/{event_ticker}"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Get the Kalshi-computed city temperature index (minute-resolution
+    /// series behind hourly temperature markets, e.g. `miami`).
+    pub async fn get_weather_index(
+        &self,
+        city: &str,
+        params: GetWeatherIndexParams,
+    ) -> Result<GetWeatherIndexResponse, KalshiError> {
+        let path = Self::full_path(&format!("/live_data/weather/{city}"));
         self.send(
             Method::GET,
             &path,

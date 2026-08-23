@@ -167,6 +167,7 @@ async fn test_quote_lifecycle() {
                 yes_bid: "0.01".to_string(),
                 no_bid: "0.01".to_string(),
                 rest_remainder: false,
+                post_only: None,
                 subaccount: None,
             })
             .await
