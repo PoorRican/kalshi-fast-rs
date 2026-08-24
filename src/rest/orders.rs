@@ -9,8 +9,9 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::portfolio::GetPositionsResponse;
 use crate::types::{
-    BookSide, BuySell, ErrorResponse, FixedPointCount, FixedPointDollars, OrderStatus, OrderType,
-    SelfTradePreventionType, TimeInForce, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, ErrorResponse, ExchangeIndex, FixedPointCount, FixedPointDollars,
+    OrderStatus, OrderType, SelfTradePreventionType, TimeInForce, YesNo,
+    deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -46,6 +47,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict to this exchange index. Omit to include all exchange indexes.
+    /// Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +125,9 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Exchange shard this order lives on. Added 2026 (exchange sharding rollout).
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -441,6 +450,9 @@ pub struct UpdateOrderGroupLimitRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// Subaccount to act on for a subaccount-restricted API key. Added 2026-08-06.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -742,6 +754,9 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18; use create_order_v2 instead"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +770,9 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18; use cancel_order_v2 instead"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +789,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18; use amend_order_v2 instead"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +802,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18; use decrease_order_v2 instead"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +827,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18; use batch_create_orders_v2 instead"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +839,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "legacy /portfolio/orders mutation endpoints were deprecated 2026-06-18; use batch_cancel_orders_v2 instead"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,

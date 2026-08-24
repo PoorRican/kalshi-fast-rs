@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::orders::GetOrdersResponse;
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::portfolio::GetFillsResponse;
+use crate::rest::portfolio::{GetFillsResponse, GetPositionsResponse};
 use crate::types::{
     BookSide, FixedPointCount, FixedPointDollars, MveFilter, TradeTakerSide,
     deserialize_null_as_empty_vec,
@@ -116,8 +116,25 @@ pub struct GetHistoricalCutoffResponse {
     pub market_settled_ts: String,
     pub trades_created_ts: String,
     pub orders_updated_ts: String,
+    /// Positions whose settled markets were archived before this timestamp are
+    /// available only via `GET /historical/positions`. Added 2026-07-23.
+    #[serde(default)]
+    pub market_positions_last_updated_ts: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// GET /historical/positions query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl KalshiRestClient {
@@ -161,6 +178,20 @@ impl KalshiRestClient {
         params: GetHistoricalOrdersParams,
     ) -> Result<GetOrdersResponse, KalshiError> {
         let path = Self::full_path("/historical/orders");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database, for events
+    /// older than `market_positions_last_updated_ts` (see [`Self::get_historical_cutoff`]).
+    /// Added 2026-07-23.
+    ///
+    /// **Requires auth.**
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await
     }

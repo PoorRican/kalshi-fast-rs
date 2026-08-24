@@ -6,7 +6,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::trades::GetHistoricalMarketsParams;
 use crate::types::{
-    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter,
+    ExchangeIndex, FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter,
     deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
@@ -207,8 +207,6 @@ pub struct Market {
     #[serde(default)]
     pub event_id: Option<i64>,
     #[serde(default)]
-    pub response_price_units: Option<String>,
-    #[serde(default)]
     pub settlement_timer_seconds: Option<i64>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
@@ -283,8 +281,6 @@ pub struct Market {
     #[serde(default)]
     pub open_interest_fp: Option<String>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub notional_value: Option<i64>,
     #[serde(default)]
     pub notional_value_dollars: Option<FixedPointDollars>,
@@ -342,6 +338,9 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    /// Exchange shard this market lives on (exchange sharding rollout, 2026-07/08).
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

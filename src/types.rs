@@ -90,6 +90,9 @@ pub type FixedPointDollars = String;
 /// Fixed-point contract count string (e.g. "10.00").
 pub type FixedPointCount = String;
 
+/// Identifier for an exchange shard (exchange sharding rollout, 2026-07/08).
+pub type ExchangeIndex = i64;
+
 /// Typed wrapper for arbitrary JSON payloads.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AnyJson(pub Value);
@@ -126,8 +129,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---

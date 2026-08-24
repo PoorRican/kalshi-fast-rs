@@ -1,4 +1,8 @@
 #![cfg(feature = "live-tests")]
+// Deliberately exercises the deprecated (but still supported) legacy
+// /portfolio/orders mutation endpoints for coverage; new code should use the
+// V2 endpoints (create_order_v2 and friends) instead.
+#![allow(deprecated)]
 
 mod common;
 

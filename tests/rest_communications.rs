@@ -1,4 +1,8 @@
 #![cfg(feature = "live-tests")]
+// Deliberately exercises the deprecated (but still supported) quote-ID-only
+// actions for coverage; new code should use the RFQ-scoped equivalents
+// (get_rfq_quote, delete_rfq_quote, etc.) instead.
+#![allow(deprecated)]
 
 //! # ⚠️  Known-failing tests
 //!

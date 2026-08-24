@@ -91,6 +91,92 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Exchange sharding rollout (2026-07/08).** Kalshi is provisioning dedicated exchange instances
+  ("shards", identified by `exchange_index`) for high-volume categories (Crypto, Tennis, Baseball
+  announced 2026-08-24). `ExchangeIndex` (`i64`) is a shared type alias. `exchange_index` was added
+  to: `Market`, `Series`, `MultivariateEventCollection`, `MarketPosition`, `Fill`, `Settlement`,
+  `Order`, `EventData`, `SubaccountBalance`, `ApiKey`-adjacent balance types (`IndexedBalance`), the
+  WS `market_lifecycle_v2`/`multivariate_market_lifecycle` `created` event and `event_lifecycle`
+  message, and the WS `fill` message. `GetOrdersParams`/`GetPositionsParams`/`GetFillsParams` and
+  `GetBalanceResponse`/balance reads gained an optional `exchange_index` filter/scope (balance and
+  portfolio value aggregate across all indexes when omitted). New endpoints:
+  `get_target_balance_allocation` / `set_target_balance_allocation`
+  (`/portfolio/target_balance_allocation`), `intra_exchange_instance_transfer` and
+  `get_intra_exchange_instance_transfer(s)` (`/portfolio/intra_exchange_instance_transfer[s]`,
+  supersedes/complements the existing same-index `transfer_subaccount`), and
+  `GetExchangeStatusResponse.exchange_index_statuses` (per-shard status, with `description` added
+  2026-08-13).
+
+- **Legacy `/portfolio/orders` mutation endpoints** (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were announced deprecated
+  2026-06-18 ("switch to the V2 endpoints"). They are absent from the current OpenAPI spec and its
+  human-readable docs index, but — unlike the exchange-announcements endpoint, the multivariate
+  lookup endpoint, and the `service` error field (all of which got explicit "removed" changelog
+  entries) — no follow-up "removed" changelog entry has been published for them as of this refresh.
+  They are kept, marked `#[deprecated]`, rather than deleted; use `create_order_v2` and friends for
+  new code. If a future refresh finds an explicit removal announcement (or the endpoints start
+  hard-failing), delete them outright per the standard removed-endpoint policy.
+
+- **Quote-ID-only communications actions** (`get_quote`, `delete_quote`, `accept_quote`,
+  `confirm_quote`) were deprecated 2026-06-25/07-09 in favor of RFQ-scoped equivalents
+  (`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`, all taking
+  `rfq_id` + `quote_id`). Unlike the legacy order endpoints above, Kalshi documents these as
+  "remain supported for now" with no removal date, so both surfaces are kept; the quote-ID-only
+  methods are marked `#[deprecated]`.
+
+- **`GetQuotesParams`** dropped `market_ticker`/`event_ticker` (removed 2026-06-20, confirmed absent
+  from the live OpenAPI parameter list); filter by `rfq_id`, status, or the new `min_ts`/`max_ts`
+  window (added 2026-06-18) instead. This is a breaking Rust API change (struct fields removed).
+
+- **The WebSocket `multivariate` channel** (message type `multivariate_lookup`) and the REST
+  `PUT /multivariate_event_collections/{ticker}/lookup` + `GET .../lookup` (history) endpoints were
+  removed 2026-08-06 — both are absent from the live AsyncAPI channel enum and OpenAPI paths, and
+  the changelog carries an explicit "no longer exists" removal notice. `WsChannelV2::Multivariate`,
+  `WsMsgType::Multivariate`/`MultivariateLookup`, `WsDataMessageV2::Multivariate`, `WsMultivariate`,
+  `get_multivariate_event_collection_lookup_history`, and
+  `lookup_tickers_for_market_in_multivariate_event_collection` were deleted (breaking). Use
+  `create_market_in_multivariate_event_collection` or the communications (RFQ) APIs, and the
+  `multivariate_market_lifecycle` channel for lifecycle state.
+
+- **`ErrorResponse.service`** was deprecated 2026-07-28 and confirmed removed from the live schema
+  2026-08-06; the field was deleted from the crate (breaking) per the standard removed-field policy.
+  Branch on `code`, which is present on every error response.
+
+- **`EventData.available_on_brokers`** was deprecated 2026-08-27 (no longer populated, always
+  `false`; not yet removed). The field is kept as `Option<bool>` and marked `#[deprecated]`.
+
+- **New `pyth_value` WebSocket channel** (2026-07-23) mirrors the `cfbenchmarks_value` channel's
+  shape: `WsSubscriptionParamsV2::underlying_tickers` seeds the initial subscription,
+  `WsUpdateAction::SubscribeUnderlyings`/`UnsubscribeUnderlyings`/`UnderlyingList` plus
+  `WsUpdateSubscriptionParamsV2::underlying_tickers` manage it post-subscribe, and
+  `WsPythValue`/`WsPythUnderlyingList` (routed through `WsDataMessageV2`) model the two message
+  types (`pyth_value`, `pyth_value_underlying_list`).
+
+- **New `price_level_structure` values** (seven `center_{center}_edge_{edge}_cent` variants added
+  2026-07-23, plus `center_deci_edge_centi_cent` added 2026-08-13 and adopted for all combo markets
+  2026-08-27) require no code change: `Market.price_level_structure` and the WS
+  `market_lifecycle_v2` field are both plain `Option<String>`, so new label values round-trip
+  losslessly. Always read valid prices from `price_ranges` (`{start, end, step}` in fixed-point
+  dollars), never by keying logic off the structure label, per Kalshi's own guidance.
+
+- **Deprecated Predictions REST schema fields removed 2026-07-09**: `Market.response_price_units`,
+  `Market.fractional_trading_enabled`, and `MarketPosition.resting_orders_count` were deleted from
+  the crate (breaking) — confirmed absent from the live OpenAPI schema and from the `required` set
+  it replaced them with (`price_level_structure`, `price_ranges`, and the fixed-point fields).
+
+- `GET /exchange/announcements` was removed 2026-07-04 (`GET /exchange/schedule` remains);
+  `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, and `AnnouncementStatus` were deleted from the crate (breaking).
+
+- **Pre-existing gaps noticed but out of scope for this refresh** (not driven by a changelog entry
+  since the 2026-06-08 watermark, so left for a future pass): `GET /portfolio/deposits` and
+  `GET /portfolio/withdrawals` (added 2026-05-05); `GET /events/fee_changes`; the series/event-scoped
+  candlestick paths (`/series/{series_ticker}/events/{ticker}/candlesticks`,
+  `/series/{series_ticker}/markets/{ticker}/candlesticks`); and the block-trade-proposal endpoints
+  (`GET /communications/block-trade-proposals`,
+  `POST .../block-trade-proposals/{id}/accept` — the 2026-06-18 changelog entry for these was about
+  new `read::block_trade_accept`/`write::block_trade_accept` API-key scopes, not new endpoints).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
