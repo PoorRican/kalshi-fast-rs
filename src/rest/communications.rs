@@ -46,6 +46,8 @@ pub struct Quote {
     #[serde(default)]
     pub rest_remainder: Option<bool>,
     #[serde(default)]
+    pub post_only: Option<bool>,
+    #[serde(default)]
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
@@ -57,6 +59,12 @@ pub struct Quote {
     pub rfq_creator_order_id: Option<String>,
     #[serde(default)]
     pub creator_order_id: Option<String>,
+    /// Creator's subaccount number (0 for primary, 1-63 for subaccounts).
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    /// Subaccount number of the RFQ's creator (0 for primary, 1-63 for subaccounts).
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
     #[serde(default)]
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
@@ -85,6 +93,10 @@ pub struct RFQ {
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
+    /// Subaccount number of the RFQ creator. Visible when the caller is the
+    /// RFQ creator.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default)]
     pub cancelled_ts: Option<String>,
     #[serde(default)]
@@ -97,16 +109,22 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restrict to quotes last updated after this Unix timestamp. Added 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
+    pub min_ts: Option<i64>,
+    /// Restrict to quotes last updated before this Unix timestamp. Added 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote_creator_user_id: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to
+    /// enable. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_creator_user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -138,6 +156,10 @@ pub struct CreateQuoteRequest {
     pub yes_bid: String,
     pub no_bid: String,
     pub rest_remainder: bool,
+    /// If true, cancel the resting order rather than cross it if it would
+    /// take liquidity. Defaults to false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
 }
@@ -278,6 +300,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Get a quote by id only.
+    #[deprecated(
+        note = "use get_rfq_quote (GET /communications/rfqs/{rfq_id}/quotes/{quote_id}) instead"
+    )]
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,8 +316,48 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Delete a quote by id only.
+    #[deprecated(
+        note = "use delete_rfq_quote (DELETE /communications/rfqs/{rfq_id}/quotes/{quote_id}) instead"
+    )]
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get a quote scoped to its RFQ. Added 2026-07-09; supersedes
+    /// `get_quote`.
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Delete a quote scoped to its RFQ. Added 2026-07-09; supersedes
+    /// `delete_quote`.
+    pub async fn delete_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
         self.send(
             Method::DELETE,
             &path,

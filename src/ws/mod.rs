@@ -15,13 +15,17 @@
 //! | [`WsChannelV2::Trade`] | No | Public trades |
 //! | [`WsChannelV2::MarketLifecycleV2`] | No | Market open / close / settle events |
 //! | [`WsChannelV2::MultivariateMarketLifecycle`] | No | Multivariate market lifecycle events |
-//! | [`WsChannelV2::Multivariate`] | No | Multivariate market lookups |
 //! | [`WsChannelV2::OrderbookDelta`] | Yes | L2 order-book deltas (requires `market_tickers`) |
 //! | [`WsChannelV2::Fill`] | Yes | Your fills |
 //! | [`WsChannelV2::MarketPositions`] | Yes | Position changes |
 //! | [`WsChannelV2::Communications`] | Yes | RFQs and quotes |
 //! | [`WsChannelV2::OrderGroupUpdates`] | Yes | Order-group lifecycle |
 //! | [`WsChannelV2::UserOrders`] | Yes | User order lifecycle updates |
+//! | [`WsChannelV2::CfbenchmarksValue`] | No | CF Benchmarks reference index values |
+//! | [`WsChannelV2::PythValue`] | Yes | Real-time Pyth price updates |
+//!
+//! The `multivariate` channel (multivariate market lookups) was deprecated
+//! and removed from the API on 2026-08-06; it is no longer subscribable.
 //!
 //! # Quick Start — Public Ticker
 //!

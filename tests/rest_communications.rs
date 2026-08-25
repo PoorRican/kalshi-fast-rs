@@ -34,9 +34,7 @@
 
 mod common;
 
-use kalshi_fast::{
-    CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, KalshiRestClient, MarketStatusQuery,
-};
+use kalshi_fast::{CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, MarketStatusQuery};
 use std::time::Duration;
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -167,6 +165,7 @@ async fn test_quote_lifecycle() {
                 yes_bid: "0.01".to_string(),
                 no_bid: "0.01".to_string(),
                 rest_remainder: false,
+                post_only: None,
                 subaccount: None,
             })
             .await
