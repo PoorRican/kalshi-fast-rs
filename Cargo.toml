@@ -1,6 +1,6 @@
 [package]
 name = "kalshi-fast-rs"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 description = "High-performance async Rust client for Kalshi prediction markets API with full WebSocket support"
 license = "MIT"
@@ -16,6 +16,7 @@ name = "kalshi_fast"
 [features]
 default = []
 live-tests = []
+timed-reader = []
 live-prod-tests = ["live-tests"]
 
 [dependencies]

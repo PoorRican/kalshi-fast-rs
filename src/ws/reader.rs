@@ -1,7 +1,7 @@
 use crate::auth::KalshiAuth;
 use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
-use crate::ws::event::{WsEvent, WsReaderMode};
+use crate::ws::event::{ReaderItem, WsEvent, WsReaderMode};
 use crate::ws::low_level::KalshiWsLowLevelClient;
 use crate::ws::reconnect::WsReconnectConfig;
 use crate::ws::subscription::SubscriptionTracker;
@@ -11,6 +11,8 @@ use bytes::Bytes;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, watch};
+#[cfg(feature = "timed-reader")]
+use tokio::time::Instant;
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -44,7 +46,7 @@ pub(crate) async fn reader_loop(
     auth: Option<KalshiAuth>,
     config: WsReconnectConfig,
     tracker: Arc<Mutex<SubscriptionTracker>>,
-    event_tx: mpsc::Sender<WsEvent>,
+    event_tx: mpsc::Sender<ReaderItem>,
     mut outgoing_rx: mpsc::Receiver<Message>,
     mut shutdown_rx: watch::Receiver<bool>,
     mode: WsReaderMode,
@@ -95,7 +97,9 @@ pub(crate) async fn reader_loop(
                     if *shutdown_rx.borrow() {
                         return;
                     }
-                    let _ = event_tx.send(WsEvent::Disconnected { error: err }).await;
+                    let _ = event_tx
+                        .send(wrap_event(WsEvent::Disconnected { error: err }, None))
+                        .await;
                     return;
                 }
             }
@@ -107,7 +111,7 @@ pub(crate) async fn handle_incoming_message(
     msg: Message,
     client: &mut KalshiWsLowLevelClient,
     tracker: &Arc<Mutex<SubscriptionTracker>>,
-    event_tx: &mpsc::Sender<WsEvent>,
+    event_tx: &mpsc::Sender<ReaderItem>,
     mode: WsReaderMode,
 ) -> Result<(), KalshiError> {
     match msg {
@@ -126,22 +130,42 @@ pub(crate) async fn handle_incoming_message(
 pub(crate) async fn handle_payload(
     bytes: Bytes,
     tracker: &Arc<Mutex<SubscriptionTracker>>,
-    event_tx: &mpsc::Sender<WsEvent>,
+    event_tx: &mpsc::Sender<ReaderItem>,
     mode: WsReaderMode,
 ) -> Result<(), KalshiError> {
     match mode {
         WsReaderMode::Owned => {
             let msg = WsMessageV2::from_bytes(&bytes)?;
+            let available_at = {
+                #[cfg(feature = "timed-reader")]
+                {
+                    Some(Instant::now())
+                }
+                #[cfg(not(feature = "timed-reader"))]
+                {
+                    None
+                }
+            };
             {
                 let mut tracker = tracker.lock().await;
                 tracker.handle_message(&msg);
             }
             event_tx
-                .send(WsEvent::Message(msg))
+                .send(wrap_event(WsEvent::Message(msg), available_at))
                 .await
                 .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
         }
         WsReaderMode::Raw => {
+            let available_at = {
+                #[cfg(feature = "timed-reader")]
+                {
+                    Some(Instant::now())
+                }
+                #[cfg(not(feature = "timed-reader"))]
+                {
+                    None
+                }
+            };
             if let Ok(control) = serde_json::from_slice::<WsControlMessage>(&bytes) {
                 let mut tracker = tracker.lock().await;
                 match control {
@@ -157,7 +181,10 @@ pub(crate) async fn handle_payload(
             }
 
             event_tx
-                .send(WsEvent::Raw(WsRawEvent::new(bytes)))
+                .send(wrap_event(
+                    WsEvent::Raw(WsRawEvent::new(bytes)),
+                    available_at,
+                ))
                 .await
                 .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
         }
@@ -166,13 +193,29 @@ pub(crate) async fn handle_payload(
     Ok(())
 }
 
+pub(crate) fn wrap_event(event: WsEvent, available_at: Option<tokio::time::Instant>) -> ReaderItem {
+    #[cfg(feature = "timed-reader")]
+    {
+        crate::ws::event::WsTimedEvent {
+            event,
+            available_at: available_at.unwrap_or_else(Instant::now),
+        }
+    }
+
+    #[cfg(not(feature = "timed-reader"))]
+    {
+        let _ = available_at;
+        event
+    }
+}
+
 pub(crate) async fn handle_reconnect(
     client: &mut KalshiWsLowLevelClient,
     env: &KalshiEnvironment,
     auth: &Option<KalshiAuth>,
     config: &WsReconnectConfig,
     tracker: &Arc<Mutex<SubscriptionTracker>>,
-    event_tx: &mpsc::Sender<WsEvent>,
+    event_tx: &mpsc::Sender<ReaderItem>,
     shutdown_rx: &mut watch::Receiver<bool>,
 ) -> Result<(), KalshiError> {
     let mut attempt: u32 = 0;
@@ -247,7 +290,9 @@ pub(crate) async fn handle_reconnect(
                 if *shutdown_rx.borrow() {
                     return Ok(());
                 }
-                let _ = event_tx.send(WsEvent::Reconnected { attempt }).await;
+                let _ = event_tx
+                    .send(wrap_event(WsEvent::Reconnected { attempt }, None))
+                    .await;
                 return Ok(());
             }
             Err(err) => {
@@ -318,6 +363,7 @@ mod tests {
         let auth = load_test_auth();
         let env = KalshiEnvironment {
             rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+
             ws_url: format!("ws://{}", addr),
         };
         let mut client =
@@ -346,6 +392,80 @@ mod tests {
         assert!(matches!(second, WsEvent::Message(_)));
 
         server.await.expect("server");
+    }
+
+    #[cfg(feature = "timed-reader")]
+    fn ticker_sequence(event: &WsEvent) -> u64 {
+        match event {
+            WsEvent::Message(crate::ws::types::WsMessageV2::Data(
+                crate::ws::types::WsDataMessageV2::Ticker {
+                    seq: Some(sequence),
+                    ..
+                },
+            )) => *sequence,
+            other => panic!("expected ticker with sequence, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_reader_stamps_before_backpressure_and_preserves_sequence() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        let receiver = crate::ws::event::WsEventReceiver::new(event_rx);
+        let tracker = Arc::new(Mutex::new(SubscriptionTracker::default()));
+
+        let first = WsEvent::Message(
+            WsMessageV2::from_bytes(&Bytes::from(ticker_frame("A", "1", 1, 1)))
+                .expect("decode first"),
+        );
+        event_tx
+            .send(wrap_event(first, None))
+            .await
+            .expect("fill channel");
+
+        let tracker_guard = tracker.lock().await;
+        let blocked_tracker = Arc::clone(&tracker);
+        let blocked_tx = event_tx.clone();
+        let blocked = tokio::spawn(async move {
+            handle_payload(
+                Bytes::from(ticker_frame("B", "2", 2, 2)),
+                &blocked_tracker,
+                &blocked_tx,
+                WsReaderMode::Owned,
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        drop(tracker_guard);
+
+        let tracker_guard = tracker.lock().await;
+        drop(tracker_guard);
+        let released_at = tokio::time::Instant::now();
+
+        let first = receiver.next().await.expect("first event");
+        let second = receiver.next_timed().await.expect("second event");
+        blocked
+            .await
+            .expect("blocked task join")
+            .expect("blocked task result");
+
+        handle_payload(
+            Bytes::from(ticker_frame("C", "3", 3, 3)),
+            &tracker,
+            &event_tx,
+            WsReaderMode::Owned,
+        )
+        .await
+        .expect("third payload");
+        let third = receiver.next().await.expect("third event");
+
+        assert_eq!(ticker_sequence(&first), 1);
+        assert_eq!(ticker_sequence(&second.event), 2);
+        assert_eq!(ticker_sequence(&third), 3);
+        assert!(
+            second.available_at < released_at,
+            "second event timestamp must precede the channel release"
+        );
     }
 
     #[tokio::test]

@@ -17,6 +17,8 @@
 //! - **REST reliability controls** — retry/backoff/jitter with `429 Retry-After` support
 //! - **Transport builder** — timeout/connect-timeout/headers/user-agent/proxy/custom client
 //! - **RSA-PSS authentication** — secure signing for private endpoints
+//! - **Timed reader** (`timed-reader` feature) — timestamps WebSocket events
+//!   when they become available to the process
 //!
 //! ## Quick Start: REST (Builder + Retry)
 //!

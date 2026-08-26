@@ -51,19 +51,46 @@ pub enum WsEvent {
     },
 }
 
+#[cfg(feature = "timed-reader")]
+/// An owned WebSocket event with the instant it became available to the reader.
+#[derive(Debug)]
+pub struct WsTimedEvent {
+    pub event: WsEvent,
+    pub available_at: tokio::time::Instant,
+}
+
+#[cfg(feature = "timed-reader")]
+pub(crate) type ReaderItem = WsTimedEvent;
+#[cfg(not(feature = "timed-reader"))]
+pub(crate) type ReaderItem = WsEvent;
+
 #[derive(Debug, Clone)]
 pub struct WsEventReceiver {
-    inner: Arc<Mutex<mpsc::Receiver<WsEvent>>>,
+    inner: Arc<Mutex<mpsc::Receiver<ReaderItem>>>,
 }
 
 impl WsEventReceiver {
-    pub(crate) fn new(rx: mpsc::Receiver<WsEvent>) -> Self {
+    pub(crate) fn new(rx: mpsc::Receiver<ReaderItem>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(rx)),
         }
     }
 
     pub async fn next(&self) -> Option<WsEvent> {
+        #[cfg(feature = "timed-reader")]
+        {
+            self.next_timed().await.map(|event| event.event)
+        }
+
+        #[cfg(not(feature = "timed-reader"))]
+        {
+            let mut rx = self.inner.lock().await;
+            rx.recv().await
+        }
+    }
+
+    #[cfg(feature = "timed-reader")]
+    pub async fn next_timed(&self) -> Option<WsTimedEvent> {
         let mut rx = self.inner.lock().await;
         rx.recv().await
     }
