@@ -156,6 +156,7 @@ pub(crate) async fn handle_payload(
                 .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
         }
         WsReaderMode::Raw => {
+            let raw_event = WsRawEvent::new(bytes);
             let available_at = {
                 #[cfg(feature = "timed-reader")]
                 {
@@ -166,7 +167,7 @@ pub(crate) async fn handle_payload(
                     None
                 }
             };
-            if let Ok(control) = serde_json::from_slice::<WsControlMessage>(&bytes) {
+            if let Ok(control) = serde_json::from_slice::<WsControlMessage>(raw_event.as_slice()) {
                 let mut tracker = tracker.lock().await;
                 match control {
                     WsControlMessage::Subscribed { id, sid, msg } => {
@@ -181,10 +182,7 @@ pub(crate) async fn handle_payload(
             }
 
             event_tx
-                .send(wrap_event(
-                    WsEvent::Raw(WsRawEvent::new(bytes)),
-                    available_at,
-                ))
+                .send(wrap_event(WsEvent::Raw(raw_event), available_at))
                 .await
                 .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
         }
@@ -465,6 +463,42 @@ mod tests {
         assert!(
             second.available_at < released_at,
             "second event timestamp must precede the channel release"
+        );
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_raw_reader_stamps_before_tracker_work() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        let receiver = crate::ws::event::WsEventReceiver::new(event_rx);
+        let tracker = Arc::new(Mutex::new(SubscriptionTracker::default()));
+        let tracker_guard = tracker.lock().await;
+        let blocked_tracker = Arc::clone(&tracker);
+        let payload = ticker_frame("A", "1", 1, 1);
+
+        let blocked = tokio::spawn(async move {
+            handle_payload(
+                Bytes::from(payload),
+                &blocked_tracker,
+                &event_tx,
+                WsReaderMode::Raw,
+            )
+            .await
+        });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let tracker_released_at = tokio::time::Instant::now();
+        drop(tracker_guard);
+
+        let event = receiver.next_timed().await.expect("raw event");
+        blocked
+            .await
+            .expect("blocked task join")
+            .expect("blocked task result");
+
+        assert!(matches!(event.event, WsEvent::Raw(_)));
+        assert!(
+            event.available_at < tracker_released_at,
+            "raw event timestamp must precede tracker work"
         );
     }
 
