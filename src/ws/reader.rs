@@ -127,68 +127,65 @@ pub(crate) async fn handle_incoming_message(
     }
 }
 
-pub(crate) async fn handle_payload(
+pub(crate) fn handle_payload<'a>(
     bytes: Bytes,
-    tracker: &Arc<Mutex<SubscriptionTracker>>,
-    event_tx: &mpsc::Sender<ReaderItem>,
+    tracker: &'a Arc<Mutex<SubscriptionTracker>>,
+    event_tx: &'a mpsc::Sender<ReaderItem>,
     mode: WsReaderMode,
-) -> Result<(), KalshiError> {
-    match mode {
-        WsReaderMode::Owned => {
-            let msg = WsMessageV2::from_bytes(&bytes)?;
-            let available_at = {
-                #[cfg(feature = "timed-reader")]
-                {
-                    Some(Instant::now())
-                }
-                #[cfg(not(feature = "timed-reader"))]
-                {
-                    None
-                }
-            };
-            {
-                let mut tracker = tracker.lock().await;
-                tracker.handle_message(&msg);
-            }
-            event_tx
-                .send(wrap_event(WsEvent::Message(msg), available_at))
-                .await
-                .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
+) -> impl Future<Output = Result<(), KalshiError>> + 'a {
+    let available_at = {
+        #[cfg(feature = "timed-reader")]
+        {
+            Some(Instant::now())
         }
-        WsReaderMode::Raw => {
-            let raw_event = WsRawEvent::new(bytes);
-            let available_at = {
-                #[cfg(feature = "timed-reader")]
-                {
-                    Some(Instant::now())
-                }
-                #[cfg(not(feature = "timed-reader"))]
-                {
-                    None
-                }
-            };
-            if let Ok(control) = serde_json::from_slice::<WsControlMessage>(raw_event.as_slice()) {
-                let mut tracker = tracker.lock().await;
-                match control {
-                    WsControlMessage::Subscribed { id, sid, msg } => {
-                        tracker
-                            .handle_subscribed(id, sid.or_else(|| msg.and_then(|value| value.sid)));
-                    }
-                    WsControlMessage::Unsubscribed { sid } => {
-                        tracker.handle_unsubscribed(sid);
-                    }
-                    WsControlMessage::Other => {}
-                }
-            }
+        #[cfg(not(feature = "timed-reader"))]
+        {
+            None
+        }
+    };
 
-            event_tx
-                .send(wrap_event(WsEvent::Raw(raw_event), available_at))
-                .await
-                .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
+    async move {
+        match mode {
+            WsReaderMode::Owned => {
+                let msg = WsMessageV2::from_bytes(&bytes)?;
+                {
+                    let mut tracker = tracker.lock().await;
+                    tracker.handle_message(&msg);
+                }
+                event_tx
+                    .send(wrap_event(WsEvent::Message(msg), available_at))
+                    .await
+                    .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
+            }
+            WsReaderMode::Raw => {
+                let raw_event = WsRawEvent::new(bytes);
+                if let Ok(control) =
+                    serde_json::from_slice::<WsControlMessage>(raw_event.as_slice())
+                {
+                    let mut tracker = tracker.lock().await;
+                    match control {
+                        WsControlMessage::Subscribed { id, sid, msg } => {
+                            tracker.handle_subscribed(
+                                id,
+                                sid.or_else(|| msg.and_then(|value| value.sid)),
+                            );
+                        }
+                        WsControlMessage::Unsubscribed { sid } => {
+                            tracker.handle_unsubscribed(sid);
+                        }
+                        WsControlMessage::Other => {}
+                    }
+                }
+
+                event_tx
+                    .send(wrap_event(WsEvent::Raw(raw_event), available_at))
+                    .await
+                    .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
+            }
         }
+
+        Ok(())
     }
-
-    Ok(())
 }
 
 pub(crate) fn wrap_event(event: WsEvent, available_at: Option<tokio::time::Instant>) -> ReaderItem {
@@ -463,6 +460,31 @@ mod tests {
         assert!(
             second.available_at < released_at,
             "second event timestamp must precede the channel release"
+        );
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_reader_stamps_at_payload_entry_before_owned_decode() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        let receiver = crate::ws::event::WsEventReceiver::new(event_rx);
+        let tracker = Arc::new(Mutex::new(SubscriptionTracker::default()));
+
+        let pending = handle_payload(
+            Bytes::from(ticker_frame("A", "1", 1, 1)),
+            &tracker,
+            &event_tx,
+            WsReaderMode::Owned,
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let first_poll_at = tokio::time::Instant::now();
+        pending.await.expect("owned payload");
+
+        let event = receiver.next_timed().await.expect("owned event");
+        assert!(matches!(event.event, WsEvent::Message(_)));
+        assert!(
+            event.available_at < first_poll_at,
+            "owned event timestamp must be captured before the decode future is polled"
         );
     }
 
