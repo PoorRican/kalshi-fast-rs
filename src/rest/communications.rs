@@ -98,11 +98,13 @@ pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    /// Restrict results to quotes last updated at or after this Unix timestamp. Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    /// Restrict results to quotes last updated at or before this Unix timestamp. Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -278,6 +280,10 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Use get_quote_for_rfq (GET /communications/rfqs/{rfq_id}/quotes/{quote_id})."
+    )]
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,6 +296,10 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Use delete_quote_for_rfq (DELETE /communications/rfqs/{rfq_id}/quotes/{quote_id})."
+    )]
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -302,6 +312,10 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Use accept_quote_for_rfq (PUT /communications/rfqs/{rfq_id}/quotes/{quote_id}/accept)."
+    )]
     pub async fn accept_quote(
         &self,
         quote_id: &str,
@@ -312,8 +326,83 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Use confirm_quote_for_rfq (PUT /communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm)."
+    )]
     pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Look up a quote scoped to a specific RFQ. The quote must belong to the
+    /// requested RFQ, or this returns `404 Not Found`. Added 2026-06-25/2026-07-09.
+    ///
+    /// **Requires auth.**
+    pub async fn get_quote_for_rfq(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Delete (cancel) a quote scoped to a specific RFQ. Added 2026-06-25.
+    ///
+    /// **Requires auth.**
+    pub async fn delete_quote_for_rfq(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Accept a quote scoped to a specific RFQ. Added 2026-06-25.
+    ///
+    /// **Requires auth.**
+    pub async fn accept_quote_for_rfq(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/accept"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote scoped to a specific RFQ. Added 2026-06-25.
+    ///
+    /// **Requires auth.**
+    pub async fn confirm_quote_for_rfq(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm"
+        ));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await
