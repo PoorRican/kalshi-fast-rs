@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter results by exchange shard. Omit to return results from all exchange shards.
+    /// Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -65,10 +70,10 @@ impl GetOrdersParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -255,10 +260,10 @@ impl CreateOrderRequest {
         }
 
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
+                "CreateOrderRequest: subaccount must be 0..=63".to_string(),
             ));
         }
 
@@ -419,7 +424,7 @@ pub struct CreateOrderGroupRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateOrderGroupResponse {
     pub order_group_id: String,
-    /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
+    /// 0 = primary account, 1–63 = subaccount. Added 2026-05-07.
     #[serde(default)]
     pub subaccount: Option<u32>,
 }
@@ -441,6 +446,19 @@ pub struct UpdateOrderGroupLimitRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+}
+
+/// PUT /portfolio/order_groups/{order_group_id}/limit query params.
+///
+/// `subaccount` and `exchange_index` are query parameters on this endpoint (not body fields).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateOrderGroupLimitParams {
+    /// Subaccount number (0 for primary, 1-63 for subaccounts). Defaults to 0. Added 2026-08-06.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Exchange index of the order group. Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -529,7 +547,7 @@ pub struct CreateOrderV2Request {
     pub cancel_order_on_pause: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reduce_only: Option<bool>,
-    /// 0 = primary; 1–32 = subaccount.
+    /// 0 = primary; 1–63 = subaccount.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -741,7 +759,10 @@ impl KalshiRestClient {
 
     /// Place a new order.
     ///
-    /// **Requires auth.**
+    /// **Requires auth.** Deprecated upstream (2026-06-18) in favor of [`create_order_v2`],
+    /// which is cheaper to call; still supported.
+    ///
+    /// [`create_order_v2`]: Self::create_order_v2
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -754,7 +775,10 @@ impl KalshiRestClient {
 
     /// Cancel an order by ID.
     ///
-    /// **Requires auth.**
+    /// **Requires auth.** Deprecated upstream (2026-06-18) in favor of [`cancel_order_v2`],
+    /// which is cheaper to call; still supported.
+    ///
+    /// [`cancel_order_v2`]: Self::cancel_order_v2
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +795,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated upstream (2026-06-18) in favor of [`amend_order_v2`], which is cheaper to
+    /// call; still supported.
+    ///
+    /// [`amend_order_v2`]: Self::amend_order_v2
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +809,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated upstream (2026-06-18) in favor of [`decrease_order_v2`], which is cheaper to
+    /// call; still supported.
+    ///
+    /// [`decrease_order_v2`]: Self::decrease_order_v2
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +835,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated upstream (2026-06-18) in favor of [`batch_create_orders_v2`], which is
+    /// cheaper to call; still supported.
+    ///
+    /// [`batch_create_orders_v2`]: Self::batch_create_orders_v2
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +848,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated upstream (2026-06-18) in favor of [`batch_cancel_orders_v2`], which is
+    /// cheaper to call; still supported.
+    ///
+    /// [`batch_cancel_orders_v2`]: Self::batch_cancel_orders_v2
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -899,10 +939,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: UpdateOrderGroupLimitParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
@@ -1018,6 +1059,32 @@ impl KalshiRestClient {
             &path,
             Option::<&()>::None,
             Some(&body),
+            true,
+        )
+        .await
+    }
+
+    /// Cancel up to 10,000 resting Predictions orders across every exchange shard via the V2
+    /// event-order endpoint.
+    ///
+    /// If `params.subaccount` is omitted, matching orders may come from any subaccount; if
+    /// provided, only orders for that subaccount are eligible. When more than 10,000 orders
+    /// match, the orders selected for cancellation are arbitrary — no ordering guarantees are
+    /// made. This is the bulk counterpart to [`cancel_order_v2`](Self::cancel_order_v2) /
+    /// [`batch_cancel_orders_v2`](Self::batch_cancel_orders_v2); the margin-market equivalent
+    /// (`DELETE /margin/orders`) is out of scope for this crate.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders_v2(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
             true,
         )
         .await

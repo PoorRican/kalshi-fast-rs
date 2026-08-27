@@ -78,7 +78,9 @@ impl SubscriptionTracker {
                 }
 
                 match action {
-                    WsUpdateAction::AddMarkets | WsUpdateAction::SubscribeIndices => {
+                    WsUpdateAction::AddMarkets
+                    | WsUpdateAction::SubscribeIndices
+                    | WsUpdateAction::SubscribeUnderlyings => {
                         let values = target.get_or_insert_with(Vec::new);
                         for value in incoming {
                             if !values.iter().any(|v| v == &value) {
@@ -86,7 +88,9 @@ impl SubscriptionTracker {
                             }
                         }
                     }
-                    WsUpdateAction::DeleteMarkets | WsUpdateAction::UnsubscribeIndices => {
+                    WsUpdateAction::DeleteMarkets
+                    | WsUpdateAction::UnsubscribeIndices
+                    | WsUpdateAction::UnsubscribeUnderlyings => {
                         let Some(values) = target.as_mut() else {
                             return;
                         };
@@ -95,7 +99,9 @@ impl SubscriptionTracker {
                             *target = None;
                         }
                     }
-                    WsUpdateAction::GetSnapshot | WsUpdateAction::Indexlist => {}
+                    WsUpdateAction::GetSnapshot
+                    | WsUpdateAction::Indexlist
+                    | WsUpdateAction::UnderlyingList => {}
                 }
             };
 
@@ -104,6 +110,15 @@ impl SubscriptionTracker {
             // that a reconnect resubscribes with the correct indices.
             let incoming_indices = update.index_ids.clone().unwrap_or_default();
             apply_vec(&mut params.index_ids, incoming_indices, update.action);
+        } else if update.action.is_underlying_action() {
+            // Pyth underlying actions only mutate the tracked underlying ticker
+            // set so that a reconnect resubscribes with the correct underlyings.
+            let incoming_underlyings = update.underlying_tickers.clone().unwrap_or_default();
+            apply_vec(
+                &mut params.underlying_tickers,
+                incoming_underlyings,
+                update.action,
+            );
         } else {
             apply_vec(&mut params.market_tickers, incoming_tickers, update.action);
             apply_vec(&mut params.market_ids, incoming_ids, update.action);
@@ -191,6 +206,7 @@ mod tests {
             send_initial_snapshot: Some(true),
             skip_ticker_ack: Some(true),
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -237,6 +253,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -265,6 +282,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -293,6 +311,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["ETHUSD_RR".to_string()]),
+            underlying_tickers: None,
         };
         tracker.apply_update(&add);
         let updated = tracker.active.get(&7).unwrap();
@@ -311,11 +330,61 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         tracker.apply_update(&remove);
         let updated = tracker.active.get(&7).unwrap();
         let indices = updated.index_ids.as_ref().unwrap();
         assert!(!indices.contains(&"BRTI".to_string()));
         assert!(indices.contains(&"ETHUSD_RR".to_string()));
+    }
+
+    #[test]
+    fn subscription_tracker_apply_update_tracks_pyth_underlyings() {
+        let mut tracker = SubscriptionTracker::default();
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::PythValue],
+            underlying_tickers: Some(vec!["BTCUSD".to_string()]),
+            ..Default::default()
+        };
+        tracker.active.insert(9, params);
+
+        let add = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeUnderlyings,
+            sid: Some(9),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+            underlying_tickers: Some(vec!["ETHUSD".to_string()]),
+        };
+        tracker.apply_update(&add);
+        let updated = tracker.active.get(&9).unwrap();
+        let underlyings = updated.underlying_tickers.as_ref().unwrap();
+        assert!(underlyings.contains(&"BTCUSD".to_string()));
+        assert!(underlyings.contains(&"ETHUSD".to_string()));
+
+        let remove = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::UnsubscribeUnderlyings,
+            sid: Some(9),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+            underlying_tickers: Some(vec!["BTCUSD".to_string()]),
+        };
+        tracker.apply_update(&remove);
+        let updated = tracker.active.get(&9).unwrap();
+        let underlyings = updated.underlying_tickers.as_ref().unwrap();
+        assert!(!underlyings.contains(&"BTCUSD".to_string()));
+        assert!(underlyings.contains(&"ETHUSD".to_string()));
     }
 }

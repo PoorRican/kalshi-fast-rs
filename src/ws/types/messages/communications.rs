@@ -64,6 +64,11 @@ pub struct WsQuoteCreated {
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
     pub created_ts: String,
+    /// Present only when your side of this quote used a subaccount. Contains
+    /// your own subaccount number; the counterparty's subaccount is never
+    /// shared. Added 2026-07-30.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -231,6 +236,11 @@ pub struct WsQuoteCreatedRef<'a> {
     pub rfq_target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
     #[serde(borrow)]
     pub created_ts: Cow<'a, str>,
+    /// Present only when your side of this quote used a subaccount. Contains
+    /// your own subaccount number; the counterparty's subaccount is never
+    /// shared. Added 2026-07-30.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 impl<'a> WsQuoteCreatedRef<'a> {
@@ -247,6 +257,7 @@ impl<'a> WsQuoteCreatedRef<'a> {
             no_contracts_offered_fp: self.no_contracts_offered_fp.map(Cow::into_owned),
             rfq_target_cost_dollars: self.rfq_target_cost_dollars.map(Cow::into_owned),
             created_ts: self.created_ts.into_owned(),
+            subaccount: self.subaccount,
         }
     }
 }
@@ -358,5 +369,49 @@ impl<'a> WsCommunicationsRef<'a> {
                 WsCommunications::QuoteExecuted(msg.into_owned())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `subaccount` on `quote_created` was added 2026-07-30: present only when
+    /// your side of the quote used a subaccount. Must default to `None` when
+    /// absent, and the borrowed path must round-trip the same value.
+    #[test]
+    fn quote_created_subaccount_round_trips() {
+        let with_subaccount = r#"{
+            "quote_id": "q1",
+            "rfq_id": "r1",
+            "quote_creator_id": "anon-1",
+            "market_ticker": "TST",
+            "yes_bid_dollars": "0.50",
+            "no_bid_dollars": "0.50",
+            "created_ts": "2026-07-30T00:00:00Z",
+            "subaccount": 3
+        }"#;
+
+        let owned: WsQuoteCreated = serde_json::from_str(with_subaccount).unwrap();
+        assert_eq!(owned.subaccount, Some(3));
+
+        let borrowed: WsQuoteCreatedRef = serde_json::from_str(with_subaccount).unwrap();
+        assert_eq!(borrowed.into_owned().subaccount, Some(3));
+
+        let without_subaccount = r#"{
+            "quote_id": "q1",
+            "rfq_id": "r1",
+            "quote_creator_id": "anon-1",
+            "market_ticker": "TST",
+            "yes_bid_dollars": "0.50",
+            "no_bid_dollars": "0.50",
+            "created_ts": "2026-07-30T00:00:00Z"
+        }"#;
+
+        let owned: WsQuoteCreated = serde_json::from_str(without_subaccount).unwrap();
+        assert_eq!(owned.subaccount, None);
+
+        let borrowed: WsQuoteCreatedRef = serde_json::from_str(without_subaccount).unwrap();
+        assert_eq!(borrowed.into_owned().subaccount, None);
     }
 }

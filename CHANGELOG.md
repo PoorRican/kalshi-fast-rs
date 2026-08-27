@@ -8,6 +8,177 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.8.0] - 2026-08-27
+
+### Compatibility
+
+- Docs snapshot: 2026-08-27
+- OpenAPI: 3.29.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-08-27
+
+**Changelog entries since 0.7.0 watermark (2026-06-08) and disposition:**
+
+| Date | Entry | Action |
+|---|---|---|
+| 2026-08-27 | Trade type on FIX market data | No code change — FIX API not modeled in this crate |
+| 2026-08-27 | Exchange index on user order messages | Added `WsUserOrder.exchange_index` |
+| 2026-08-27 | Bulk order cancellation endpoints | Added `cancel_all_orders_v2` (`DELETE /portfolio/events/orders`, Predictions only; margin variant out of scope) |
+| 2026-08-27 | Historical CF Benchmarks values via REST passthrough | No code change — crate does not wrap the generic CF Benchmarks REST passthrough |
+| 2026-08-27 | `available_on_brokers` field on event responses is deprecated | Marked `EventData.available_on_brokers` `#[deprecated]` |
+| 2026-08-27 | Exchange auto-routing enabled by default | No code change — server-side default behavior only |
+| 2026-08-20 | VPC peering for Prime members | No code change — connectivity/docs only |
+| 2026-08-27 | Margin maker-volume incentive programs | No code change — margin market types not in crate |
+| 2026-08-20 | Kalshi Weather Index endpoint | Added `get_weather_index()` / `GetWeatherIndexResponse` |
+| 2026-08-27 | Tapered sub-cent pricing on multivariate (combo) markets | No code change — "no API fields or message formats change"; `price_level_structure` already a raw `String` |
+| 2026-08-24 | Upcoming exchange sharding | No code change — announcement only |
+| 2026-08-22 | Post-only quotes preserved; crossing rate limits may apply | No code change — fee/rate-limit behavior only |
+| 2026-08-22 | Combo RFQ fee assignment for briefly resting orders | No code change — fee behavior only |
+| 2026-08-20 | Maker fee exemption for independent NFL combo markets | No code change — fee behavior only |
+| 2026-08-20 | Entry timestamps for FIX market data | No code change — FIX API not modeled |
+| 2026-08-20 | Cross-shard subaccount transfers | Added `source_subaccount` / `destination_subaccount` to `IntraExchangeInstanceTransferRequest` |
+| 2026-08-20 | Target balance allocation endpoints | Added `get_target_balance_allocation` / `set_target_balance_allocation` |
+| 2026-08-20 | Resting order value breakdown by exchange index | Added `resting_order_value_breakdown` to `GetPortfolioRestingOrderTotalValueResponse` |
+| 2026-08-20 | Exchange index on portfolio and WebSocket fill records | Added `exchange_index` to `Fill`, `Settlement`, `MarketPosition`, `WsFill` / `WsFillRef` |
+| 2026-08-20 | Exchange index filters for portfolio lists | Added `exchange_index` filter to `GetPositionsParams`, `GetFillsParams`, `GetOrdersParams` |
+| 2026-08-20 | RFQs and combo-market creation for sub-account-restricted API keys | No code change — server authorization behavior only |
+| 2026-08-20 | Optional balance reads by exchange_index | Folded into the final `get_balance` rollout (see 2026-08-13 row below) |
+| 2026-08-16 | API key location attestation expiry | Added `GetApiKeysResponse.api_key_region_expiration_ts` |
+| 2026-08-20 | Exit triggers on margin positions | No code change — margin market types not in crate |
+| 2026-08-13 | New `center_deci_edge_centi_cent` price level structure | No code change — `price_level_structure` already a raw `String` |
+| 2026-08-13 | Balance reads scoped by exchange_index | **Breaking** — `get_balance` now takes `GetBalanceParams { subaccount, exchange_index }`; `GetBalanceResponse` gains `balance_breakdown` |
+| 2026-08-13 | Block trade indicator for WebSocket trades | Added `WsTrade.is_block_trade: bool` |
+| 2026-08-13 | Exchange shard descriptions | Added `ExchangeIndexStatus.description` |
+| 2026-08-13 | Margin order groups bind to single exchange_index | No code change — margin market types not in crate |
+| 2026-08-13 | Order group maximum increased to 100,000 per user | No code change — server-side limit only |
+| 2026-08-06 | Multivariate lookup endpoint and channel removed | **Breaking** — removed `WsChannelV2::Multivariate` / `multivariate_lookup`, `get_multivariate_event_collection_lookup_history`, `lookup_tickers_for_market_in_multivariate_event_collection` |
+| 2026-08-13 | Richer combo-validation errors on FIX RFQ creation | No code change — FIX API not modeled |
+| 2026-08-13 | Intra-account transfer history endpoints | Added `get_intra_exchange_instance_transfers` / `get_intra_exchange_instance_transfer` |
+| 2026-08-06 | FIX execution reports identify the source exchange index | No code change — FIX API not modeled |
+| 2026-08-06 | Sided leverage estimates on margin markets | No code change — margin market types not in crate |
+| 2026-08-06 | Order group limit updates support subaccounts | **Breaking** — `update_order_group_limit` now takes `UpdateOrderGroupLimitParams { subaccount, exchange_index }` |
+| 2026-08-06 | Multivariate event collections include exchange_index | Added `MultivariateEventCollection.exchange_index` |
+| 2026-07-30 | Richer combo-validation errors on multivariate market creation | No code change — `message`/`details` already surface through the existing generic error body; `code` unchanged |
+| 2026-08-06 | The `service` field has been removed from error responses | **Breaking** — removed `ErrorResponse.service` |
+| 2026-07-28 | The `service` field on error responses is deprecated | Superseded by the 2026-08-06 removal above; no separate action |
+| 2026-07-30 | Lifecycle creation messages now include exchange_index | Added `exchange_index` to `WsMarketLifecycleV2` / `Ref` and `WsEventLifecycle` / `Ref` |
+| 2026-07-30 | Series responses include exchange_index | Added `Series.exchange_index` |
+| 2026-07-30 | New endpoint for event-keyed live data | Added `get_event_live_data()` |
+| 2026-07-30 | Subaccount-restricted API keys can read order queue positions | No code change — server authorization behavior only |
+| 2026-07-30 | Event `product_metadata` now includes cadence | Added `EventMetadata.cadence` |
+| 2026-07-30 | Subaccount-restricted API keys can use batch order endpoints | No code change — server authorization behavior only |
+| 2026-07-30 | Subaccount on `quote_created` | Added `WsQuoteCreated` / `Ref.subaccount` |
+| 2026-07-30 | Subaccount-restricted API keys can manage order groups | No code change — server authorization behavior only |
+| 2026-07-23 | Order groups limited to 25,000 per user | No code change — superseded by the 2026-08-13 increase to 100,000; server-side limit only |
+| 2026-07-22 | Incentive programs on hidden events excluded from listing | No code change — server-side filtering behavior only |
+| 2026-07-23 | Historical positions endpoint | Added `get_historical_positions()`; `GetHistoricalCutoffResponse.market_positions_last_updated_ts` |
+| 2026-07-23 | Subaccount-restricted API keys can open WebSocket sessions | No code change — server authorization behavior only |
+| 2026-07-23 | Subaccount-restricted API keys can quote on RFQ FIX sessions | No code change — FIX API not modeled |
+| 2026-07-23 | Pyth value WebSocket channel | Added full `pyth_value` channel support (subscribe/update/messages) |
+| 2026-07-09 | Support for FIX Tag 2446 on Incremental Refresh | No code change — FIX API not modeled |
+| 2026-07-09 | RFQ-scoped quote lookup endpoint | Added `get_rfq_quote()` |
+| 2026-07-04 | Exchange announcements endpoint removed | **Breaking** — removed `get_exchange_announcements`, `Announcement`, `AnnouncementType`, `AnnouncementStatus`, `GetExchangeAnnouncementsResponse` |
+| 2026-07-09 | Deprecated Predictions REST schema fields removed | **Breaking** — removed `Market.response_price_units`, `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count` |
+| 2026-07-09 | Margin orders now identify system order reasons | No code change — margin market types not in crate |
+| 2026-07-23 | New price level structures (7 new values) | No code change — `price_level_structure` already a raw `String` |
+| 2026-07-02 | Multivariate lookup history endpoints are fully deprecated | No code change — superseded by the 2026-08-06 removal above |
+| 2026-07-02 | Margin positions now include an `is_portfolio` flag | No code change — margin market types not in crate |
+| 2026-06-30 | Trade-scoped API key permissions (`write::trade`) | No code change — scopes already stored as raw `Vec<String>` |
+| 2026-07-02 | `price_ranges` added to `market_lifecycle_v2` events | Added `WsMarketLifecycleV2.price_ranges` (reuses REST `PriceRange`) |
+| 2026-06-29 | Margin positions `margin_used` omitted for jointly-margined portfolio positions | No code change — margin market types not in crate |
+| 2026-06-26 | Margin risk per-market metrics limited to single-position subaccounts and gross margin markets | No code change — margin market types not in crate |
+| 2026-07-02 | Per-index exchange status | Added `GetExchangeStatusResponse.exchange_index_statuses` / `intra_exchange_transfers_active`, new `ExchangeIndexStatus` |
+| 2026-07-02 | Per-index subaccount balances | Added `SubaccountBalance.exchange_index` |
+| 2026-07-02 | AcceptQuote rejects carry a specific reason on FIX | No code change — FIX API not modeled |
+| 2026-07-02 | More specific FIX rejects for cancel/replace failures | No code change — FIX API not modeled |
+| 2026-06-25 | RFQ quote retention and RFQ-scoped quote actions | Added `delete_rfq_quote` / `accept_rfq_quote` / `confirm_rfq_quote`; deprecated the quote-ID-only variants in doc comments (kept, still supported) |
+| 2026-06-25 | API usage tier qualification requirements halved | No code change — server-side qualification thresholds only |
+| 2026-06-25 | FIX exchange index routing | No code change — FIX API not modeled |
+| 2026-06-24 | RFQ quotes support post-only on FIX | No code change — FIX API not modeled |
+| 2026-06-23 | Get Quote rate-limit cost reduced to 2 tokens | No code change — rate-limit accounting is server-side |
+| 2026-06-20 | RFQ quote market and event filters removed | **Breaking** — removed `GetQuotesParams.market_ticker` / `event_ticker` |
+| 2026-06-19 | Communications RFQ and quote retention window reduced | No code change — server-side retention policy only |
+| 2026-07-02 | Sub-account-restricted API keys | Added `subaccount` to `CreateApiKeyRequest` / `GenerateApiKeyRequest` / `ApiKey` |
+| 2026-06-18 | `settlement_sources` added to the events API | Added `EventData.settlement_sources` (reuses `SettlementSource`) |
+| 2026-06-18 | Strike type and cap strike on `market_lifecycle_v2` `metadata_updated` | Added top-level `strike_type` / `cap_strike` / `custom_strike` to `WsMarketLifecycleV2` / `Ref` |
+| 2026-06-18 | RFQ quote identity on FIX | No code change — FIX API not modeled |
+| 2026-06-18 | Trade entries in FIX market data | No code change — FIX API not modeled |
+| 2026-06-18 | Legacy order mutation endpoints deprecated | Added deprecation doc comments to `create_order` / `cancel_order` / `amend_order` / `decrease_order` / `batch_create_orders` / `batch_cancel_orders` pointing at the V2 equivalents; endpoints kept, still supported |
+| 2026-06-18 | Event tickers filter on `GET /events` | Added `GetEventsParams.tickers` |
+| 2026-06-18 | Subaccount on margin positions | No code change — margin market types not in crate |
+| 2026-06-18 | Block-trade accept API key permissions | No code change — scopes already stored as raw `Vec<String>` |
+| 2026-06-18 | Sanity limits enforced on orderbook subscriptions | No code change — server-side limits only |
+| 2026-06-18 | Quote time filters and pagination fix | Added `GetQuotesParams.min_ts` / `max_ts`; pagination fix is server-side |
+| 2026-06-11 | API usage volume progress endpoint | Added `get_account_api_usage_level_volume_progress()` |
+| 2026-06-11 | Perps mark prices on margin markets | No code change — margin market types not in crate |
+| 2026-06-11 | Self-serve Advanced API usage tier upgrade | Added `upgrade_account_api_usage_level()` |
+| 2026-06-11 | Margin fee-tier endpoint returns active rates | No code change — margin market types not in crate (already noted in 0.6.0) |
+| 2026-06-11 | Perps volume and open interest notional fields | No code change — margin market types not in crate |
+| 2026-06-11 | Tick size added to `GET /margin/markets` | No code change — margin market types not in crate (already noted in 0.6.0) |
+| 2026-06-11 | Fractional quantities for RFQs | No code change — `contracts_fp` / `yes_contracts_fp` / `no_contracts_fp` already present (live OpenAPI field names verified directly; they differ from the changelog prose's `_offered_fp` naming) |
+
+**Additional field-by-field findings** (surfaced by the required-grep verification pass on structs already being touched, not tied to a single dated entry above):
+
+- `EventData.exchange_index: Option<i64>` and `GetEventsParams.min_updated_ts: Option<i64>` — additive fields present in the live `/events` schema.
+- `GetQuotesParams.user_filter: Option<String>` — additive; `quote_creator_user_id` / `rfq_creator_user_id` are now marked `deprecated: true` upstream (doc comments added, fields kept).
+- `GetPositionsParams.event_ticker` was `Option<Vec<String>>` (CSV) but the live `/portfolio/positions` schema (`SingleEventTickerQuery`) takes a single string — **Breaking**, changed to `Option<String>`.
+- `GetFillsParams` had no `event_ticker` parameter in the live `/portfolio/fills` schema — confirmed absent already.
+- Subaccount range validation (`GetPositionsParams`, `GetOrdersParams`, `CreateOrderRequest`, and related doc comments) was hardcoded to `0..=32`; the live spec's `SubaccountQuery`/`SubaccountQueryDefaultPrimary` parameters document `0-63` — **Breaking**, validation now allows `0..=63`.
+
+### Added
+
+- [Rust API] `cancel_all_orders_v2()` — bulk-cancel up to 10,000 resting Predictions orders (`DELETE /portfolio/events/orders`).
+- [Rust API] `get_weather_index()` / `GetWeatherIndexResponse` — Kalshi Weather Index (`GET /live_data/weather/{city}`), including `detailed` per-station breakdowns and `incomplete` points.
+- [Rust API] `get_event_live_data()` / `GetEventLiveDataResponse` — event-keyed live data (`GET /live_data/events/{event_ticker}`).
+- [Rust API] `get_target_balance_allocation()` / `set_target_balance_allocation()` for `/portfolio/target_balance_allocation`.
+- [Rust API] `intra_exchange_instance_transfer()`, `get_intra_exchange_instance_transfers()` (+ pager/stream), `get_intra_exchange_instance_transfer()`.
+- [Rust API] `get_historical_positions()` for `GET /historical/positions`.
+- [Rust API] `get_rfq_quote()`, `delete_rfq_quote()`, `accept_rfq_quote()`, `confirm_rfq_quote()` — RFQ-scoped quote lookup/actions taking `rfq_id` + `quote_id`.
+- [Rust API] `get_account_api_usage_level_volume_progress()` and `upgrade_account_api_usage_level()`.
+- [Rust API] Added the `pyth_value` WebSocket channel: `WsChannelV2::PythValue`, `underlying_tickers` on subscribe/update params, `WsUpdateAction::{SubscribeUnderlyings, UnsubscribeUnderlyings, UnderlyingList}`, new `WsPythValue` / `WsPythUnderlyingList` types and their `Ref` variants, routed through the standard `WsDataMessageV2` machinery.
+- [Rust API] `exchange_index` added across: `WsUserOrder`, `WsFill`/`Ref`, `Fill`, `Settlement`, `MarketPosition`, `WsMarketLifecycleV2`/`Ref`, `WsEventLifecycle`/`Ref`, `Series`, `EventData`, `SubaccountBalance`, `MultivariateEventCollection`, plus new `exchange_index` filters on `GetPositionsParams`/`GetFillsParams`/`GetOrdersParams` and a new `GetExchangeStatusResponse.exchange_index_statuses` (`ExchangeIndexStatus`) breakdown with `intra_exchange_transfers_active`.
+- [Rust API] `WsTrade`/`WsTradeRef.is_block_trade: bool` (mirrors the REST `Trade` field added in 0.6.0).
+- [Rust API] `WsMarketLifecycleV2`/`Ref` gained `price_ranges: Option<Vec<PriceRange>>` and top-level `strike_type` / `cap_strike` / `custom_strike` on `metadata_updated` events.
+- [Rust API] `WsQuoteCreated`/`Ref.subaccount: Option<u32>`.
+- [Rust API] `GetApiKeysResponse.api_key_region_expiration_ts`, `ApiKey.subaccount`, `CreateApiKeyRequest.subaccount`, `GenerateApiKeyRequest.subaccount`.
+- [Rust API] `EventData.settlement_sources`, `EventMetadata.cadence`, `GetEventsParams.tickers`, `EventData.exchange_index`, `GetEventsParams.min_updated_ts`.
+- [Rust API] `GetQuotesParams.min_ts` / `max_ts` / `user_filter`.
+- [Rust API] `GetPortfolioRestingOrderTotalValueResponse.resting_order_value_breakdown` (new `IndexedBalance` type, reused by `GetBalanceResponse.balance_breakdown`).
+- [Tests] Extensive new/updated coverage in `tests/parsing.rs` and in-module `#[cfg(test)]` blocks under `src/ws/**` for every field/endpoint above.
+
+### Changed
+
+- [Rust API] `get_balance()` now takes `GetBalanceParams { subaccount, exchange_index }`; `GetBalanceResponse` gains `balance_breakdown: Option<Vec<IndexedBalance>>`.
+- [Rust API] `update_order_group_limit()` now takes an additional `UpdateOrderGroupLimitParams { subaccount, exchange_index }` argument (query params, distinct from the request body).
+- [Rust API] `IntraExchangeInstanceTransferRequest` gained `source_subaccount` / `destination_subaccount`.
+- [Rust API] `GetPositionsParams.event_ticker` changed from `Option<Vec<String>>` (CSV) to `Option<String>`, matching the live single-event-ticker query parameter.
+- [Rust API] Subaccount range validation widened from `0..=32` to `0..=63` in `GetPositionsParams`, `GetOrdersParams`, `CreateOrderRequest` (and corresponding doc comments), matching the live `0-63` subaccount range.
+- [Docs] Legacy `/portfolio/orders` mutation methods (`create_order`, `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) documented as deprecated in favor of the cheaper V2 equivalents; not removed, still supported upstream.
+- [Docs] Legacy quote-ID-only communications methods (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) documented as deprecated in favor of the new RFQ-scoped variants; not removed, still supported upstream.
+
+### Removed
+
+- [Rust API] `WsChannelV2::Multivariate`, `WsMsgType::Multivariate` / `MultivariateLookup`, and the public types `WsMultivariate` / `WsMultivariateRef` / `WsMultivariateSelectedMarket` / `WsMultivariateSelectedMarketRef` — the upstream `multivariate` WebSocket channel and `multivariate_lookup` message type were removed 2026-08-06.
+- [Rust API] `get_multivariate_event_collection_lookup_history()`, `lookup_tickers_for_market_in_multivariate_event_collection()`, and their request/response types — the upstream `PUT .../lookup` REST endpoint was removed 2026-08-06.
+- [Rust API] `get_exchange_announcements()`, `Announcement`, `AnnouncementType`, `AnnouncementStatus`, `GetExchangeAnnouncementsResponse` — the upstream `GET /exchange/announcements` endpoint was removed 2026-07-04.
+- [Rust API] `Market.response_price_units`, `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count` — removed from the upstream schema 2026-07-09.
+- [Rust API] `ErrorResponse.service` — removed from upstream error response bodies 2026-08-06; branch on `code` instead.
+- [Rust API] `GetQuotesParams.market_ticker`, `GetQuotesParams.event_ticker` — no longer supported by `GET /communications/quotes` upstream (2026-06-20).
+
+### Breaking
+
+- [Rust API] `get_balance(&self)` → `get_balance(&self, params: GetBalanceParams)`.
+- [Rust API] `update_order_group_limit(&self, order_group_id, body)` → `update_order_group_limit(&self, order_group_id, params: UpdateOrderGroupLimitParams, body)`.
+- [Rust API] `GetPositionsParams.event_ticker` type changed from `Option<Vec<String>>` to `Option<String>`.
+- [Rust API] `WsChannelV2`, `WsMsgType`, and the WebSocket data-message enums lost their `Multivariate`/`MultivariateLookup` variants and the `WsMultivariate*` types; exhaustive `match` statements over these types must drop the removed arms.
+- [Rust API] `get_multivariate_event_collection_lookup_history()` and `lookup_tickers_for_market_in_multivariate_event_collection()` no longer exist.
+- [Rust API] `get_exchange_announcements()` and its associated types no longer exist.
+- [Rust API] `Market.response_price_units` and `Market.fractional_trading_enabled` no longer exist; `MarketPosition.resting_orders_count` no longer exists.
+- [Rust API] `ErrorResponse.service` no longer exists; exhaustive struct destructuring must drop it.
+- [Rust API] `GetQuotesParams.market_ticker` and `GetQuotesParams.event_ticker` no longer exist.
+- [Rust API] Struct-literal construction of `WsUpdateSubscriptionParamsV2` and `WsSubscriptionParamsV2` must supply the new `underlying_tickers` field (or use `..Default::default()` / `..`).
+
+
 ## [0.7.0] - 2026-08-12
 
 ### Compatibility

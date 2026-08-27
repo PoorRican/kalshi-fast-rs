@@ -233,3 +233,48 @@ async fn test_get_events_with_milestones_flag() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_get_events_filters_by_tickers() {
+    let client = common::demo_client();
+
+    let list_resp = tokio::time::timeout(
+        common::TEST_TIMEOUT,
+        client.get_events(GetEventsParams {
+            limit: Some(1),
+            ..Default::default()
+        }),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    let Some(target) = list_resp.events.into_iter().next() else {
+        eprintln!("skipping: demo returned no events");
+        return;
+    };
+
+    let resp = tokio::time::timeout(
+        common::TEST_TIMEOUT,
+        client.get_events(GetEventsParams {
+            tickers: Some(vec![target.event_ticker.clone()]),
+            ..Default::default()
+        }),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    assert!(
+        resp.events
+            .iter()
+            .all(|e| e.event_ticker == target.event_ticker),
+        "tickers filter returned an event outside the requested set"
+    );
+    assert!(
+        resp.events
+            .iter()
+            .any(|e| e.event_ticker == target.event_ticker),
+        "tickers filter did not return the requested event"
+    );
+}

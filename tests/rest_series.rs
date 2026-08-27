@@ -34,4 +34,11 @@ async fn test_series_cross_consistency() {
         first.ticker
     );
     assert_eq!(detail_resp.series.title, first.title);
+
+    // `exchange_index` added 2026-07-30; not asserted to a specific value since it
+    // may be absent depending on exchange configuration, but should parse cleanly
+    // when present.
+    if let Some(idx) = detail_resp.series.exchange_index {
+        assert!(idx >= 0, "exchange_index should be non-negative: {idx}");
+    }
 }

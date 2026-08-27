@@ -91,6 +91,58 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `price_level_structure` (REST `Market`, WebSocket `market_lifecycle_v2`) is kept as a raw
+  `String`, not an enum. Kalshi has added ten variants since this crate started tracking it
+  (`center_deci_edge_centi_cent`, seven `center_*_edge_*_cent` structures, etc.) with no
+  accompanying API/message-format change each time — clients are expected to read the market's
+  `price_ranges` array (`{start, end, step}` fixed-point-dollar bands) to determine valid order
+  prices rather than branch on the structure name. Keeping it a raw string means new structure
+  names round-trip without a crate update.
+
+- Exchange sharding (multiple `exchange_index` values) began rolling out 2026-07 through 2026-08.
+  Every `exchange_index` field added during this rollout is modeled as `#[serde(default)]` — either
+  `i64` defaulting to `0` (the primary/only shard in production today) on already-shipping message
+  types (`WsFill`, `WsUserOrder`), or `Option<i64>` where the field is explicitly conditional per
+  the spec (`WsMarketLifecycleV2`, `WsEventLifecycle`) — rather than a hard-required field, so
+  parsing never breaks if a payload lags the rollout on some code path. `GET /portfolio/balance`,
+  `PUT /portfolio/order_groups/{id}/limit`, `GET/POST /portfolio/target_balance_allocation`, and the
+  `/portfolio/intra_exchange_instance_transfer*` endpoints all take an `exchange_index` parameter
+  scoped to "defaults to 0" per the OpenAPI spec; only exchange index `0` is available in production
+  as of this writing.
+
+- `pyth_value` is a new authenticated AsyncAPI channel (introduced 2026-07-23) mirroring
+  `cfbenchmarks_value`'s shape: `underlying_tickers` (not market tickers) seeds the initial
+  subscription (`["all"]` for every underlying), and `WsUpdateAction::SubscribeUnderlyings` /
+  `UnsubscribeUnderlyings` / `UnderlyingList` manage it afterward via `update_subscription_v2`,
+  validated the same way as the CF Benchmarks index actions (mutually exclusive with market
+  targets, `underlying_tickers` required for subscribe/unsubscribe). Two message types:
+  `WsPythValue` (deduplicated per-underlying price) and `WsPythUnderlyingList` (discovery of
+  recently streamed underlyings).
+
+- The `multivariate` WebSocket channel (message type `multivariate_lookup`) and the REST
+  `PUT /multivariate_event_collections/{ticker}/lookup` endpoint were removed by Kalshi on
+  2026-08-06 (they predated RFQs). Both were removed from the public Rust API rather than kept as
+  dead code — use `multivariate_market_lifecycle` for market state changes and the communications
+  (RFQ) APIs for quoting.
+
+- `GetPositionsParams.event_ticker` was previously modeled as a CSV `Option<Vec<String>>`, but
+  `GET /portfolio/positions` actually takes `SingleEventTickerQuery` — one event ticker, not a
+  list. Corrected to `Option<String>` (breaking). `GetOrdersParams.event_ticker` is a genuinely
+  different, CSV-based parameter on a different endpoint and is unaffected.
+
+- Subaccount numbers range `0-63` (0 = primary, 1-63 = subaccounts) per every `Subaccount*` query
+  parameter in the OpenAPI spec. Client-side validation in `GetPositionsParams`, `GetOrdersParams`,
+  and `CreateOrderRequest` previously capped this at `32` (stale from an earlier, narrower
+  subaccount range) and rejected valid requests for subaccounts 33-63; corrected to `0..=63`.
+
+- The legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) and the quote-ID-only
+  communications methods (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) were
+  deprecated upstream (2026-06-18 and 2026-06-25 respectively) in favor of cheaper V2 order
+  endpoints and RFQ-scoped quote actions. Both are still fully functional upstream, so this crate
+  keeps them and only adds doc-comment deprecation notices pointing at the replacements — no
+  removal until Kalshi actually retires them.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
