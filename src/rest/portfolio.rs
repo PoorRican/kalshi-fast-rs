@@ -25,6 +25,18 @@ pub struct GetBalanceResponse {
     pub balance_dollars: Option<FixedPointDollars>,
 }
 
+/// GET /portfolio/balance query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    /// Read a subaccount's balance instead of the primary account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Scope `balance` and `portfolio_value` to one exchange index. Omitting
+    /// it includes all exchange indexes. Added with exchange sharding (2026-08).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+}
+
 /// GET /portfolio/positions query params
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetPositionsParams {
@@ -54,6 +66,11 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict results to one exchange shard. Omitting it returns results
+    /// from all exchange indexes. Added with exchange sharding (2026-08).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetPositionsParams {
@@ -90,10 +107,13 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
+    /// Exchange shard this position lives on. Spec marks this required as of
+    /// exchange sharding (2026-08), but modeled as `Option` since pre-sharding
+    /// payloads omit it. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -145,6 +165,9 @@ pub struct Settlement {
     pub fee_cost: FixedPointDollars,
     #[serde(default)]
     pub value: Option<i64>,
+    /// Exchange shard this settlement's market lived on. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -203,6 +226,9 @@ pub struct Fill {
     pub subaccount_number: Option<u32>,
     #[serde(default)]
     pub ts: Option<i64>,
+    /// Exchange shard this fill's market lived on. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -223,6 +249,10 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Restrict results to one exchange shard. Omitting it returns results
+    /// from all exchange indexes. Added with exchange sharding (2026-08).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -233,21 +263,78 @@ pub struct GetFillsResponse {
     pub cursor: Option<String>,
 }
 
+/// Balance broken down by exchange index (dollars).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i64,
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total resting order value broken down by exchange index. Added with
+    /// exchange sharding (2026-08).
+    #[serde(default)]
+    pub resting_order_value_breakdown: Option<Vec<IndexedBalance>>,
+}
+
+/// GET /historical/positions query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl KalshiRestClient {
     /// Get the account balance.
     ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database (per
+    /// `market_positions_last_updated_ts` on `GET /historical/cutoff`).
+    /// Supports cursor pagination.
+    ///
+    /// **Requires auth.**
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Cancel all resting event-market orders for the authenticated member
+    /// across every exchange shard. If `subaccount` is omitted, matching
+    /// orders may come from any subaccount. Newly placed orders may also be
+    /// cancelled during the minute after the request.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders(
+        &self,
+        subaccount: Option<u32>,
+    ) -> Result<crate::rest::account::EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        let params = crate::rest::account::SubaccountQueryParams { subaccount };
         self.send(
-            Method::GET,
+            Method::DELETE,
             &path,
-            Option::<&()>::None,
+            Some(&params),
             Option::<&()>::None,
             true,
         )

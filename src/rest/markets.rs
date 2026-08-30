@@ -207,8 +207,6 @@ pub struct Market {
     #[serde(default)]
     pub event_id: Option<i64>,
     #[serde(default)]
-    pub response_price_units: Option<String>,
-    #[serde(default)]
     pub settlement_timer_seconds: Option<i64>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
@@ -283,8 +281,6 @@ pub struct Market {
     #[serde(default)]
     pub open_interest_fp: Option<String>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub notional_value: Option<i64>,
     #[serde(default)]
     pub notional_value_dollars: Option<FixedPointDollars>,
@@ -342,6 +338,11 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    /// Exchange shard this market lives on. Added as exchange sharding rolled
+    /// out (2026-08); modeled as `Option` since older/non-sharded payloads
+    /// omit it. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
