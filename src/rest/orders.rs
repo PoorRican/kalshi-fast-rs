@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restricts results to one exchange index. Omitting it returns results
+    /// from all exchange indexes. Added 2026-08.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -81,6 +86,9 @@ pub struct Order {
     pub user_id: String,
     pub client_order_id: String,
     pub ticker: String,
+    /// Exchange shard this order lives on. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -739,7 +747,11 @@ impl KalshiRestClient {
             .await
     }
 
-    /// Place a new order.
+    /// Place a new order via the legacy endpoint.
+    ///
+    /// Deprecated by Kalshi starting 2026-06-18 (legacy order mutation
+    /// endpoints cost more rate-limit tokens and will eventually return
+    /// "Please switch to the V2 endpoints"). Prefer [`Self::create_order_v2`].
     ///
     /// **Requires auth.**
     pub async fn create_order(
@@ -752,7 +764,9 @@ impl KalshiRestClient {
             .await
     }
 
-    /// Cancel an order by ID.
+    /// Cancel an order by ID via the legacy endpoint.
+    ///
+    /// Deprecated by Kalshi starting 2026-06-18. Prefer [`Self::cancel_order_v2`].
     ///
     /// **Requires auth.**
     pub async fn cancel_order(
@@ -771,6 +785,7 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated by Kalshi starting 2026-06-18. Prefer [`Self::amend_order_v2`].
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +796,7 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated by Kalshi starting 2026-06-18. Prefer [`Self::decrease_order_v2`].
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +819,7 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated by Kalshi starting 2026-06-18. Prefer [`Self::batch_create_orders_v2`].
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +829,7 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated by Kalshi starting 2026-06-18. Prefer [`Self::batch_cancel_orders_v2`].
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -942,6 +960,27 @@ impl KalshiRestClient {
         let path = Self::full_path("/portfolio/events/orders");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
+    }
+
+    /// Cancel all resting event-market orders for the authenticated Direct
+    /// member across every exchange shard. If `subaccount` is omitted,
+    /// matching orders may come from any subaccount. Newly placed orders may
+    /// also be cancelled during the minute after the request. Added 2026-08-27.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders_v2(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
     }
 
     /// Cancel an order via the V2 event-order endpoint.

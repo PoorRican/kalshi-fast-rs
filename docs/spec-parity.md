@@ -91,6 +91,54 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Kalshi is mid-rollout on **exchange sharding** (announced 2026-08-24; Crypto, Tennis, and Baseball
+  move to dedicated exchange instances). The live specs now attach `exchange_index` to dozens of
+  request/response shapes. This refresh added explicit `exchange_index: Option<i64>` fields to the
+  structs most load-bearing for a trading adapter — `Order`, `Fill`, `Settlement`, `MarketPosition`,
+  `Market`, `Series`, `SubaccountBalance`, WS `WsFill`/`WsUserOrder`/`WsMarketLifecycleV2`/
+  `WsEventLifecycle`, and the new `ExchangeIndexStatus` breakdown on `GetExchangeStatusResponse` —
+  plus an `exchange_index` filter on `GetOrdersParams`/`GetPositionsParams`/`GetFillsParams` and on
+  `GetBalanceParams`. Other exchange_index-bearing surfaces (e.g. multivariate event collections,
+  API-key location attestation edge cases) still round-trip the field losslessly through each
+  struct's `extra` flatten map rather than a typed field; give those explicit fields in a follow-up
+  refresh once the sharding rollout finishes and the shape stabilizes.
+- `GET /portfolio/balance` gained `subaccount` / `exchange_index` query parameters (2026-08).
+  `get_balance` now takes a `GetBalanceParams` (breaking signature change, 0.7.0 → 0.8.0). Passing
+  `subaccount: Some(0)` explicitly now scopes to the primary account specifically, distinct from
+  omitting it (aggregate). `GetBalanceResponse.balance_breakdown` is the new per-exchange-index view.
+- `price_level_structure` is modeled as a plain `String` (not an enum) on `Market` and the
+  `market_lifecycle_v2` WS payload, so the several new structure values added since 2026-07-23
+  (`center_whole_edge_half_cent`, `center_deci_edge_centi_cent`, etc.) round-trip with no crate
+  change. Always read valid prices from the `price_ranges` array rather than the structure name.
+- Legacy `/portfolio/orders` mutation endpoints (`create_order`, `cancel_order`, `amend_order`,
+  `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) were deprecated by Kalshi on
+  2026-06-18 in favor of the V2 event-order endpoints (`*_v2`). They still exist in the live OpenAPI
+  spec (not removed), so the crate keeps them with a deprecation doc-comment rather than removing
+  them.
+- The `multivariate` WS channel (message type `multivariate_lookup`) and the REST
+  `PUT/GET .../multivariate_event_collections/{ticker}/lookup` endpoints were removed by Kalshi on
+  2026-08-06 (deprecated since before this crate's tracked history, fully deprecated 2026-07-02).
+  They have been removed from the crate: `WsChannelV2::Multivariate`, `WsMsgType::Multivariate` /
+  `MultivariateLookup`, `WsDataMessageV2::Multivariate` (+ `Ref` variants), and
+  `get_multivariate_event_collection_lookup_history` /
+  `lookup_tickers_for_market_in_multivariate_event_collection` are all gone (breaking, 0.7.0 → 0.8.0).
+- `GET /communications/quotes` (`GetQuotesParams`) lost its `market_ticker` / `event_ticker` filters
+  on 2026-06-20 (breaking) and gained `min_ts`, `max_ts`, and `user_filter` on 2026-06-18. RFQ-scoped
+  quote action endpoints (`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`,
+  `confirm_rfq_quote`) were added 2026-06-25; the quote-ID-only equivalents (`get_quote`,
+  `delete_quote`, `accept_quote`, `confirm_quote`) are kept but documented as deprecated, since RFQ
+  quotes are no longer guaranteed queryable by ID alone after a server roll.
+- `GET /exchange/announcements` was removed from the live OpenAPI spec (last seen before this
+  refresh's watermark); `get_exchange_announcements` and the `Announcement`/`AnnouncementType`/
+  `AnnouncementStatus`/`GetExchangeAnnouncementsResponse` types have been removed (breaking).
+- `Market.response_price_units`, `Market.fractional_trading_enabled`,
+  `MarketPosition.resting_orders_count`, and the WS `market_lifecycle_v2`
+  `fractional_trading_enabled` field were removed from the live OpenAPI/AsyncAPI schemas
+  (2026-07-09) and have been removed from the crate (breaking).
+- `pyth_value` is a new AsyncAPI channel (subscription-updatable Pyth price feed by underlying
+  ticker) that is not yet modeled in this crate — tracked as a gap for the next refresh rather than
+  rushed in this one.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

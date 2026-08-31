@@ -7,6 +7,9 @@ use std::borrow::Cow;
 pub struct WsFill {
     pub trade_id: String,
     pub order_id: String,
+    /// Exchange shard where the fill occurred. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub client_order_id: Option<String>,
     #[serde(alias = "ticker")]
@@ -45,6 +48,8 @@ pub struct WsFillRef<'a> {
     pub trade_id: Cow<'a, str>,
     #[serde(borrow)]
     pub order_id: Cow<'a, str>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, borrow)]
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(alias = "ticker", borrow)]
@@ -84,6 +89,7 @@ impl<'a> WsFillRef<'a> {
         WsFill {
             trade_id: self.trade_id.into_owned(),
             order_id: self.order_id.into_owned(),
+            exchange_index: self.exchange_index,
             client_order_id: self.client_order_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
             side: self.side,

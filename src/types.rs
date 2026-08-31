@@ -137,6 +137,10 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    /// Same maker-fee structure as `QuadraticWithMakerFees` but with a `0.5`
+    /// maker multiplier instead of `0.25`. Used for combo trades where a
+    /// quoter executes against a briefly-resting order. Added 2026.
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
