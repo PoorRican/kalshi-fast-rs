@@ -28,6 +28,11 @@ pub struct WsTrade {
     pub ts_ms: Option<i64>,
     #[serde(default)]
     pub created_time: Option<String>,
+    /// Whether this trade was a block trade. Added to the AsyncAPI as a
+    /// required field; defaults to `false` for REST/WS consistency (see
+    /// `docs/spec-parity.md`'s note on the REST `Trade.is_block_trade` field).
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 /// Trade channel message (type: "trade")
@@ -60,6 +65,11 @@ pub struct WsTradeRef<'a> {
     pub ts_ms: Option<i64>,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
+    /// Whether this trade was a block trade. Added to the AsyncAPI as a
+    /// required field; defaults to `false` for REST/WS consistency (see
+    /// `docs/spec-parity.md`'s note on the REST `Trade.is_block_trade` field).
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 impl<'a> WsTradeRef<'a> {
@@ -76,6 +86,7 @@ impl<'a> WsTradeRef<'a> {
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),
+            is_block_trade: self.is_block_trade,
         }
     }
 }
