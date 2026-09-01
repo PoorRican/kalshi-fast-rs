@@ -8,7 +8,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    ExchangeIndex, FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec,
+    deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -71,6 +72,38 @@ pub struct GetAccountEndpointCostsResponse {
     pub endpoint_costs: Vec<EndpointTokenCost>,
 }
 
+/// One usage-level volume goal for the predictions (event_contract) lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level for this Predictions volume goal (e.g. `"expert"`).
+    pub level: String,
+    pub earn_volume_goal_fp: FixedPointCount,
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Latest cron-computed trading volume progress toward volume-based API
+/// usage tiers for the predictions (event_contract) lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed;
+    /// `trailing_30d_volume_fp` covers the trailing 30 days ending at this time.
+    pub computed_ts: i64,
+    pub trailing_30d_volume_fp: FixedPointCount,
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CreateSubaccountRequest {
+    /// Identifier for an exchange shard. Defaults to 0 if unspecified.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateSubaccountResponse {
     pub subaccount_number: u32,
@@ -79,6 +112,8 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on.
+    pub exchange_index: ExchangeIndex,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -96,6 +131,9 @@ pub struct ApplySubaccountTransferRequest {
     pub from_subaccount: u32,
     pub to_subaccount: u32,
     pub amount_cents: i64,
+    /// Exchange index to apply the transfer on. Optional; server defaults if unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
@@ -108,6 +146,8 @@ pub struct SubaccountTransfer {
     pub to_subaccount: u32,
     pub amount_cents: i64,
     pub created_ts: i64,
+    /// Exchange index the transfer was applied on.
+    pub exchange_index: ExchangeIndex,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -146,6 +186,9 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// Subaccount this key is restricted to, if any.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -154,6 +197,10 @@ pub struct ApiKey {
 pub struct GetApiKeysResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub api_keys: Vec<ApiKey>,
+    /// Unix timestamp (seconds) when the account's location attestation for
+    /// API key requests expires. `None` if the account has never attested.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +209,14 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Mutually exclusive
+    /// with `fcm_subtrader_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Bind the key to a single FCM subtrader. Mutually exclusive with
+    /// `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +231,14 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Mutually exclusive
+    /// with `fcm_subtrader_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Bind the key to a single FCM subtrader. Mutually exclusive with
+    /// `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -208,6 +271,82 @@ pub struct SubaccountNettingConfig {
 pub struct GetSubaccountNettingResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub netting_configs: Vec<SubaccountNettingConfig>,
+}
+
+/// Which exchange instance (product lane) funds live on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    /// Amount to transfer, in centicents.
+    pub amount: i64,
+    /// Source exchange shard index. Optional; defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<ExchangeIndex>,
+    /// Destination exchange shard index. Optional; defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<ExchangeIndex>,
+    /// Source subaccount number. Optional; defaults to 0 (primary account).
+    /// Only supported for event-contract-to-event-contract transfers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    /// Destination subaccount number. Optional; defaults to 0 (primary account).
+    /// Only supported for event-contract-to-event-contract transfers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntraExchangeInstanceTransferStatus {
+    Pending,
+    Complete,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    pub source_exchange_shard: ExchangeIndex,
+    pub destination_exchange_shard: ExchangeIndex,
+    /// Transfer amount, in dollars.
+    pub amount: FixedPointDollars,
+    pub status: IntraExchangeInstanceTransferStatus,
+    pub created_ts: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
 }
 
 impl KalshiRestClient {
@@ -243,16 +382,59 @@ impl KalshiRestClient {
         .await
     }
 
-    /// Create a new subaccount.
+    /// Get the authenticated user's latest cron-computed trading volume
+    /// progress toward volume-based API usage tiers for the predictions
+    /// (event_contract) lane.
     ///
     /// **Requires auth.**
-    pub async fn create_subaccount(&self) -> Result<CreateSubaccountResponse, KalshiError> {
-        let path = Self::full_path("/portfolio/subaccounts");
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Grant a permanent Advanced API usage-level upgrade. Currently only the
+    /// Predictions exchange instance is supported. Requires at least one of
+    /// the user's last 100 Predictions orders to have been created via API,
+    /// or the request returns `403`.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
         self.send(
             Method::POST,
             &path,
             Option::<&()>::None,
             Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Create a new subaccount.
+    ///
+    /// `exchange_index` selects the exchange shard to create the subaccount
+    /// on; pass `None` to default to shard 0.
+    ///
+    /// **Requires auth.**
+    pub async fn create_subaccount(
+        &self,
+        exchange_index: Option<ExchangeIndex>,
+    ) -> Result<CreateSubaccountResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/subaccounts");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Some(&CreateSubaccountRequest { exchange_index }),
             true,
         )
         .await

@@ -6,7 +6,7 @@
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
-use crate::types::{FeeType, deserialize_null_as_empty_vec};
+use crate::types::{ExchangeIndex, FeeType, deserialize_null_as_empty_vec};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -46,6 +46,13 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `fifteen_min`). Changelog-documented
+    /// but absent from the formal OpenAPI schema for `product_metadata`
+    /// (which stays untyped `object`), so this is modeled defensively as
+    /// `Option<String>` and will simply be `None` if the key format ever
+    /// changes.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -91,6 +98,11 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Exchange shard this series lives on (2026-08 sharding rollout).
+    /// Ambiguous required-ness in the spec (`x-omitempty: false` but not in
+    /// `required:`), so modeled as `Option` per this crate's convention.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

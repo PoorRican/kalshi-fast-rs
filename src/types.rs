@@ -90,6 +90,21 @@ pub type FixedPointDollars = String;
 /// Fixed-point contract count string (e.g. "10.00").
 pub type FixedPointCount = String;
 
+/// Identifier for an exchange shard (2026-08 exchange sharding rollout).
+///
+/// Response fields report the shard an object lives on (always `>= 0`). Some
+/// request fields accept `-1` to mean "auto-route by ticker", which is why
+/// this is a signed integer rather than `u32`.
+pub type ExchangeIndex = i64;
+
+/// A balance broken down by exchange shard, as returned alongside several
+/// portfolio-summary endpoints once sharding is in play.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: ExchangeIndex,
+    pub balance: FixedPointDollars,
+}
+
 /// Typed wrapper for arbitrary JSON payloads.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AnyJson(pub Value);
@@ -126,8 +141,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---

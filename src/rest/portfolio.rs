@@ -8,12 +8,25 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, ExchangeIndex, FixedPointCount, FixedPointDollars, IndexedBalance,
+    PositionCountFilter, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+
+/// GET /portfolio/balance query params
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    /// 0..=32
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+
+    /// Scope the balance and portfolio value to a single exchange index. If
+    /// omitted, both include all exchange indexes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
@@ -23,6 +36,10 @@ pub struct GetBalanceResponse {
     /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// User balance breakdown per exchange instance, omitted only when using
+    /// a subaccount-restricted API key.
+    #[serde(default)]
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
 }
 
 /// GET /portfolio/positions query params
@@ -54,6 +71,11 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter results by exchange shard. Omit to return results from all
+    /// exchange shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 impl GetPositionsParams {
@@ -86,6 +108,7 @@ impl GetPositionsParams {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
     pub ticker: String,
+    pub exchange_index: ExchangeIndex,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
@@ -134,6 +157,7 @@ impl From<GetPositionsResponse> for PositionsPage {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
     pub ticker: String,
+    pub exchange_index: ExchangeIndex,
     pub event_ticker: String,
     pub market_result: String,
     pub yes_count_fp: FixedPointCount,
@@ -176,6 +200,7 @@ pub struct GetSettlementsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
     pub fill_id: String,
+    pub exchange_index: ExchangeIndex,
     pub order_id: String,
     pub trade_id: String,
     pub ticker: String,
@@ -223,6 +248,10 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter results by exchange shard. Omit to return results from all
+    /// exchange shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

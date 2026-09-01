@@ -545,7 +545,6 @@ async fn test_get_subaccount_netting() {
             assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
             let api_error = api_error.expect("expected api error");
             assert_eq!(api_error.code.as_deref(), Some("internal_server_error"));
-            assert_eq!(api_error.service.as_deref(), Some("users"));
         }
         Err(err) => panic!("unexpected error: {err:?}"),
     }
