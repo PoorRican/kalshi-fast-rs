@@ -3,7 +3,7 @@
 mod common;
 
 use kalshi_fast::{
-    CreateOrderGroupRequest, KalshiRestClient, SubaccountQueryParams, UpdateOrderGroupLimitParams,
+    CreateOrderGroupRequest, SubaccountQueryParams, UpdateOrderGroupLimitParams,
     UpdateOrderGroupLimitRequest,
 };
 use std::time::Duration;

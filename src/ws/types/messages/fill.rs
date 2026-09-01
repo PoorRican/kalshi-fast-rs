@@ -11,6 +11,10 @@ pub struct WsFill {
     pub client_order_id: Option<String>,
     #[serde(alias = "ticker")]
     pub market_ticker: String,
+    /// Identifier for the exchange shard the fill's market lives on. Required
+    /// by the AsyncAPI; modeled non-`Option` to match this struct's existing
+    /// treatment of other required fields (e.g. `trade_id`, `is_taker`).
+    pub exchange_index: i64,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -49,6 +53,7 @@ pub struct WsFillRef<'a> {
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(alias = "ticker", borrow)]
     pub market_ticker: Cow<'a, str>,
+    pub exchange_index: i64,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -86,6 +91,7 @@ impl<'a> WsFillRef<'a> {
             order_id: self.order_id.into_owned(),
             client_order_id: self.client_order_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             side: self.side,
             action: self.action,
             outcome_side: self.outcome_side,
@@ -114,6 +120,7 @@ mod tests {
             "trade_id":"t",
             "order_id":"o",
             "market_ticker":"T",
+            "exchange_index":1,
             "side":"no",
             "action":"buy",
             "count_fp":"1",
@@ -136,6 +143,7 @@ mod tests {
             "trade_id":"t",
             "order_id":"o",
             "market_ticker":"T",
+            "exchange_index":1,
             "outcome_side":"yes",
             "book_side":"bid",
             "count_fp":"1",

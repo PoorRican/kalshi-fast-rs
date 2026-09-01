@@ -5,8 +5,8 @@ mod common;
 use kalshi_fast::{
     AmendOrderV2Request, BatchCancelOrderV2RequestOrder, BatchCancelOrdersV2Request,
     BatchCreateOrdersV2Request, BookSide, CancelOrderV2Params, CreateOrderV2Request,
-    GetMarketsParams, GetOrdersParams, KalshiRestClient, MarketStatusQuery,
-    SelfTradePreventionType, SubaccountQueryParams, TimeInForce,
+    GetMarketsParams, GetOrdersParams, MarketStatusQuery, SelfTradePreventionType,
+    SubaccountQueryParams, TimeInForce,
 };
 use std::time::Duration;
 

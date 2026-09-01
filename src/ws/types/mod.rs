@@ -26,6 +26,7 @@ pub use envelope::*;
 pub struct MarketPositionRef<'a> {
     #[serde(borrow)]
     pub ticker: Cow<'a, str>,
+    pub exchange_index: crate::types::ExchangeIndex,
     #[serde(borrow)]
     pub total_traded_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
@@ -46,6 +47,7 @@ impl<'a> MarketPositionRef<'a> {
     pub fn into_owned(self) -> MarketPosition {
         MarketPosition {
             ticker: self.ticker.into_owned(),
+            exchange_index: self.exchange_index,
             total_traded_dollars: self.total_traded_dollars.into_owned(),
             position_fp: self.position_fp.into_owned(),
             market_exposure_dollars: self.market_exposure_dollars.into_owned(),

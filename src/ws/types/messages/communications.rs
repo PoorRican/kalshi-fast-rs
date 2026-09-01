@@ -337,6 +337,8 @@ pub struct WsQuoteExecutedRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub executed_ts: Cow<'a, str>,
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 impl<'a> WsQuoteExecutedRef<'a> {
@@ -350,6 +352,7 @@ impl<'a> WsQuoteExecutedRef<'a> {
             client_order_id: self.client_order_id.into_owned(),
             market_ticker: self.market_ticker.into_owned(),
             executed_ts: self.executed_ts.into_owned(),
+            subaccount: self.subaccount,
         }
     }
 }

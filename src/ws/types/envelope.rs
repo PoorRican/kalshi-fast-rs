@@ -270,6 +270,18 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageV2::Unknown {
                 msg_type: WsMsgType::Communications,
                 sid,
@@ -495,6 +507,18 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             WsMsgType::Communications => Ok(WsMessageRef::Unknown {
                 msg_type: WsMsgType::Communications,
                 sid,
@@ -631,6 +655,16 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 macro_rules! data_message_position {
@@ -651,7 +685,9 @@ macro_rules! data_message_position {
             | Self::OrderGroupUpdates { $field, .. }
             | Self::UserOrder { $field, .. }
             | Self::CfbenchmarksValue { $field, .. }
-            | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
+            | Self::CfbenchmarksValueIndexlist { $field, .. }
+            | Self::PythValue { $field, .. }
+            | Self::PythValueUnderlyingList { $field, .. } => *$field,
         }
     };
 }
@@ -747,6 +783,16 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -848,6 +894,18 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1251,7 +1309,9 @@ mod tests {
 
         let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
         match msg {
-            WsMessageV2::ListSubscriptions { id, subscriptions } => {
+            WsMessageV2::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));
@@ -1262,7 +1322,9 @@ mod tests {
 
         let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
         match msg_ref {
-            WsMessageRef::ListSubscriptions { id, subscriptions } => {
+            WsMessageRef::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));

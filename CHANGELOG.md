@@ -8,6 +8,100 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.8.0] - 2026-09-01
+
+### Compatibility
+
+- Docs snapshot: 2026-09-01
+- OpenAPI: 3.29.0
+- AsyncAPI: 2.0.0
+- Validated through changelog: 2026-09-03
+
+This refresh covers every changelog entry from the prior watermark (2026-06-08) through
+2026-09-03 (102 entries). The large majority were margin-exchange-only, FIX-only, numeric
+rate-limit/fee changes, or behavior-only changes with no schema impact, and required no code
+change; see `docs/spec-parity.md` for the durable, human-facing notes on what changed and why.
+Full entry-by-entry disposition was captured during the refresh's research phase.
+
+### Breaking
+
+- [Rust API] Removed the legacy (non-V2) order-mutation endpoints and types: `create_order`,
+  `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders`
+  and their request/response types. `POST /portfolio/orders`, `DELETE /portfolio/orders/{order_id}`,
+  `.../amend`, `.../decrease`, and `/portfolio/orders/batched` no longer exist upstream. Use the
+  `*_v2` methods (`/portfolio/events/orders/*`) instead.
+- [Rust API] Removed the exchange-announcements feature (`AnnouncementType`, `AnnouncementStatus`,
+  `Announcement`, `GetExchangeAnnouncementsResponse`, `get_exchange_announcements()`) — the
+  `GET /exchange/announcements` endpoint no longer exists upstream.
+- [Rust API] Removed the multivariate lookup endpoints and types
+  (`lookup_tickers_for_market_in_multivariate_event_collection`,
+  `get_multivariate_event_collection_lookup_history`, and their request/response types) — the
+  underlying endpoints no longer exist upstream.
+- [Rust API] Removed `ErrorResponse.service` — the field was removed from Kalshi's error responses
+  (deprecated 2026-07-28, removed 2026-08-06) and had no internal readers.
+- [Rust API] Removed `GetQuotesParams.market_ticker` / `.event_ticker` — `GET /communications/quotes`
+  no longer accepts these filters.
+- [Rust API] `exchange_index` fields on order-related request/response types (`CreateOrderV2Request`,
+  `CancelOrderV2Params`, `AmendOrderV2Request`, `DecreaseOrderV2Request`,
+  `BatchCancelOrderV2RequestOrder`, `Order`, `OrderGroup`, `CreateOrderGroupRequest`) changed from
+  `Option<u32>` to `Option<ExchangeIndex>` (`i64`), since Kalshi documents `-1` as a valid
+  "auto-route by ticker" sentinel that cannot fit in `u32`.
+- [Rust API] `get_balance()` now takes a `GetBalanceParams { subaccount, exchange_index }` argument
+  (was zero-argument), matching the new `GET /portfolio/balance` query parameters.
+- [Rust API] `create_subaccount()` now takes an `Option<ExchangeIndex>` argument (was zero-argument),
+  matching the new optional `exchange_index` on `CreateSubaccountRequest`.
+- [Rust API] `update_order_group_limit()` gained a `UpdateOrderGroupLimitParams { subaccount,
+  exchange_index }` argument between `order_group_id` and `body`, matching the new query parameters
+  on `PUT /portfolio/order_groups/{order_group_id}/limit`.
+
+### Added
+
+- [Upstream] Exchange sharding: new shared `ExchangeIndex` (`i64`) and `IndexedBalance` types.
+  `exchange_index` is now surfaced (required where the spec requires it, `Option` where ambiguous
+  or genuinely optional) on `Fill`, `Settlement`, `MarketPosition`, `SubaccountBalance`,
+  `SubaccountTransfer`, `Order`, `EventData`, `Series`, `MultivariateEventCollection`,
+  `WsFill`, `WsMarketLifecycleV2`, `WsEventLifecycle`, and `WsUserOrder`. New
+  `ExchangeIndexStatus` / `GetExchangeStatusResponse.exchange_index_statuses`,
+  `GetBalanceResponse.balance_breakdown`, `GetPortfolioRestingOrderTotalValueResponse.resting_order_value_breakdown`,
+  and `exchange_index` filters on `GetOrdersParams` / `GetPositionsParams` / `GetFillsParams`.
+- [Rust API] `cancel_all_orders()` (`DELETE /portfolio/events/orders`).
+- [Rust API] RFQ-scoped quote endpoints: `get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`,
+  `confirm_rfq_quote`, alongside the pre-existing quote-id-only methods.
+- [Rust API] `CreateQuoteRequest` / `Quote` gained `post_only`; `GetQuotesParams` gained `min_ts` /
+  `max_ts`.
+- [Rust API] `get_account_api_usage_level_volume_progress()`, `upgrade_account_api_usage_level()`.
+- [Rust API] `IntraExchangeInstanceTransfer*` endpoint group (`intra_exchange_instance_transfer`,
+  `get_intra_exchange_instance_transfers[_all]`, `get_intra_exchange_instance_transfer`) with a new
+  `ExchangeInstance` enum (`event_contract` | `margined`).
+- [Rust API] `get_target_balance_allocation()` / `set_target_balance_allocation()` with new
+  `TargetBalanceAllocation` / `TargetBalanceAllocationInput` / `RestingMarginReservation` types.
+- [Rust API] `get_historical_positions()` (reuses `GetPositionsResponse`);
+  `GetHistoricalCutoffResponse.market_positions_last_updated_ts`.
+- [Rust API] `get_live_data_by_event()`, `get_weather_index()`, `get_weather_index_calibrations()`
+  and their request/response types.
+- [Rust API] `ApiKey` / `CreateApiKeyRequest` / `GenerateApiKeyRequest` gained `subaccount` /
+  `fcm_subtrader_id`; `GetApiKeysResponse.api_key_region_expiration_ts`.
+- [Rust API] `EventData.settlement_sources` (required, matches the pre-existing `Series` pattern);
+  `EventData.exchange_index`; `Series.exchange_index`; `GetEventsParams.tickers`;
+  `EventMetadata.cadence` (changelog-documented convenience field; `product_metadata` itself stays
+  untyped in the OpenAPI schema).
+- [Rust API] `IncentiveProgram.max_reward_per_account`, `IncentiveProgram.incentive_description`
+  (pre-existing gap against a spec-required field, fixed alongside the new field).
+- [Rust API] New authenticated `pyth_value` WebSocket channel (`WsPythValue`,
+  `WsPythUnderlyingList`, `WsChannelV2::PythValue`, `WsUpdateAction::SubscribeUnderlyings` /
+  `UnsubscribeUnderlyings` / `UnderlyingList`, `underlying_tickers` subscription field), modeled on
+  the existing `cfbenchmarks_value` channel.
+- [Rust API] `WsTrade.is_block_trade`; `WsMarketLifecycleV2.strike_type` / `.cap_strike` /
+  `.custom_strike` / `.price_ranges`; `WsQuoteCreated` / `WsQuoteAccepted` / `WsQuoteExecuted`
+  gained `subaccount`.
+
+### Fixed
+
+- [Tests] `tests/rest_auth.rs::test_get_account_api_limits` used a pre-0.6.0 flat
+  `read_limit`/`write_limit` shape that had silently gone uncompiled (the `live-tests` feature was
+  not exercised by CI on every push) since the 0.5.0 → 0.6.0 `BucketLimit` restructuring; updated to
+  the current `read`/`write: BucketLimit` shape.
+
 ## [0.7.0] - 2026-08-12
 
 ### Compatibility
