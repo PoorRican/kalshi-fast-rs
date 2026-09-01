@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
     )?;
     let client = KalshiRestClient::new(env).with_auth(auth);
 
-    let balance = client.get_balance().await?;
+    let balance = client.get_balance(Default::default()).await?;
     println!(
         "balance: {} portfolio_value: {}",
         balance.balance, balance.portfolio_value

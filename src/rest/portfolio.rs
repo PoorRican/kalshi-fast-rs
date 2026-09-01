@@ -5,6 +5,7 @@
 //! post-trade accounting feeds.
 
 use crate::KalshiError;
+use crate::rest::account::EmptyResponse;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
@@ -265,22 +266,60 @@ pub struct GetFillsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total value of resting orders broken down by exchange index, with
+    /// each balance expressed as a fixed-point dollar string.
+    pub resting_order_value_breakdown: Vec<IndexedBalance>,
+}
+
+/// One exchange index's target share of sweepable balance, as returned by
+/// `GET /portfolio/target_balance_allocation`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TargetBalanceAllocation {
+    pub exchange_index: ExchangeIndex,
+    pub percent: i32,
+}
+
+/// One exchange index's target share of sweepable balance, as submitted to
+/// `POST /portfolio/target_balance_allocation`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TargetBalanceAllocationInput {
+    pub exchange_index: ExchangeIndex,
+    pub percent: i32,
+}
+
+/// Collateral an automatic rebalance leaves behind for resting orders. `Max`
+/// reserves the largest single market-side commitment; `Sum` reserves the
+/// summed margin of every resting order. Defaults to `Sum` when omitted.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RestingMarginReservation {
+    Max,
+    Sum,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetTargetBalanceAllocationResponse {
+    pub allocations: Vec<TargetBalanceAllocation>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetTargetBalanceAllocationRequest {
+    pub allocations: Vec<TargetBalanceAllocationInput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resting_margin_reservation: Option<RestingMarginReservation>,
 }
 
 impl KalshiRestClient {
     /// Get the account balance.
     ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.
@@ -329,6 +368,37 @@ impl KalshiRestClient {
             true,
         )
         .await
+    }
+
+    /// Get the caller's target balance allocation across exchange indexes.
+    ///
+    /// **Requires auth.**
+    pub async fn get_target_balance_allocation(
+        &self,
+    ) -> Result<GetTargetBalanceAllocationResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Replace the caller's target balance allocation across exchange
+    /// indexes. Percentages must total 100. Passing an empty allocations
+    /// array disables automatic rebalancing.
+    ///
+    /// **Requires auth.**
+    pub async fn set_target_balance_allocation(
+        &self,
+        body: SetTargetBalanceAllocationRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
     }
 
     /// Create a pager for iterating over positions page by page.

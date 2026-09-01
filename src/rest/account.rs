@@ -481,6 +481,53 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Transfer funds within the same account, across exchange instances
+    /// (event contract / margined) and/or exchange shards. When source and
+    /// destination shards match, this behaves as a subaccount transfer and
+    /// the returned transfer ID appears in subaccount transfer history.
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List intra-exchange-instance account transfers. Supports cursor pagination.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get a single intra-exchange-instance account transfer by id.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
     /// Get subaccount netting configuration.
     ///
     /// **Requires auth.**
@@ -594,6 +641,60 @@ impl KalshiRestClient {
             async move {
                 let resp = self.get_subaccount_transfers(page_params).await?;
                 Ok((resp.subaccount_transfers, resp.cursor))
+            }
+        })
+        .await
+    }
+
+    /// Create a pager for iterating over intra-exchange-instance transfers page by page.
+    ///
+    /// **Requires auth.** See [`CursorPager`].
+    pub fn intra_exchange_instance_transfers_pager(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> CursorPager<IntraExchangeInstanceTransfer> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
+            })
+        })
+    }
+
+    /// Stream intra-exchange-instance transfers one by one.
+    ///
+    /// **Requires auth.**
+    pub fn stream_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<IntraExchangeInstanceTransfer, KalshiError>> + Send {
+        stream_items(
+            self.intra_exchange_instance_transfers_pager(params),
+            max_items,
+        )
+    }
+
+    /// Fetch all pages for intra-exchange-instance transfers using cursor pagination.
+    pub async fn get_intra_exchange_instance_transfers_all(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<Vec<IntraExchangeInstanceTransfer>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
             }
         })
         .await
