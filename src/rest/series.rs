@@ -46,6 +46,10 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `"fifteen_min"`). Added 2026-07-30. Absent
+    /// when the event has no cadence set.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -53,6 +57,9 @@ pub struct EventMetadata {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Series {
     pub ticker: String,
+    /// Target exchange instance for new events in this series. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub frequency: Option<String>,
     #[serde(default)]

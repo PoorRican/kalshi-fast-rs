@@ -118,6 +118,12 @@ impl<'de> Deserialize<'de> for AnyJson {
     }
 }
 
+/// Standard error body returned by REST endpoints.
+///
+/// The `service` field (naming the internal Kalshi service that produced the
+/// error) was deprecated 2026-07-28 and removed from the OpenAPI schema and
+/// all responses 2026-08-06. It is no longer modeled here; branch on `code`
+/// instead, which is present on every error response.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ErrorResponse {
     #[serde(default)]
@@ -126,8 +132,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---
@@ -137,6 +141,9 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    /// Added to the OpenAPI spec 2026 for combo (multivariate) markets with maker-fee
+    /// discounting.
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,

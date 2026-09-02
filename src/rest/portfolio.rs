@@ -15,14 +15,39 @@ use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
+/// GET /portfolio/balance query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Scope the balance and portfolio value to one exchange index. Added 2026-08-13
+    /// (previously these always covered all exchange indexes). Omit for the pre-scoping
+    /// aggregate behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+}
+
+/// One exchange index's contribution to a balance total. Added 2026-07-02.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i64,
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
     pub portfolio_value: i64,
     pub updated_ts: i64,
-    /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
+    /// Centi-cent precision dollar balance. Added 2026-05-28. Modeled as `Option`
+    /// because the schema historically scoped this to direct members only; see
+    /// `docs/spec-parity.md`.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// Per-exchange-index balance breakdown. Added 2026-07-02. Omitted when using a
+    /// subaccount-restricted API key.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub balance_breakdown: Vec<IndexedBalance>,
 }
 
 /// GET /portfolio/positions query params
@@ -54,6 +79,11 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter to one exchange shard. Omit to return results from all shards. Added
+    /// 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetPositionsParams {
@@ -86,12 +116,15 @@ impl GetPositionsParams {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
     pub ticker: String,
+    /// Exchange shard this position lives on. Required by the schema since exchange
+    /// sharding was introduced, but modeled as `Option` because positions read before
+    /// sharding existed may lack it; see `docs/spec-parity.md`.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
 }
@@ -134,6 +167,11 @@ impl From<GetPositionsResponse> for PositionsPage {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
     pub ticker: String,
+    /// Exchange shard this settlement occurred on. Required by the schema since
+    /// exchange sharding was introduced, but modeled as `Option` for settlements
+    /// predating it; see `docs/spec-parity.md`. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub event_ticker: String,
     pub market_result: String,
     pub yes_count_fp: FixedPointCount,
@@ -176,6 +214,11 @@ pub struct GetSettlementsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
     pub fill_id: String,
+    /// Exchange shard this fill occurred on. Required by the schema since exchange
+    /// sharding was introduced, but modeled as `Option` for fills predating it; see
+    /// `docs/spec-parity.md`. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub order_id: String,
     pub trade_id: String,
     pub ticker: String,
@@ -223,6 +266,10 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter to one exchange shard. Omit to return results from all shards. Added
+    /// 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -236,22 +283,25 @@ pub struct GetFillsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total resting-order value broken down by exchange index. Added 2026-08-20.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub resting_order_value_breakdown: Vec<IndexedBalance>,
 }
 
 impl KalshiRestClient {
     /// Get the account balance.
     ///
+    /// Both `balance` and `portfolio_value` cover all exchange indexes unless
+    /// `params.exchange_index` is set.
+    ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.

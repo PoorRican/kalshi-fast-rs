@@ -91,6 +91,73 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The legacy `/portfolio/orders` order-mutation surface (`POST` create, `DELETE` cancel, `.../amend`,
+  `.../decrease`, `.../orders/batched` create and cancel) was removed from the OpenAPI spec (announced
+  deprecated 2026-06-18, gone by this refresh). `GET /portfolio/orders` and `GET
+  /portfolio/orders/{order_id}` remain. The crate removed `create_order`, `cancel_order`,
+  `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders` and their exclusive
+  request/response types entirely (0.8.0, breaking) rather than keeping them as dead code; use the V2
+  event-order endpoints (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`) instead. A new `cancel_all_orders` /
+  `CancelAllOrdersParams` covers the new `DELETE /portfolio/events/orders` endpoint.
+
+- `exchange_index` (an integer shard identifier) was added across most REST response objects and
+  several WebSocket messages as part of an ongoing exchange-sharding rollout (2026-07/2026-08):
+  `Market`, `MarketPosition`, `Fill`, `Settlement`, `Series`, `EventData`, `MultivariateEventCollection`,
+  `ExchangeIndexStatus`, `WsUserOrder`, `WsFill`, `WsMarketLifecycleV2`, `WsEventLifecycle`. It is
+  modeled as `Option<i64>` everywhere even where the schema marks it required, because records/messages
+  that predate sharding (or exist before a market/event is created) legitimately lack it; "exchange
+  index 0" is the only index in production as of this writing. Several endpoints also gained an
+  `exchange_index` request field for cross-shard auto-routing (`CreateOrderV2Request`,
+  `AmendOrderV2Request`, `DecreaseOrderV2Request`, `CancelOrderV2Params`,
+  `BatchCancelOrderV2RequestOrder`); these are `Option<i32>` (not `u32`) because `-1` is a valid
+  "require auto-routing by ticker" sentinel value, and `DecreaseOrderV2Request` /
+  `BatchCancelOrderV2RequestOrder` / `CancelOrderV2Params` additionally gained a `market_ticker` field
+  used for that auto-routing when `exchange_index` is omitted or `-1`.
+
+- `ErrorResponse.service` (deprecated 2026-07-28) was removed from the OpenAPI schema and all
+  responses by 2026-08-06. The crate removed the field entirely (0.8.0, breaking) rather than keeping
+  it `Option`; branch on `code` instead, which is present on every error response and was already the
+  documented stable contract.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Predictions REST schema 2026-07-09 and
+  are removed from the crate entirely (0.8.0, breaking) rather than kept as `Option`, per the "don't
+  preserve removed fields" refresh policy. `Market.price_level_structure`/`price_ranges` and the
+  fixed-point count/dollar fields remain the canonical replacements.
+
+- The multivariate lookup REST endpoints (`PUT`/`GET .../multivariate_event_collections/{ticker}/lookup`)
+  and the `multivariate` WebSocket channel (message type `multivariate_lookup`) were removed from the
+  API (2026-07-02 through 2026-08-06). The crate removed `get_multivariate_event_collection_lookup_history`,
+  `lookup_tickers_for_market_in_multivariate_event_collection`, their exclusive types, and the
+  `WsChannelV2::Multivariate` / `WsMsgType::Multivariate(Lookup)` / `WsMultivariate*` types entirely
+  (0.8.0, breaking). Use `create_market_in_multivariate_event_collection` to create or resolve a combo
+  market, and `WsChannelV2::MultivariateMarketLifecycle` for multivariate market state changes.
+
+- `GET /exchange/announcements` was removed from the Predictions REST API (2026-07-04). The crate
+  removed `get_exchange_announcements`, `GetExchangeAnnouncementsResponse`, `Announcement`,
+  `AnnouncementType`, and `AnnouncementStatus` entirely (0.8.0, breaking). Use
+  `get_exchange_schedule` for exchange hours.
+
+- `GET /communications/quotes` no longer accepts `market_ticker` or `event_ticker` filters
+  (removed 2026-06-20); the crate removed those two fields from `GetQuotesParams` (0.8.0, breaking).
+  `min_ts`/`max_ts` filters and a `user_filter` (distinct from the existing `rfq_user_filter`) were
+  added in their place. The RFQ-scoped quote actions (`get_rfq_quote`, `delete_rfq_quote`,
+  `accept_rfq_quote`, `confirm_rfq_quote`) were added alongside the deprecated quote-ID-only methods
+  (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`, now `#[deprecated]`), which the
+  OpenAPI spec still documents (`deprecated: true`) but has not removed.
+
+- `pyth_value` is a new authenticated AsyncAPI channel (2026-07-23) that delivers deduplicated Pyth
+  prices by underlying ticker. It mirrors the `cfbenchmarks_value` pattern: `underlying_tickers` (not
+  market tickers) for subscription parameters, `["all"]` for every available underlying, and
+  `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` actions on
+  `update_subscription_v2` for post-subscribe add/remove/discovery, mirroring
+  `SubscribeIndices`/`UnsubscribeIndices`/`Indexlist`.
+
+- `GetBalanceResponse` gained `balance_breakdown: Vec<IndexedBalance>` (per-exchange-index balances,
+  2026-07-02) and `get_balance` now takes `GetBalanceParams { subaccount, exchange_index }` (0.8.0,
+  breaking) instead of no arguments, to scope the read to one exchange index (2026-08-13).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
