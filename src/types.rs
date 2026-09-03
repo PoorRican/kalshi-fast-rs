@@ -126,6 +126,12 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Removed from the live OpenAPI schema 2026-08-06 (deprecated 2026-07-28);
+    /// kept as `Option<String>` so older cached error bodies still parse.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi removed this field from error responses 2026-08-06"
+    )]
     #[serde(default)]
     pub service: Option<String>,
 }

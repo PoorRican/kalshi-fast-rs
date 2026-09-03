@@ -46,6 +46,8 @@ impl<'a> MarketPositionRef<'a> {
     pub fn into_owned(self) -> MarketPosition {
         MarketPosition {
             ticker: self.ticker.into_owned(),
+            // Not present on the WS market_positions payload; REST-only field.
+            exchange_index: 0,
             total_traded_dollars: self.total_traded_dollars.into_owned(),
             position_fp: self.position_fp.into_owned(),
             market_exposure_dollars: self.market_exposure_dollars.into_owned(),

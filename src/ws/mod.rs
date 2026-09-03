@@ -15,13 +15,18 @@
 //! | [`WsChannelV2::Trade`] | No | Public trades |
 //! | [`WsChannelV2::MarketLifecycleV2`] | No | Market open / close / settle events |
 //! | [`WsChannelV2::MultivariateMarketLifecycle`] | No | Multivariate market lifecycle events |
-//! | [`WsChannelV2::Multivariate`] | No | Multivariate market lookups |
 //! | [`WsChannelV2::OrderbookDelta`] | Yes | L2 order-book deltas (requires `market_tickers`) |
 //! | [`WsChannelV2::Fill`] | Yes | Your fills |
 //! | [`WsChannelV2::MarketPositions`] | Yes | Position changes |
 //! | [`WsChannelV2::Communications`] | Yes | RFQs and quotes |
 //! | [`WsChannelV2::OrderGroupUpdates`] | Yes | Order-group lifecycle |
 //! | [`WsChannelV2::UserOrders`] | Yes | User order lifecycle updates |
+//! | [`WsChannelV2::CfbenchmarksValue`] | No | CF Benchmarks index values (~1/sec, with rolling averages) |
+//! | [`WsChannelV2::CfbenchmarksValue5Hz`] | No | CF Benchmarks index values (up to 5/sec, no averages) |
+//! | [`WsChannelV2::PythValue`] | Yes | Real-time Pyth prices for configured underlying tickers |
+//!
+//! The `multivariate` channel (message type `multivariate_lookup`) was removed by Kalshi on
+//! 2026-08-06; use [`WsChannelV2::MultivariateMarketLifecycle`] for multivariate market state.
 //!
 //! # Quick Start — Public Ticker
 //!

@@ -1,9 +1,14 @@
 /// Example of using authenticated REST endpoints:
 /// - Gets balance
-/// - Places an order
+/// - Places an order via the V2 event-order endpoint
+///
+/// Kalshi deprecated the legacy `/portfolio/orders` mutation endpoints
+/// (2026-06-18/25); calls to them now return an error asking callers to
+/// switch to V2. Use `create_order_v2` (lower rate-limit cost, single
+/// fixed-point price + `BookSide`) for new integrations.
 use kalshi_fast::{
-    BuySell, CreateOrderRequest, GetMarketsParams, KalshiAuth, KalshiEnvironment, KalshiRestClient,
-    MarketStatusQuery, OrderType, YesNo,
+    BookSide, CreateOrderV2Request, GetMarketsParams, KalshiAuth, KalshiEnvironment,
+    KalshiRestClient, MarketStatusQuery, SelfTradePreventionType, TimeInForce,
 };
 
 #[tokio::main]
@@ -17,7 +22,9 @@ async fn main() -> anyhow::Result<()> {
     )?;
     let client = KalshiRestClient::new(env).with_auth(auth);
 
-    let balance = client.get_balance().await?;
+    let balance = client
+        .get_balance(kalshi_fast::GetBalanceParams::default())
+        .await?;
     println!(
         "balance: {} portfolio_value: {}",
         balance.balance, balance.portfolio_value
@@ -39,17 +46,24 @@ async fn main() -> anyhow::Result<()> {
 
     println!("market: {}", market.ticker);
 
-    let order = CreateOrderRequest {
+    let order = CreateOrderV2Request {
         ticker: market.ticker,
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Limit),
-        yes_price: Some(1),
-        ..Default::default()
+        side: BookSide::Bid,
+        count: "1".to_string(),
+        price: "0.01".to_string(),
+        time_in_force: TimeInForce::GoodTillCanceled,
+        self_trade_prevention_type: SelfTradePreventionType::TakerAtCross,
+        client_order_id: None,
+        expiration_time: None,
+        post_only: None,
+        cancel_order_on_pause: None,
+        reduce_only: None,
+        subaccount: None,
+        order_group_id: None,
+        exchange_index: None,
     };
 
-    let created = client.create_order(order).await?;
-    println!("order_id: {}", created.order.order_id);
+    let created = client.create_order_v2(order).await?;
+    println!("order_id: {}", created.order_id);
     Ok(())
 }

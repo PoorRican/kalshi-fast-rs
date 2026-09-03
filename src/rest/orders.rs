@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter results by exchange shard. Omit to return results from all
+    /// exchange shards. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +124,9 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Identifier for the exchange shard this order lives on. Added 2026.
+    #[serde(default)]
+    pub exchange_index: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -402,6 +410,9 @@ pub struct OrderGroup {
     #[serde(default)]
     pub contracts_limit_fp: Option<FixedPointCount>,
     pub is_auto_cancel_enabled: bool,
+    /// Identifier for the exchange shard this order group lives on. Added 2026-08-13.
+    #[serde(default)]
+    pub exchange_index: i64,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -414,6 +425,10 @@ pub struct CreateOrderGroupRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// Identifier for the exchange shard to create the group on. Defaults to 0.
+    /// Added 2026-08-13.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -422,6 +437,10 @@ pub struct CreateOrderGroupResponse {
     /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
     #[serde(default)]
     pub subaccount: Option<u32>,
+    /// Identifier for the exchange shard this order group was created on.
+    /// Added 2026-08-13.
+    #[serde(default)]
+    pub exchange_index: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -433,6 +452,9 @@ pub struct GetOrderGroupResponse {
     pub contracts_limit_fp: Option<FixedPointCount>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub orders: Vec<Order>,
+    /// Identifier for the exchange shard this order group lives on. Added 2026-08-13.
+    #[serde(default)]
+    pub exchange_index: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -691,7 +713,13 @@ pub struct BatchCancelOrdersV2Response {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
-    pub subtrader_id: String,
+    /// Required unless `client_order_ids` is supplied. Added optional 2026-09-03.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
+    /// Comma-separated client order IDs (max 100). Required unless
+    /// `subtrader_id` is supplied. Added 2026-09-03.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_order_ids: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -742,6 +770,14 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    ///
+    /// **Deprecated by Kalshi 2026-06-18/25**: this legacy endpoint now
+    /// returns an error asking callers to switch to the V2 endpoint. Use
+    /// [`create_order_v2`](Self::create_order_v2) instead.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi deprecated legacy /portfolio/orders mutation endpoints 2026-06-18/25; use create_order_v2"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +791,14 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    ///
+    /// **Deprecated by Kalshi 2026-06-18/25**: this legacy endpoint now
+    /// returns an error asking callers to switch to the V2 endpoint. Use
+    /// [`cancel_order_v2`](Self::cancel_order_v2) instead.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi deprecated legacy /portfolio/orders mutation endpoints 2026-06-18/25; use cancel_order_v2"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +815,13 @@ impl KalshiRestClient {
         .await
     }
 
+    /// **Deprecated by Kalshi 2026-06-18/25**: this legacy endpoint now
+    /// returns an error asking callers to switch to the V2 endpoint. Use
+    /// [`amend_order_v2`](Self::amend_order_v2) instead.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi deprecated legacy /portfolio/orders mutation endpoints 2026-06-18/25; use amend_order_v2"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +832,13 @@ impl KalshiRestClient {
             .await
     }
 
+    /// **Deprecated by Kalshi 2026-06-18/25**: this legacy endpoint now
+    /// returns an error asking callers to switch to the V2 endpoint. Use
+    /// [`decrease_order_v2`](Self::decrease_order_v2) instead.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi deprecated legacy /portfolio/orders mutation endpoints 2026-06-18/25; use decrease_order_v2"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +861,13 @@ impl KalshiRestClient {
         .await
     }
 
+    /// **Deprecated by Kalshi 2026-06-18/25**: this legacy endpoint now
+    /// returns an error asking callers to switch to the V2 endpoint. Use
+    /// [`batch_create_orders_v2`](Self::batch_create_orders_v2) instead.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi deprecated legacy /portfolio/orders mutation endpoints 2026-06-18/25; use batch_create_orders_v2"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +877,13 @@ impl KalshiRestClient {
             .await
     }
 
+    /// **Deprecated by Kalshi 2026-06-18/25**: this legacy endpoint now
+    /// returns an error asking callers to switch to the V2 endpoint. Use
+    /// [`batch_cancel_orders_v2`](Self::batch_cancel_orders_v2) instead.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi deprecated legacy /portfolio/orders mutation endpoints 2026-06-18/25; use batch_cancel_orders_v2"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -899,10 +971,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
@@ -1003,6 +1076,26 @@ impl KalshiRestClient {
         let path = Self::full_path("/portfolio/events/orders/batched");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
+    }
+
+    /// Cancel all resting event-market orders across every exchange shard.
+    /// If `subaccount` is omitted, matching orders may come from any
+    /// subaccount. Added 2026-08-27.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders_v2(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
     }
 
     /// Cancel a batch of orders via the V2 event-order endpoint.

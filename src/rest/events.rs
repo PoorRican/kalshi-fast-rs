@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, SettlementSource};
+use crate::types::{EventStatus, deserialize_null_as_empty_vec, serialize_csv_opt};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -29,8 +29,21 @@ pub struct GetEventsParams {
     pub status: Option<EventStatus>, // open|closed|settled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+
+    /// Comma-separated list of event tickers to retrieve. Added 2026-06-18.
+    #[serde(
+        rename = "tickers",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub event_tickers: Option<Vec<String>>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
@@ -102,6 +115,12 @@ pub struct EventData {
     pub sub_title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Deprecated 2026-08-27. No longer populated and always returns `false`;
+    /// scheduled for removal in a future Kalshi release.
+    #[deprecated(
+        since = "0.8.0",
+        note = "Kalshi deprecated this field 2026-08-27; it no longer reflects broker availability and always returns false"
+    )]
     #[serde(default)]
     pub available_on_brokers: Option<bool>,
     #[serde(default)]
@@ -146,6 +165,21 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official sources used for determination of markets within this event.
+    /// Distinct from `product_metadata.settlement_sources`. Added 2026-06-18.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    /// Fee type override for this event; takes precedence over the series-level
+    /// fee for this event's markets. Added 2026-07-30.
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Fee multiplier override for this event, paired with `fee_type_override`.
+    /// Added 2026-07-30.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
+    /// Identifier for the exchange shard this event lives on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: i64,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
