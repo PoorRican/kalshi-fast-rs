@@ -5,6 +5,7 @@
 //! post-trade accounting feeds.
 
 use crate::KalshiError;
+use crate::rest::account::EmptyResponse;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
@@ -15,6 +16,15 @@ use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
+/// Balance for a single exchange index. Shared shape for
+/// `GetBalanceResponse.balance_breakdown` and
+/// `GetPortfolioRestingOrderTotalValueResponse.resting_order_value_breakdown`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i64,
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
@@ -23,6 +33,24 @@ pub struct GetBalanceResponse {
     /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// Balance broken down per exchange instance. Omitted only when using a
+    /// subaccount-restricted API key. Added 2026-08-20 (per-index balances).
+    #[serde(default)]
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
+}
+
+/// `GET /portfolio/balance` query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    /// Subaccount number (0 for primary, 1-63 for subaccounts). Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Scope `balance` and `portfolio_value` to this exchange index. If
+    /// omitted, both include all exchange indexes. Added 2026-07-02
+    /// (Aug 2026 revision — passing `subaccount` explicitly, including `0`,
+    /// now returns that subaccount's balance on the requested index).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 /// GET /portfolio/positions query params
@@ -44,16 +72,18 @@ pub struct GetPositionsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
 
-    /// CSV max 10
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_csv_opt"
-    )]
-    pub event_ticker: Option<Vec<String>>,
+    /// Only a single event ticker is supported by this endpoint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
 
-    /// 0..=32
+    /// 0..=63
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter by exchange shard. Omit to return results from all exchange
+    /// shards. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 impl GetPositionsParams {
@@ -65,18 +95,11 @@ impl GetPositionsParams {
                 "GET /portfolio/positions: limit must be 1..=1000".to_string(),
             ));
         }
-        if let Some(evts) = &self.event_ticker
-            && evts.len() > 10
-        {
-            return Err(KalshiError::InvalidParams(
-                "GET /portfolio/positions: event_ticker supports up to 10 tickers".to_string(),
-            ));
-        }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -86,12 +109,13 @@ impl GetPositionsParams {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
     pub ticker: String,
+    /// Identifier for the exchange shard this position lives on. Added
+    /// 2026-08.
+    pub exchange_index: i64,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
 }
@@ -134,6 +158,9 @@ impl From<GetPositionsResponse> for PositionsPage {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
     pub ticker: String,
+    /// Identifier for the exchange shard this settlement occurred on. Added
+    /// 2026-08-20.
+    pub exchange_index: i64,
     pub event_ticker: String,
     pub market_result: String,
     pub yes_count_fp: FixedPointCount,
@@ -176,6 +203,9 @@ pub struct GetSettlementsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
     pub fill_id: String,
+    /// Identifier for the exchange shard this fill occurred on. Added
+    /// 2026-08-20.
+    pub exchange_index: i64,
     pub order_id: String,
     pub trade_id: String,
     pub ticker: String,
@@ -220,9 +250,11 @@ pub struct GetFillsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter by exchange shard. Omit to return results from all exchange
+    /// shards. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -236,22 +268,138 @@ pub struct GetFillsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total resting-order value broken down by exchange index, each
+    /// balance as a fixed-point dollar string. Added 2026-08-20.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub resting_order_value_breakdown: Vec<IndexedBalance>,
+}
+
+/// Request body for `POST /portfolio/intra_exchange_instance_transfer`.
+/// Added 2026-08-13 (endpoint) / 2026-08-20 (`source_subaccount` /
+/// `destination_subaccount`).
+///
+/// `source` / `destination` are kept as raw strings (`"event_contract"` |
+/// `"margined"`) rather than a typed enum so any future exchange-instance
+/// value round-trips losslessly without a crate update.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    pub source: String,
+    pub destination: String,
+    /// Amount to transfer, in centi-cents.
+    pub amount: i64,
+    /// Source exchange shard index (0-100). Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<i32>,
+    /// Destination exchange shard index (0-100). Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<i32>,
+    /// Source subaccount number. Only supported for event-contract to
+    /// event-contract transfers. Defaults to 0 (primary account).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<i32>,
+    /// Destination subaccount number. Only supported for event-contract to
+    /// event-contract transfers. Defaults to 0 (primary account).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntraExchangeInstanceTransferStatus {
+    Pending,
+    Complete,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    pub source: String,
+    pub destination: String,
+    pub source_exchange_shard: i64,
+    pub destination_exchange_shard: i64,
+    pub amount: FixedPointDollars,
+    pub status: IntraExchangeInstanceTransferStatus,
+    pub created_ts: i64,
+}
+
+/// `GET /portfolio/intra_exchange_instance_transfers` query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>, // default 100, max 500
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
+}
+
+/// One exchange index's target share of sweepable balance.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TargetBalanceAllocation {
+    pub exchange_index: i64,
+    /// Target percentage (0-100) of sweepable balance for this exchange index.
+    pub percent: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetTargetBalanceAllocationResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub allocations: Vec<TargetBalanceAllocation>,
+}
+
+/// Collateral an automatic rebalance leaves behind for resting orders. `Max`
+/// reserves the largest single market-side commitment; `Sum` (the default)
+/// reserves the summed margin of every resting order.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestingMarginReservation {
+    Max,
+    Sum,
+}
+
+/// Request body for `POST /portfolio/target_balance_allocation`. Replaces
+/// the caller's target balance allocation; percentages must total 100.
+/// Passing an empty `allocations` disables automatic rebalancing. Added
+/// 2026-08-20 (`resting_margin_reservation` added 2026-09-03).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SetTargetBalanceAllocationRequest {
+    pub allocations: Vec<TargetBalanceAllocation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resting_margin_reservation: Option<RestingMarginReservation>,
 }
 
 impl KalshiRestClient {
-    /// Get the account balance.
+    /// Get the account balance and portfolio value. Both values cover all
+    /// exchange indexes unless `params.exchange_index` is set. Pass
+    /// `params.subaccount` to use a subaccount instead of the primary
+    /// account.
     ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.
@@ -386,5 +534,120 @@ impl KalshiRestClient {
         max_items: Option<usize>,
     ) -> impl Stream<Item = Result<Settlement, KalshiError>> + Send {
         stream_items(self.settlements_pager(params), max_items)
+    }
+
+    /// Transfer funds within the same account, optionally across exchange
+    /// indexes and/or subaccounts. When source and destination shards match,
+    /// this is treated as a subaccount transfer. Added 2026-08-13.
+    ///
+    /// **Requires auth.**
+    pub async fn create_intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List intra-exchange account transfer history. Supports cursor
+    /// pagination. Added 2026-08-13.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get a single intra-account transfer by id. Added 2026-08-13.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Create a pager for iterating over intra-exchange transfers page by page.
+    ///
+    /// **Requires auth.** See [`CursorPager`].
+    pub fn intra_exchange_instance_transfers_pager(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> CursorPager<IntraExchangeInstanceTransfer> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
+            })
+        })
+    }
+
+    /// Stream intra-exchange transfers one by one.
+    ///
+    /// **Requires auth.**
+    pub fn stream_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<IntraExchangeInstanceTransfer, KalshiError>> + Send {
+        stream_items(
+            self.intra_exchange_instance_transfers_pager(params),
+            max_items,
+        )
+    }
+
+    /// Get the caller's target balance allocation across exchange indexes.
+    /// Added 2026-08-20.
+    ///
+    /// **Requires auth.**
+    pub async fn get_target_balance_allocation(
+        &self,
+    ) -> Result<GetTargetBalanceAllocationResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Replace the caller's target balance allocation across exchange
+    /// indexes. Percentages must total 100; an empty `allocations` disables
+    /// automatic rebalancing. Added 2026-08-20.
+    ///
+    /// **Requires auth.**
+    pub async fn set_target_balance_allocation(
+        &self,
+        body: SetTargetBalanceAllocationRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
     }
 }

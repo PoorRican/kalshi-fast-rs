@@ -118,6 +118,12 @@ impl<'de> Deserialize<'de> for AnyJson {
     }
 }
 
+/// Error body returned by the REST API.
+///
+/// The `service` field (naming the internal Kalshi service that produced the
+/// error) was deprecated 2026-07-28 and removed from every error response
+/// 2026-08-06; it is no longer modeled. Branch on `code`, which is present on
+/// every error response.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ErrorResponse {
     #[serde(default)]
@@ -126,8 +132,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---

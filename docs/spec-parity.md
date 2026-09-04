@@ -91,6 +91,84 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **2026-06-08 → 2026-09-10 refresh (0.8.0).** The margin exchange (all `/margin/*` endpoints and
+  `margin_*` WebSocket fields other than `/margin/fee_tiers`) and the FIX API are explicitly out of
+  scope for this crate (REST + WebSocket only, per `CLAUDE.md`); the large volume of Margin- and
+  FIX-tagged changelog entries in this window required no code changes. See `CHANGELOG.md` for the
+  full per-entry disposition table.
+
+- `PUT /multivariate_event_collections/{ticker}/lookup`, the lookup-history endpoint, and the
+  `multivariate` WebSocket channel (`multivariate_lookup` message) were removed 2026-08-06 after
+  deprecation on 2026-07-02. All three are removed from the crate; use
+  `create_market_in_multivariate_event_collection`, which already returns the resolved market
+  ticker, instead of a separate lookup call.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the REST schema 2026-07-09 and are removed
+  from the crate. The WebSocket `market_lifecycle_v2` message's `fractional_trading_enabled` field
+  (and the corresponding `FractionalTradingUpdated` lifecycle event type) is also gone from the
+  current AsyncAPI schema and was removed to match. Two previously-unused, incorrectly-shaped types
+  (`ws::types::MarketPositionRef` / `EventPositionRef`, which mirrored the REST `MarketPosition`
+  shape rather than the real `market_position` WebSocket payload) were deleted as dead code while
+  making this change; the correct type for that channel has always been
+  `ws::types::WsMarketPositionRef`.
+
+- The `service` field on REST error bodies was deprecated 2026-07-28 and removed 2026-08-06.
+  `ErrorResponse.service` is removed from the crate; branch on `code` instead, which is present on
+  every error response.
+
+- `GET /exchange/announcements` was removed from the REST API 2026-07-04. `get_exchange_announcements`
+  and the `Announcement*` types are removed from the crate; use `get_exchange_schedule` for exchange
+  hours.
+
+- `GET /communications/quotes` no longer accepts `market_ticker` / `event_ticker` filters
+  (removed 2026-06-20); `GetQuotesParams` no longer has these fields. `min_ts` / `max_ts` (added
+  2026-06-18) replace them for narrowing by time. RFQ-scoped quote actions
+  (`get_rfq_quote`/`delete_rfq_quote`/`accept_rfq_quote`/`confirm_rfq_quote`, added 2026-06-25) are
+  preferred over the quote-ID-only equivalents, which are marked `#[deprecated]`: per the 2026-06-25
+  changelog entry, a quote is no longer guaranteed queryable by ID alone unless it has reached a
+  post-acceptance state (`accepted`, `confirmed`, `executed`).
+
+- `exchange_index` was added across the REST and WebSocket surface as Kalshi's exchange sharding
+  rolled out (`Fill`, `Settlement`, `MarketPosition`, `IndexedBalance`, `WsFill`, `WsUserOrder`, the
+  WebSocket lifecycle messages, etc.). Where the field is required in the live spec on a struct whose
+  sibling required fields are already modeled as non-`Option`, it is added as non-`Option`; on
+  structs (like `WsUserOrder`) where sibling required fields are already `Option` for resilience, it
+  follows that existing convention instead.
+
+- `GetPositionsParams.event_ticker` was corrected from `Option<Vec<String>>` (a CSV of up to 10
+  tickers) to `Option<String>`: `GET /portfolio/positions` has only ever accepted a single
+  `event_ticker`, unlike `GET /portfolio/orders`, which does accept a CSV of up to 10 and correctly
+  keeps `Option<Vec<String>>`. Historical positions (`get_historical_positions`) shares the
+  single-ticker shape. `GetFillsParams.event_ticker` was removed outright: `GET /portfolio/fills` has
+  never accepted an `event_ticker` query parameter.
+- The `subaccount` upper bound used by client-side validation (`GetPositionsParams`,
+  `GetOrdersParams`, `CreateOrderRequest`) was corrected from 32 to 63, matching the documented
+  0–63 subaccount range everywhere else in the spec (`SubaccountQuery`, `POST /api_keys`, etc.); the
+  32 bound was rejecting valid subaccounts 33–63.
+
+- `EventData.product_metadata` and `GET /events/{event_ticker}/metadata` share the `EventMetadata`
+  Rust type, but the OpenAPI spec types `product_metadata` as a free-form object with no fixed
+  schema. Only fields confirmed to appear there (currently `cadence`, added 2026-07-30) are promoted
+  to named fields on `EventMetadata`; anything else lands in `extra`.
+
+- `cfbenchmarks_value_5hz` (added 2026-09-03) is the high-frequency, authenticated sibling of the
+  public `cfbenchmarks_value` channel: raw ticks with no windowed-average metadata, up to 5/sec.
+  It reuses the `index_ids` subscription mechanic and `WsUpdateAction::SubscribeIndices` /
+  `UnsubscribeIndices` / `Indexlist` actions (both channels take the same `index_ids` shape and the
+  `indexlist` response shape is identical), modeled by `WsCfBenchmarksValue5Hz` and the existing
+  `WsCfBenchmarksIndexList`.
+- `pyth_value` (added 2026-07-23) is a new authenticated channel for real-time Pyth prices by
+  underlying ticker, using its own `underlying_tickers` subscription field and
+  `WsUpdateAction::SubscribeUnderlyings` / `UnsubscribeUnderlyings` / `UnderlyingList` actions
+  (mirroring the CF Benchmarks index-action pattern), modeled by `WsPythValue` /
+  `WsPythUnderlyingList`.
+
+- `POST /portfolio/intra_exchange_instance_transfer` and the target-balance-allocation endpoints
+  keep `source` / `destination` (`IntraExchangeInstanceTransferRequest` /
+  `IntraExchangeInstanceTransfer`) as raw strings rather than a typed `event_contract` | `margined`
+  enum, for the same forward-compatibility reason as `ApiUsageLevelGrant.exchange_instance`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -11,6 +11,9 @@ pub struct WsFill {
     pub client_order_id: Option<String>,
     #[serde(alias = "ticker")]
     pub market_ticker: String,
+    /// Identifier for the exchange shard where the fill occurred. Added
+    /// 2026-08-20.
+    pub exchange_index: i64,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -49,6 +52,9 @@ pub struct WsFillRef<'a> {
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(alias = "ticker", borrow)]
     pub market_ticker: Cow<'a, str>,
+    /// Identifier for the exchange shard where the fill occurred. Added
+    /// 2026-08-20.
+    pub exchange_index: i64,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -86,6 +92,7 @@ impl<'a> WsFillRef<'a> {
             order_id: self.order_id.into_owned(),
             client_order_id: self.client_order_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             side: self.side,
             action: self.action,
             outcome_side: self.outcome_side,
@@ -114,6 +121,7 @@ mod tests {
             "trade_id":"t",
             "order_id":"o",
             "market_ticker":"T",
+            "exchange_index":0,
             "side":"no",
             "action":"buy",
             "count_fp":"1",
@@ -136,6 +144,7 @@ mod tests {
             "trade_id":"t",
             "order_id":"o",
             "market_ticker":"T",
+            "exchange_index":0,
             "outcome_side":"yes",
             "book_side":"bid",
             "count_fp":"1",

@@ -55,7 +55,50 @@ impl<'a> WsCfBenchmarksValueRef<'a> {
     }
 }
 
-/// Response to the `indexlist` action on a `cfbenchmarks_value` subscription.
+/// Message payload for the `cfbenchmarks_value_5hz` WebSocket channel.
+/// Unlike `cfbenchmarks_value`, ticks are raw (no windowed-average
+/// metadata) and stream at up to 5 updates/second. Added 2026-09-03.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsCfBenchmarksValue5Hz {
+    /// CF Benchmarks index ID (e.g. `"BRTI"`).
+    pub index_id: String,
+    /// Index value in USD, formatted with exactly 8 decimal places.
+    pub value_usd: String,
+    /// Upstream publication timestamp of the tick (unix ms).
+    pub source_ts_ms: i64,
+    /// When Kalshi received the upstream frame (unix ms).
+    pub received_at: i64,
+    /// The raw CF Benchmarks JSON frame, as a string.
+    pub data: String,
+}
+
+/// Borrowed version of [`WsCfBenchmarksValue5Hz`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsCfBenchmarksValue5HzRef<'a> {
+    #[serde(borrow)]
+    pub index_id: Cow<'a, str>,
+    #[serde(borrow)]
+    pub value_usd: Cow<'a, str>,
+    pub source_ts_ms: i64,
+    pub received_at: i64,
+    #[serde(borrow)]
+    pub data: Cow<'a, str>,
+}
+
+impl<'a> WsCfBenchmarksValue5HzRef<'a> {
+    pub fn into_owned(self) -> WsCfBenchmarksValue5Hz {
+        WsCfBenchmarksValue5Hz {
+            index_id: self.index_id.into_owned(),
+            value_usd: self.value_usd.into_owned(),
+            source_ts_ms: self.source_ts_ms,
+            received_at: self.received_at,
+            data: self.data.into_owned(),
+        }
+    }
+}
+
+/// Response to the `indexlist` action on a `cfbenchmarks_value` or
+/// `cfbenchmarks_value_5hz` subscription (same shape on both channels).
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsCfBenchmarksIndexList {
     pub index_ids: Vec<String>,
@@ -72,6 +115,68 @@ impl<'a> WsCfBenchmarksIndexListRef<'a> {
     pub fn into_owned(self) -> WsCfBenchmarksIndexList {
         WsCfBenchmarksIndexList {
             index_ids: self.index_ids.into_iter().map(Cow::into_owned).collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ws::types::{WsDataMessageRef, WsDataMessageV2, WsMessageRef, WsMessageV2};
+
+    #[test]
+    fn cfbenchmarks_value_5hz_parses_owned_and_borrowed() {
+        let json = r#"{
+            "type": "cfbenchmarks_value_5hz",
+            "sid": 1,
+            "seq": 2,
+            "msg": {
+                "index_id": "BRTI",
+                "value_usd": "68000.12345678",
+                "source_ts_ms": 1700000000000,
+                "received_at": 1700000000010,
+                "data": "{\"raw\":true}"
+            }
+        }"#;
+
+        let owned: WsMessageV2 = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match owned {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5hz { sid, seq, msg }) => {
+                assert_eq!(sid, Some(1));
+                assert_eq!(seq, Some(2));
+                assert_eq!(msg.index_id, "BRTI");
+                assert_eq!(msg.value_usd, "68000.12345678");
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+
+        let borrowed: WsMessageRef = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match borrowed {
+            WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValue5hz { msg, .. }) => {
+                assert_eq!(msg.index_id, "BRTI");
+                assert_eq!(msg.source_ts_ms, 1700000000000);
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cfbenchmarks_value_5hz_indexlist_parses() {
+        let json = r#"{
+            "type": "cfbenchmarks_value_5hz_indexlist",
+            "sid": 1,
+            "seq": 3,
+            "msg": {"index_ids": ["BRTI", "ETHUSD_RTI"]}
+        }"#;
+
+        let owned: WsMessageV2 = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match owned {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5hzIndexlist { msg, .. }) => {
+                assert_eq!(
+                    msg.index_ids,
+                    vec!["BRTI".to_string(), "ETHUSD_RTI".to_string()]
+                );
+            }
+            other => panic!("unexpected message: {other:?}"),
         }
     }
 }

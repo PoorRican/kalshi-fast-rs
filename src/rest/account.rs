@@ -71,6 +71,42 @@ pub struct GetAccountEndpointCostsResponse {
     pub endpoint_costs: Vec<EndpointTokenCost>,
 }
 
+/// One volume-based API usage tier's progress goal. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal is for (e.g. `"expert"`).
+    pub level: String,
+    /// Trailing 30d fixed-point contract volume required to earn this tier.
+    pub earn_volume_goal_fp: String,
+    /// Trailing 30d fixed-point contract volume required to keep this tier.
+    pub keep_volume_goal_fp: String,
+}
+
+/// Trading volume progress toward volume-based API usage tiers, as of one
+/// cron computation. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) this progress snapshot was computed at.
+    pub computed_ts: i64,
+    /// Trailing 30-day fixed-point contract volume, ending at `computed_ts`.
+    pub trailing_30d_volume_fp: String,
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
+/// Request body for `POST /portfolio/subaccounts`. Added 2026-06 (optional
+/// `exchange_index`, defaults to 0).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CreateSubaccountRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateSubaccountResponse {
     pub subaccount_number: u32,
@@ -79,6 +115,9 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on. Added 2026-07-02 (one balance
+    /// per exchange index instead of a single combined row).
+    pub exchange_index: i64,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -146,6 +185,15 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, the key is restricted to this single sub-account (0-63) and
+    /// may only read and trade on it. `None` means the key is unrestricted.
+    /// Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u8>,
+    /// If set, the key is bound to this single FCM subtrader and denied on
+    /// every REST endpoint (FIX/margin-WebSocket credential only).
+    #[serde(default)]
+    pub fcm_subtrader_id: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -154,14 +202,27 @@ pub struct ApiKey {
 pub struct GetApiKeysResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub api_keys: Vec<ApiKey>,
+    /// Unix timestamp (seconds) when the account's location attestation for
+    /// API key requests expires; absent if the account has never attested.
+    /// Added 2026-08-16.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateApiKeyRequest {
     pub name: String,
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63) you own. Mutually
+    /// exclusive with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u8>,
+    /// FCM members only: bind the key to a single FCM subtrader. Mutually
+    /// exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -171,11 +232,19 @@ pub struct CreateApiKeyResponse {
     pub extra: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63) you own. Mutually
+    /// exclusive with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u8>,
+    /// FCM members only: bind the key to a single FCM subtrader. Mutually
+    /// exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -243,11 +312,31 @@ impl KalshiRestClient {
         .await
     }
 
-    /// Create a new subaccount.
+    /// Get trailing 30-day volume progress toward volume-based API usage
+    /// tiers (Expert, Premier, Paragon, Prime, Prestige). Added 2026-06-11.
     ///
     /// **Requires auth.**
-    pub async fn create_subaccount(&self) -> Result<CreateSubaccountResponse, KalshiError> {
-        let path = Self::full_path("/portfolio/subaccounts");
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-promote to a permanent Advanced API usage-level grant. Requires
+    /// at least one of the user's last 100 Predictions orders to have been
+    /// created via API. Added 2026-06-11.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
         self.send(
             Method::POST,
             &path,
@@ -256,6 +345,18 @@ impl KalshiRestClient {
             true,
         )
         .await
+    }
+
+    /// Create a new subaccount.
+    ///
+    /// **Requires auth.**
+    pub async fn create_subaccount(
+        &self,
+        body: CreateSubaccountRequest,
+    ) -> Result<CreateSubaccountResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/subaccounts");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
     }
 
     /// Get balances for all subaccounts.

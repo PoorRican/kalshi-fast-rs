@@ -61,6 +61,18 @@ pub struct Quote {
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_contracts_fp: Option<FixedPointCount>,
+    /// Whether the quote creator's order is post-only (visible when the
+    /// caller is the quote creator).
+    #[serde(default)]
+    pub post_only: Option<bool>,
+    /// Subaccount number of the quote creator (visible when the caller is
+    /// the quote creator).
+    #[serde(default)]
+    pub creator_subaccount: Option<i64>,
+    /// Subaccount number of the RFQ creator (visible when the caller is the
+    /// RFQ creator).
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -85,6 +97,10 @@ pub struct RFQ {
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
+    /// Subaccount number of the RFQ creator (visible when the caller is the
+    /// RFQ creator).
+    #[serde(default)]
+    pub creator_subaccount: Option<i64>,
     #[serde(default)]
     pub cancelled_ts: Option<String>,
     #[serde(default)]
@@ -97,10 +113,15 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restrict to quotes last updated after this Unix timestamp. Added
+    /// 2026-06-18. `market_ticker`/`event_ticker` filtering was removed from
+    /// this endpoint 2026-06-20; filter by RFQ, user, status, or time instead.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
+    pub min_ts: Option<i64>,
+    /// Restrict to quotes last updated before this Unix timestamp. Added
+    /// 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -278,6 +299,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated 2026-06-25 in favor of [`Self::get_rfq_quote`], which
+    /// scopes the lookup to its RFQ. Quotes are no longer guaranteed
+    /// queryable by ID alone unless in a post-acceptance state.
+    #[deprecated(since = "0.8.0", note = "use `get_rfq_quote` instead")]
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,6 +315,9 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated 2026-06-25 in favor of [`Self::delete_rfq_quote`], which
+    /// scopes the action to its RFQ.
+    #[deprecated(since = "0.8.0", note = "use `delete_rfq_quote` instead")]
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -302,6 +330,9 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated 2026-06-25 in favor of [`Self::accept_rfq_quote`], which
+    /// scopes the action to its RFQ.
+    #[deprecated(since = "0.8.0", note = "use `accept_rfq_quote` instead")]
     pub async fn accept_quote(
         &self,
         quote_id: &str,
@@ -312,8 +343,76 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated 2026-06-25 in favor of [`Self::confirm_rfq_quote`], which
+    /// scopes the action to its RFQ.
+    #[deprecated(since = "0.8.0", note = "use `confirm_rfq_quote` instead")]
     pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Get a quote scoped to its RFQ. The quote must belong to `rfq_id`, or
+    /// a 404 is returned. Added 2026-06-25 (RFQ-scoped quote actions);
+    /// prefer this over [`Self::get_quote`], since quotes are no longer
+    /// guaranteed queryable by ID alone unless in a post-acceptance state.
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Delete a quote scoped to its RFQ. Added 2026-06-25.
+    pub async fn delete_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Accept a quote scoped to its RFQ. Added 2026-06-25.
+    pub async fn accept_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/accept"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote scoped to its RFQ. Added 2026-06-25.
+    pub async fn confirm_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm"
+        ));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await

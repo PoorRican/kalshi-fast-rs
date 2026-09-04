@@ -34,9 +34,7 @@
 
 mod common;
 
-use kalshi_fast::{
-    CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, KalshiRestClient, MarketStatusQuery,
-};
+use kalshi_fast::{CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, MarketStatusQuery};
 use std::time::Duration;
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -177,24 +175,24 @@ async fn test_quote_lifecycle() {
 
     let quote_id = quote_resp.id.clone();
 
-    // 3. Get the quote and verify
+    // 3. Get the quote (RFQ-scoped) and verify
     let get_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_quote(&quote_id).await
+        client.get_rfq_quote(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")
-    .expect("get_quote failed");
+    .expect("get_rfq_quote failed");
 
     assert_eq!(get_resp.quote.id, quote_id);
     assert_eq!(get_resp.quote.rfq_id, rfq_id);
 
-    // 4. Delete the quote (cleanup)
+    // 4. Delete the quote (RFQ-scoped, cleanup)
     let _delete_quote = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.delete_quote(&quote_id).await
+        client.delete_rfq_quote(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")
-    .expect("delete_quote failed");
+    .expect("delete_rfq_quote failed");
 
     // 5. Delete the RFQ (cleanup)
     let _delete_rfq = tokio::time::timeout(common::TEST_TIMEOUT, async {
