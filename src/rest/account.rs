@@ -71,6 +71,15 @@ pub struct GetAccountEndpointCostsResponse {
     pub endpoint_costs: Vec<EndpointTokenCost>,
 }
 
+/// POST /portfolio/subaccounts request body. Entirely optional.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CreateSubaccountRequest {
+    /// Exchange shard to create the subaccount on. Defaults to 0. Added
+    /// 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateSubaccountResponse {
     pub subaccount_number: u32,
@@ -82,6 +91,10 @@ pub struct SubaccountBalance {
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
+    /// Identifier for the exchange shard this balance is on. Added
+    /// 2026-07-02.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -96,6 +109,10 @@ pub struct ApplySubaccountTransferRequest {
     pub from_subaccount: u32,
     pub to_subaccount: u32,
     pub amount_cents: i64,
+    /// Exchange shard to apply the transfer on. Defaults to 0. Added
+    /// 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
@@ -146,6 +163,15 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, this key is restricted to a single sub-account (0-63) and may
+    /// only read and trade on it. Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
+    /// If set, this key is bound to this single FCM subtrader and is usable
+    /// only as that institution's trading credential (FIX / margin WebSocket
+    /// only; every REST endpoint is denied).
+    #[serde(default)]
+    pub fcm_subtrader_id: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -154,28 +180,53 @@ pub struct ApiKey {
 pub struct GetApiKeysResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub api_keys: Vec<ApiKey>,
+    /// Unix timestamp (seconds) when the account's location attestation for
+    /// API key requests expires. Absent when the account has never attested.
+    /// Added 2026-08-16.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateApiKeyRequest {
     pub name: String,
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict this key to a single sub-account (0-63) you own. Mutually
+    /// exclusive with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind this key to a single FCM subtrader you own.
+    /// Mutually exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateApiKeyResponse {
     pub api_key_id: String,
+    /// Present only when the minted key is bound to an FCM subtrader with no
+    /// initial-margin cap at any scope.
+    #[serde(default)]
+    pub warning: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict this key to a single sub-account (0-63) you own. Mutually
+    /// exclusive with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind this key to a single FCM subtrader you own.
+    /// Mutually exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -190,6 +241,9 @@ pub struct GenerateApiKeyResponse {
 pub struct SubaccountQueryParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Exchange shard the request targets. Defaults to 0. Added 2026-08-06.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,16 +300,13 @@ impl KalshiRestClient {
     /// Create a new subaccount.
     ///
     /// **Requires auth.**
-    pub async fn create_subaccount(&self) -> Result<CreateSubaccountResponse, KalshiError> {
+    pub async fn create_subaccount(
+        &self,
+        body: CreateSubaccountRequest,
+    ) -> Result<CreateSubaccountResponse, KalshiError> {
         let path = Self::full_path("/portfolio/subaccounts");
-        self.send(
-            Method::POST,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
     }
 
     /// Get balances for all subaccounts.

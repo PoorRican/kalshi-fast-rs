@@ -2,8 +2,8 @@
 /// - Gets balance
 /// - Places an order
 use kalshi_fast::{
-    BuySell, CreateOrderRequest, GetMarketsParams, KalshiAuth, KalshiEnvironment, KalshiRestClient,
-    MarketStatusQuery, OrderType, YesNo,
+    BuySell, CreateOrderRequest, GetBalanceParams, GetMarketsParams, KalshiAuth, KalshiEnvironment,
+    KalshiRestClient, MarketStatusQuery, OrderType, YesNo,
 };
 
 #[tokio::main]
@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
     )?;
     let client = KalshiRestClient::new(env).with_auth(auth);
 
-    let balance = client.get_balance().await?;
+    let balance = client.get_balance(GetBalanceParams::default()).await?;
     println!(
         "balance: {} portfolio_value: {}",
         balance.balance, balance.portfolio_value
@@ -49,6 +49,9 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    // create_order is deprecated in favor of create_order_v2 (cheaper
+    // rate-limit cost); kept here to demonstrate the legacy shape.
+    #[allow(deprecated)]
     let created = client.create_order(order).await?;
     println!("order_id: {}", created.order.order_id);
     Ok(())

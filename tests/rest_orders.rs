@@ -1,4 +1,6 @@
 #![cfg(feature = "live-tests")]
+// Exercises the legacy (pre-V2) order mutation endpoints, deprecated 2026-06-18.
+#![allow(deprecated)]
 
 mod common;
 

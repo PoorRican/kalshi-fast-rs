@@ -9,6 +9,10 @@ pub struct WsUserOrder {
     pub order_id: String,
     pub user_id: String,
     pub ticker: String,
+    /// Identifier for the exchange shard where the order resides. Added
+    /// 2026-08-27.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default)]
     pub status: Option<OrderStatus>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.

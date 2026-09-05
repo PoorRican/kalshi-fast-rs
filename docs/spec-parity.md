@@ -91,6 +91,87 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Exchange sharding / `exchange_index`.** Starting mid-2026 Kalshi began provisioning dedicated
+  exchange shards for high-volume categories (crypto, tennis, baseball, and later commodities,
+  basketball). Most REST responses and WebSocket messages that identify a market, order, fill,
+  position, or balance now carry an `exchange_index` field identifying which shard it lives on.
+  These were added as `Option<i32>` throughout (REST: `Market`, `EventData`, `Series`,
+  `MultivariateEventCollection`, `Fill`, `Settlement`, `MarketPosition`, `SubaccountBalance`,
+  `ApiKey`; WS: `WsMarketLifecycleV2`/`WsEventLifecycle` (top-level, `created`/`event_lifecycle`
+  events only), `WsFill`, `WsUserOrder`) even where the live OpenAPI/AsyncAPI schema marks the field
+  required, to tolerate any shard not yet reporting it. `GetBalanceResponse.balance_breakdown` and
+  `GetPortfolioRestingOrderTotalValueResponse.resting_order_value_breakdown` use a shared
+  `IndexedBalance { exchange_index, balance }` type. `GetExchangeStatusResponse` gained
+  `intra_exchange_transfers_active` and an `exchange_index_statuses: Vec<ExchangeIndexStatus>`
+  per-shard breakdown. `get_balance` now takes a `GetBalanceParams { subaccount, exchange_index }`
+  (previously took no arguments); `GetPositionsParams` / `GetFillsParams` gained an `exchange_index`
+  filter; `create_subaccount` now takes a `CreateSubaccountRequest { exchange_index }` body
+  (previously took no arguments).
+
+- **`WsMarketLifecycleV2` `metadata_updated` top-level fields.** Alongside the existing top-level
+  `floor_strike` / `yes_sub_title` (added 2026-05-11), the AsyncAPI now documents `strike_type`,
+  `cap_strike`, and `custom_strike` at the same top level for `metadata_updated` events (distinct
+  from the nested `additional_metadata.*` copies emitted on `created`). `price_ranges` (a
+  `Vec<WsPriceRange>` of `{start, end, step}` dollar-string bands) is emitted alongside
+  `price_level_structure` on `created` and `price_level_structure_updated` events.
+
+- **`price_level_structure` stays a raw `String`, never an enum.** Kalshi has added many new
+  price-level-structure values since this was first modeled (`center_deci_edge_centi_cent` for
+  tapered sub-cent multivariate pricing, plus seven `center_*_edge_*_cent` variants introduced
+  2026-07-23). Because the field round-trips as an opaque string on both `Market` and the
+  `market_lifecycle_v2` messages, none of these additions required a crate change — this is by
+  design, not an oversight. Always derive valid order prices from the `price_ranges` array, never
+  from the structure name.
+
+- **`multivariate` WebSocket channel and its REST lookup endpoints were removed by Kalshi (fully
+  gone by 2026-08-06),** not merely deprecated. This crate removed the corresponding surface
+  entirely rather than keeping it as dead code: `WsChannelV2::Multivariate`,
+  `WsMsgType::Multivariate` / `MultivariateLookup`, `WsDataMessageV2::Multivariate` /
+  `WsDataMessageRef::Multivariate`, and the `WsMultivariate` / `WsMultivariateRef` message types;
+  `KalshiRestClient::get_multivariate_event_collection_lookup_history` and
+  `::lookup_tickers_for_market_in_multivariate_event_collection` (and their request/response
+  types). Use the `multivariate_market_lifecycle` WebSocket channel and
+  `POST /multivariate_event_collections/{collection_ticker}` instead.
+
+- **`ErrorResponse.service` was removed** from the OpenAPI `ErrorResponse` schema (announced
+  deprecated 2026-07-28, removed 2026-08-06); the crate dropped the field to match. `code` is the
+  documented, stable way to branch on error kind.
+
+- **`Market.response_price_units` / `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed** from the OpenAPI schema (2026-07-09) and are
+  no longer returned live; the crate removed the corresponding struct fields.
+  `GET /exchange/announcements` was removed from the API (2026-07-04) along with the
+  `get_exchange_announcements` method, `Announcement`, `AnnouncementType`, `AnnouncementStatus`, and
+  `GetExchangeAnnouncementsResponse` types. Legacy order-mutation methods (`create_order`,
+  `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders`) are
+  marked `#[deprecated]` in favor of their `_v2` equivalents (deprecated by Kalshi 2026-06-18; the
+  V2 endpoints also cost fewer rate-limit tokens) but are kept working since Kalshi has not removed
+  the underlying routes.
+
+- **`GetQuotesParams` no longer supports `market_ticker` / `event_ticker` filters** (removed by
+  Kalshi 2026-06-20); it gained `min_ts`, `max_ts`, and `user_filter` instead. RFQ-scoped quote
+  action endpoints (`{get,delete,accept,confirm}_quote_for_rfq`, path-scoped by `rfq_id`) were added
+  alongside the pre-existing quote-ID-only methods, which Kalshi deprecated (not removed) in favor
+  of the scoped variants.
+
+- **`Market` and `EventData` carry several fields that no longer appear in the current OpenAPI
+  schema** (e.g. `Market`'s legacy integer/`_dollars`-duplicate price and count fields, `market_id`,
+  `series_id`; `EventData`'s `status`, `can_trade`, `can_settle`, `volume`, `occurrence_datetime`,
+  etc.). These were intentionally left in place rather than removed in this pass: the live schema is
+  known to be incomplete relative to actual traffic in places (see the top of this file), and there
+  is no changelog entry confirming these specific fields stopped being sent. They remain `Option`
+  and harmless if truly gone. A dedicated follow-up refresh should verify each against live/demo
+  traffic before removing them.
+
+- **Known gaps (not yet implemented).** The following upstream additions are not yet modeled and
+  are tracked here rather than silently dropped: `GET /account/api_usage_level/volume_progress` and
+  `POST /account/api_usage_level/upgrade`; `GET /historical/positions` (+ its `subaccount` filter);
+  `GET /live_data/weather/{city}` and `GET /live_data/weather/{city}/calibrations`; `GET
+  /margin/fee_tier_rates`; `POST`/`GET /portfolio/target_balance_allocation`; `GET`/`POST
+  /portfolio/intra_exchange_instance_transfer(s)`; the Predictions/Margin cancel-all-orders
+  endpoints; `client_order_ids` filtering on `GET /fcm/orders`; and the `pyth_value` and
+  `cfbenchmarks_value_5hz` WebSocket channels.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

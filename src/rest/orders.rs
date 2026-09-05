@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter to one exchange shard. Omit to return results from all
+    /// exchange shards. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 impl GetOrdersParams {
@@ -741,7 +746,12 @@ impl KalshiRestClient {
 
     /// Place a new order.
     ///
-    /// **Requires auth.**
+    /// **Requires auth.** Deprecated 2026-06-18: this legacy endpoint costs
+    /// 10x the write-rate-limit tokens of the V2 endpoint and is no longer in
+    /// the OpenAPI spec. Use [`Self::create_order_v2`] instead.
+    #[deprecated(
+        note = "use create_order_v2 instead; legacy order mutation endpoints cost 10x rate-limit tokens and are no longer documented"
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -754,7 +764,11 @@ impl KalshiRestClient {
 
     /// Cancel an order by ID.
     ///
-    /// **Requires auth.**
+    /// **Requires auth.** Deprecated 2026-06-18. Use [`Self::cancel_order_v2`]
+    /// instead.
+    #[deprecated(
+        note = "use cancel_order_v2 instead; legacy order mutation endpoints cost 10x rate-limit tokens and are no longer documented"
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +785,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated 2026-06-18. Use [`Self::amend_order_v2`] instead.
+    #[deprecated(
+        note = "use amend_order_v2 instead; legacy order mutation endpoints cost 10x rate-limit tokens and are no longer documented"
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +799,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated 2026-06-18. Use [`Self::decrease_order_v2`] instead.
+    #[deprecated(
+        note = "use decrease_order_v2 instead; legacy order mutation endpoints cost 10x rate-limit tokens and are no longer documented"
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +825,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated 2026-06-18. Use [`Self::batch_create_orders_v2`] instead.
+    #[deprecated(
+        note = "use batch_create_orders_v2 instead; legacy order mutation endpoints cost 10x rate-limit tokens and are no longer documented"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +838,10 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated 2026-06-18. Use [`Self::batch_cancel_orders_v2`] instead.
+    #[deprecated(
+        note = "use batch_cancel_orders_v2 instead; legacy order mutation endpoints cost 10x rate-limit tokens and are no longer documented"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -899,10 +929,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 

@@ -73,6 +73,10 @@ pub struct MultivariateEventCollection {
     pub size_min: i32,
     pub size_max: i32,
     pub functional_description: String,
+    /// Identifier for the exchange shard this collection lives on. Added
+    /// 2026-08-06.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
