@@ -91,6 +91,52 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `price_level_structure` (REST `Market`, WS `market_lifecycle_v2`) is deliberately kept as a plain
+  `String` rather than a closed Rust enum, even though the AsyncAPI documents an `enum` for it.
+  Kalshi has added new structure names several times (`center_whole_edge_half_cent` and six
+  siblings in 2026-07, `center_deci_edge_centi_cent` in 2026-08) without any shape change — callers
+  must read the market's `price_ranges` array for valid prices/ticks rather than branching on the
+  structure name, so a closed enum would only need updating for a value that downstream code
+  shouldn't be keying off of anyway.
+
+- The `exchange_index` sharding rollout (2026-06 through 2026-09) touches dozens of REST and
+  WebSocket schemas. Every occurrence is modeled as `Option<i64>` (or `Option<u32>` for
+  subaccount-shaped fields) even where the OpenAPI spec marks it required (e.g. `MarketPosition`,
+  `Fill`, `Settlement`, `event_lifecycle`), because the feature is still rolling out ("for now, all
+  exchange indexes are 0" appears repeatedly in the changelog) and older payloads predate the field
+  entirely.
+
+- `GET /account/api_usage_level/volume_progress`, `POST /account/api_usage_level/upgrade`,
+  `POST /portfolio/intra_exchange_instance_transfer` (+ history endpoints), and
+  `POST`/`GET /portfolio/target_balance_allocation` are new Predictions-exchange endpoints added
+  during the sharding rollout. They are modeled following the same conventions as existing
+  portfolio/account endpoints.
+
+- `pyth_value` (2026-07-23) and `cfbenchmarks_value_5hz` (2026-09-03) are new WebSocket channels.
+  `cfbenchmarks_value_5hz` fully reuses the existing `index_ids` seed field and the
+  `SubscribeIndices` / `UnsubscribeIndices` / `Indexlist` `update_subscription` actions shared with
+  `cfbenchmarks_value` (the AsyncAPI documents both channels under the same action). `pyth_value`
+  instead uses `underlying_tickers` to seed an initial subscribe, but this crate does **not** yet
+  implement update-subscription actions for it (`subscribe_underlyings` / `unsubscribe_underlyings`
+  / `pyth_value_underlying_list`) — to change a `pyth_value` subscription's tracked underlyings,
+  resubscribe with a new `underlying_tickers` list rather than mutating the existing one in place.
+
+- `Event.product_metadata` does **not** carry a `cadence` field in the live OpenAPI schema, despite
+  a 2026-07-30 changelog entry announcing one ("Event product_metadata now includes cadence"). No
+  `cadence` property appears anywhere in the fetched `openapi.yaml`. Treated as not (yet) shipped;
+  not modeled. Re-check on the next refresh.
+
+- `GET /margin/fee_tier_rates` (announced 2026-09-03) is, like the existing `/margin/fee_tiers`
+  exception, undocumented in the published OpenAPI spec. Unlike `/margin/fee_tiers`, this crate does
+  not model it: margin trading endpoints remain out of scope, and there is no OpenAPI shape to
+  validate a Rust type against.
+
+- The `multivariate` WebSocket channel (message type `multivariate_lookup`) and the
+  `PUT`/`GET .../multivariate_event_collections/{ticker}/lookup` REST endpoints were removed by
+  Kalshi on 2026-08-06. They have been deleted from this crate rather than kept as compatibility
+  shims. Use `WsChannelV2::MultivariateMarketLifecycle` for multivariate market state changes and
+  `POST /multivariate_event_collections/{ticker}` to create/resolve combo markets.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

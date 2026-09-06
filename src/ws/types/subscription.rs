@@ -25,10 +25,18 @@ pub struct WsSubscriptionParamsV2 {
     pub shard_factor: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard_key: Option<u32>,
-    /// CF Benchmarks index IDs for `cfbenchmarks_value` subscriptions.
-    /// Use `["all"]` to receive every available index.
+    /// CF Benchmarks index IDs for `cfbenchmarks_value` / `cfbenchmarks_value_5hz`
+    /// subscriptions. Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// Pyth underlying tickers to seed on the initial `pyth_value` subscribe.
+    /// Omit to subscribe with no underlyings and add them later by
+    /// resubscribing; use `["all"]` to track every available underlying.
+    /// Added 2026-07-23. Note: unlike `index_ids`, this crate does not yet
+    /// expose an `update_subscription` action to add/remove underlyings on an
+    /// active subscription — see `docs/spec-parity.md`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underlying_tickers: Option<Vec<String>>,
 }
 
 impl WsSubscriptionParamsV2 {
