@@ -79,6 +79,11 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on. Added 2026-07-30 (each
+    /// subaccount with funds on multiple exchange indexes now appears as
+    /// multiple entries rather than one combined row).
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -162,6 +167,14 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Mutually exclusive
+    /// with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind the key to a single FCM subtrader. Mutually
+    /// exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +189,14 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Mutually exclusive
+    /// with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind the key to a single FCM subtrader. Mutually
+    /// exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

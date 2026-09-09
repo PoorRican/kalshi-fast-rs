@@ -91,6 +91,66 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The multi-exchange-shard rollout (2026-06 through 2026-09) added `exchange_index` to many REST and
+  WebSocket response shapes. The AsyncAPI marks it `required` on `fill`, `event_lifecycle`, and
+  `user_order` messages, but it is kept `Option<u32>` everywhere in this crate (REST and WS alike)
+  because it is a still-rolling-out field observed inconsistently across exchange instances during
+  this refresh, consistent with this crate's existing defensive-parsing convention for fields the
+  spec marks required but the exchange sometimes omits.
+- `MarketPosition` is shared between the REST `GetPositionsResponse` and the zero-copy WS
+  `market_positions` channel view (`MarketPositionRef` in `ws::types::mod`). `resting_orders_count`
+  was removed from both call sites together when Kalshi removed it from the OpenAPI schema on
+  2026-07-09, since both surfaces map to the same struct.
+- The RFQ-scoped quote action endpoints (`get_quote_scoped`, `delete_quote_scoped`,
+  `accept_quote_scoped`, `confirm_quote_scoped`) were added 2026-06-25 / 2026-07-09 alongside the
+  quote-ID-only endpoints, which Kalshi deprecated but has not removed. The quote-ID-only methods
+  are marked `#[deprecated]` rather than removed, since the underlying REST endpoints are still live;
+  remove them in a future refresh once Kalshi actually retires the endpoints.
+- `GetQuotesParams::market_ticker` / `event_ticker` are marked `#[deprecated]` rather than removed:
+  `GET /communications/quotes` stopped honoring these filters on 2026-06-20, but sending them is a
+  harmless no-op (the server ignores unrecognized/unsupported query params on this endpoint), so
+  removing the fields outright was not required for correctness.
+- `pyth_value` and `cfbenchmarks_value_5hz` are new WebSocket channels (2026-07-23 and 2026-09-03)
+  implemented following the existing `cfbenchmarks_value` pattern. `pyth_value` uses its own
+  `underlying_tickers` subscription field and `subscribe_underlyings` / `unsubscribe_underlyings` /
+  `underlying_list` update actions (distinct namespace from `cfbenchmarks_value`'s `index_ids` /
+  `subscribe_indices` / `unsubscribe_indices` / `indexlist`); `cfbenchmarks_value_5hz` reuses the
+  `index_ids` namespace since the AsyncAPI documents its `update_subscription` command as shared
+  with `cfbenchmarks_value`.
+- The WebSocket `multivariate` channel and its `multivariate_lookup` message (predates RFQs; Kalshi
+  removed it 2026-08-06) were removed entirely rather than kept as dead code, along with the REST
+  `.../lookup` endpoints (`GET`/`PUT`) on multivariate event collections. A frame using the old
+  `multivariate_lookup` type string now parses as `WsMessageV2::Unknown` — see
+  `ws_envelope_into_message_removed_multivariate_lookup_is_unknown` in `ws::types::envelope`.
+
+### Deferred (not implemented this refresh)
+
+The following upstream additions from the 2026-06-08 to 2026-09-10 changelog window are genuinely
+new REST surface — not shape drift on an already-modeled endpoint — and were left out of this
+refresh to keep it bounded. Each is a candidate for a future refresh:
+
+- Kalshi Weather Index endpoints: `GET /live_data/weather/{city}` (2026-08-20),
+  `GET /live_data/weather/{city}/calibrations` (2026-08-31), and the `receipt_basis` field on
+  weather index points (2026-09-10). New domain, not previously modeled.
+- `GET /trade-api/v2/live_data/events/{event_ticker}` (event-keyed live data, 2026-07-30).
+- `POST`/`GET /portfolio/target_balance_allocation` (2026-08-20), including the
+  `resting_margin_reservation` parameter added 2026-09-03.
+- `POST /portfolio/intra_exchange_instance_transfer` and
+  `GET /portfolio/intra_exchange_instance_transfers(/{transfer_id})` (2026-08-13 / 2026-08-20)
+  for cross-exchange-shard transfers. Distinct from the already-modeled
+  `POST /portfolio/subaccounts/transfer` (single-shard subaccount transfers).
+  `PUT /portfolio/order_groups/{order_group_id}/limit`'s `subaccount` / `exchange_index` query-param
+  scoping (2026-08-06) is also deferred, since `update_order_group_limit` currently takes no query
+  params and adding them is a breaking signature change best bundled with the transfer work above.
+- `GET /account/api_usage_level/volume_progress` and
+  `POST /account/api_usage_level/upgrade` (2026-06-11).
+- `client_order_ids` filter on `GET /fcm/orders` (2026-09-03).
+- CF Benchmarks REST passthrough (historical index values via `GET /trade-api/v2/cfbenchmarks/*`,
+  documented 2026-08-27) — the live `cfbenchmarks_value(_5hz)` WebSocket channels are implemented,
+  but the REST historical-lookback endpoint is not.
+- `Accept-Language`-based localized market content (2026-08-27) — the REST client does not currently
+  expose a way to set custom request headers per call.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -28,6 +28,10 @@ pub struct WsTrade {
     pub ts_ms: Option<i64>,
     #[serde(default)]
     pub created_time: Option<String>,
+    /// True if the trade was matched off book (e.g. as a block trade).
+    /// Added 2026-08-13.
+    #[serde(default)]
+    pub is_block_trade: Option<bool>,
 }
 
 /// Trade channel message (type: "trade")
@@ -60,6 +64,10 @@ pub struct WsTradeRef<'a> {
     pub ts_ms: Option<i64>,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
+    /// True if the trade was matched off book (e.g. as a block trade).
+    /// Added 2026-08-13.
+    #[serde(default)]
+    pub is_block_trade: Option<bool>,
 }
 
 impl<'a> WsTradeRef<'a> {
@@ -76,6 +84,46 @@ impl<'a> WsTradeRef<'a> {
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),
+            is_block_trade: self.is_block_trade,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ws_trade_is_block_trade_parses() {
+        let json = r#"{
+            "trade_id":"t1",
+            "market_ticker":"TST",
+            "count_fp":"2",
+            "yes_price_dollars":"0.10",
+            "no_price_dollars":"0.90",
+            "ts":1704067200,
+            "ts_ms":1704067200000,
+            "is_block_trade":true
+        }"#;
+        let trade: WsTrade = serde_json::from_str(json).unwrap();
+        assert_eq!(trade.is_block_trade, Some(true));
+
+        let borrowed: WsTradeRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().is_block_trade, Some(true));
+    }
+
+    #[test]
+    fn ws_trade_is_block_trade_defaults_to_none_when_absent() {
+        let json = r#"{
+            "trade_id":"t1",
+            "market_ticker":"TST",
+            "count_fp":"2",
+            "yes_price_dollars":"0.10",
+            "no_price_dollars":"0.90",
+            "ts":1704067200,
+            "ts_ms":1704067200000
+        }"#;
+        let trade: WsTrade = serde_json::from_str(json).unwrap();
+        assert_eq!(trade.is_block_trade, None);
     }
 }

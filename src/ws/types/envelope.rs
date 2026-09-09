@@ -212,13 +212,6 @@ impl WsEnvelope {
                 seq,
                 msg: parse_msg(&msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageV2::Data(WsDataMessageV2::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_msg(&msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -265,6 +258,32 @@ impl WsEnvelope {
             }
             WsMsgType::CfbenchmarksValueIndexlist => Ok(WsMessageV2::Data(
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
+            WsMsgType::CfbenchmarksValue5Hz => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5Hz {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                }))
+            }
+            WsMsgType::CfbenchmarksValue5HzIndexlist => Ok(WsMessageV2::Data(
+                WsDataMessageV2::CfbenchmarksValue5HzIndexlist {
+                    sid,
+                    seq,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: parse_msg(&msg)?,
@@ -437,13 +456,6 @@ impl<'a> WsEnvelopeRef<'a> {
                 seq,
                 msg: parse_borrowed_msg(msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageRef::Data(WsDataMessageRef::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_borrowed_msg(msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
@@ -490,6 +502,32 @@ impl<'a> WsEnvelopeRef<'a> {
             }
             WsMsgType::CfbenchmarksValueIndexlist => Ok(WsMessageRef::Data(
                 WsDataMessageRef::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
+            WsMsgType::CfbenchmarksValue5Hz => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValue5Hz {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                }))
+            }
+            WsMsgType::CfbenchmarksValue5HzIndexlist => Ok(WsMessageRef::Data(
+                WsDataMessageRef::CfbenchmarksValue5HzIndexlist {
+                    sid,
+                    seq,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: parse_borrowed_msg(msg)?,
@@ -601,11 +639,6 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsEventFeeUpdate,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariate,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -631,6 +664,26 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    CfbenchmarksValue5Hz {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksValue5Hz,
+    },
+    CfbenchmarksValue5HzIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksIndexList5Hz,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 macro_rules! data_message_position {
@@ -646,12 +699,15 @@ macro_rules! data_message_position {
             | Self::MultivariateMarketLifecycle { $field, .. }
             | Self::EventLifecycle { $field, .. }
             | Self::EventFeeUpdate { $field, .. }
-            | Self::Multivariate { $field, .. }
             | Self::Communications { $field, .. }
             | Self::OrderGroupUpdates { $field, .. }
             | Self::UserOrder { $field, .. }
             | Self::CfbenchmarksValue { $field, .. }
-            | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
+            | Self::CfbenchmarksValueIndexlist { $field, .. }
+            | Self::CfbenchmarksValue5Hz { $field, .. }
+            | Self::CfbenchmarksValue5HzIndexlist { $field, .. }
+            | Self::PythValue { $field, .. }
+            | Self::PythValueUnderlyingList { $field, .. } => *$field,
         }
     };
 }
@@ -718,11 +774,6 @@ pub enum WsDataMessageRef<'a> {
         seq: Option<u64>,
         msg: WsEventFeeUpdateRef<'a>,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariateRef<'a>,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -747,6 +798,26 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    CfbenchmarksValue5Hz {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksValue5HzRef<'a>,
+    },
+    CfbenchmarksValue5HzIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksIndexList5HzRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -819,11 +890,6 @@ impl<'a> WsDataMessageRef<'a> {
                 seq,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::Multivariate { sid, seq, msg } => WsDataMessageV2::Multivariate {
-                sid,
-                seq,
-                msg: msg.into_owned(),
-            },
             WsDataMessageRef::Communications { sid, seq, msg } => WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -848,6 +914,32 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::CfbenchmarksValue5Hz { sid, seq, msg } => {
+                WsDataMessageV2::CfbenchmarksValue5Hz {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::CfbenchmarksValue5HzIndexlist { sid, seq, msg } => {
+                WsDataMessageV2::CfbenchmarksValue5HzIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1138,6 +1230,107 @@ mod tests {
     }
 
     #[test]
+    fn ws_envelope_into_message_pyth_value() {
+        let json = r#"{
+            "type":"pyth_value",
+            "sid":5,
+            "seq":6,
+            "msg":{
+                "underlying_ticker":"BTCUSD",
+                "value_usd":"65000.12340000",
+                "source_ts_ms":1000,
+                "received_at":1001
+            }
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { sid, seq, msg }) => {
+                assert_eq!(sid, Some(5));
+                assert_eq!(seq, Some(6));
+                assert_eq!(msg.underlying_ticker, "BTCUSD");
+                assert_eq!(msg.source_ts_ms, 1000);
+            }
+            other => panic!("expected pyth_value data message, got {other:?}"),
+        }
+
+        let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        let owned = msg_ref.into_owned().unwrap();
+        assert!(matches!(
+            owned,
+            WsMessageV2::Data(WsDataMessageV2::PythValue { .. })
+        ));
+    }
+
+    #[test]
+    fn ws_envelope_into_message_pyth_value_underlying_list() {
+        let json = r#"{
+            "type":"pyth_value_underlying_list",
+            "sid":5,
+            "seq":7,
+            "msg":{"underlying_tickers":["BTCUSD","ETHUSD"]}
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { msg, .. }) => {
+                assert_eq!(msg.underlying_tickers, vec!["BTCUSD", "ETHUSD"]);
+            }
+            other => panic!("expected pyth_value_underlying_list data message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ws_envelope_into_message_cfbenchmarks_value_5hz() {
+        let json = r#"{
+            "type":"cfbenchmarks_value_5hz",
+            "sid":8,
+            "seq":9,
+            "msg":{
+                "index_id":"BRTI",
+                "value_usd":"65000.12340000",
+                "source_ts_ms":2000,
+                "received_at":2001,
+                "data":"{\"raw\":true}"
+            }
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5Hz { sid, seq, msg }) => {
+                assert_eq!(sid, Some(8));
+                assert_eq!(seq, Some(9));
+                assert_eq!(msg.index_id, "BRTI");
+                assert_eq!(msg.source_ts_ms, 2000);
+            }
+            other => panic!("expected cfbenchmarks_value_5hz data message, got {other:?}"),
+        }
+
+        let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        let owned = msg_ref.into_owned().unwrap();
+        assert!(matches!(
+            owned,
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5Hz { .. })
+        ));
+    }
+
+    #[test]
+    fn ws_envelope_into_message_cfbenchmarks_value_5hz_indexlist() {
+        let json = r#"{
+            "type":"cfbenchmarks_value_5hz_indexlist",
+            "sid":8,
+            "seq":10,
+            "msg":{"index_ids":["BRTI","ETHUSD_RTI"]}
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5HzIndexlist { msg, .. }) => {
+                assert_eq!(msg.index_ids, vec!["BRTI", "ETHUSD_RTI"]);
+            }
+            other => {
+                panic!("expected cfbenchmarks_value_5hz_indexlist data message, got {other:?}")
+            }
+        }
+    }
+
+    #[test]
     fn ws_envelope_into_message_event_fee_update() {
         // Delivered on the market_lifecycle_v2 channel; both overrides set.
         let json = r#"{
@@ -1182,6 +1375,23 @@ mod tests {
                 assert!(msg.fee_multiplier_override.is_none());
             }
             _ => panic!("expected event_fee_update data message"),
+        }
+    }
+
+    #[test]
+    fn ws_envelope_into_message_removed_multivariate_lookup_is_unknown() {
+        // The `multivariate` channel and its `multivariate_lookup` message type
+        // were removed by Kalshi on 2026-08-06. A frame using the old type
+        // string must not panic or silently resurrect the removed variant —
+        // it should surface as Unknown like any other unrecognized type.
+        let json = r#"{"type":"multivariate_lookup","sid":1,"seq":2,"msg":{"foo":1}}"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Unknown {
+                msg_type: WsMsgType::Unknown(value),
+                ..
+            } => assert_eq!(value, "multivariate_lookup"),
+            other => panic!("expected unknown message, got {other:?}"),
         }
     }
 
@@ -1251,7 +1461,9 @@ mod tests {
 
         let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
         match msg {
-            WsMessageV2::ListSubscriptions { id, subscriptions } => {
+            WsMessageV2::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));
@@ -1262,7 +1474,9 @@ mod tests {
 
         let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
         match msg_ref {
-            WsMessageRef::ListSubscriptions { id, subscriptions } => {
+            WsMessageRef::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));

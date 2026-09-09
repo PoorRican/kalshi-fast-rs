@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter to one exchange index. Omit to return results from all
+    /// exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetOrdersParams {
@@ -942,6 +947,30 @@ impl KalshiRestClient {
         let path = Self::full_path("/portfolio/events/orders");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
+    }
+
+    /// Cancel all resting event-market orders across every exchange shard for
+    /// the authenticated Direct member.
+    ///
+    /// If `subaccount` is `None`, matching orders may come from any
+    /// subaccount; otherwise only orders for that subaccount are eligible.
+    /// Newly placed orders may also be cancelled during the minute after the
+    /// request. Added 2026-08-27.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders(&self, subaccount: Option<u32>) -> Result<(), KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        let params = SubaccountQueryParams { subaccount };
+        let _: EmptyResponse = self
+            .send(
+                Method::DELETE,
+                &path,
+                Some(&params),
+                Option::<&()>::None,
+                true,
+            )
+            .await?;
+        Ok(())
     }
 
     /// Cancel an order via the V2 event-order endpoint.

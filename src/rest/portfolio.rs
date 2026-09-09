@@ -15,6 +15,25 @@ use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
+/// Per-exchange-index user balance entry within [`GetBalanceResponse::balance_breakdown`].
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: u32,
+    pub balance: FixedPointDollars,
+}
+
+/// Query params for `GET /portfolio/balance`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    /// Use a subaccount instead of the primary account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Scope `balance` and `portfolio_value` to one exchange index. Omit to
+    /// include all exchange indexes. Added 2026-08-13.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
@@ -23,6 +42,10 @@ pub struct GetBalanceResponse {
     /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// User balance breakdown per exchange instance. Omitted only when using
+    /// a subaccount-restricted API key. Added 2026-08-13.
+    #[serde(default)]
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
 }
 
 /// GET /portfolio/positions query params
@@ -54,6 +77,11 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter to one exchange index. Omit to return results from all
+    /// exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetPositionsParams {
@@ -90,10 +118,11 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
+    /// Exchange index the position is held on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -145,6 +174,9 @@ pub struct Settlement {
     pub fee_cost: FixedPointDollars,
     #[serde(default)]
     pub value: Option<i64>,
+    /// Exchange index the settlement occurred on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -203,6 +235,9 @@ pub struct Fill {
     pub subaccount_number: Option<u32>,
     #[serde(default)]
     pub ts: Option<i64>,
+    /// Exchange index the fill occurred on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -223,6 +258,10 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter to one exchange index. Omit to return results from all
+    /// exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -236,22 +275,42 @@ pub struct GetFillsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total resting order value broken down by exchange index. Added 2026-08-20.
+    #[serde(default)]
+    pub resting_order_value_breakdown: Option<Vec<IndexedBalance>>,
+}
+
+/// GET /historical/positions query params. Added 2026-07-23.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    /// Defaults to the primary subaccount when omitted. Added 2026-09-03.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl KalshiRestClient {
     /// Get the account balance.
     ///
+    /// Both `balance` and `portfolio_value` include all exchange indexes
+    /// unless `params.exchange_index` is set. Pass `params.subaccount` to use
+    /// a subaccount instead of the primary account.
+    ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.
@@ -284,6 +343,22 @@ impl KalshiRestClient {
         params: GetSettlementsParams,
     ) -> Result<GetSettlementsResponse, KalshiError> {
         let path = Self::full_path("/portfolio/settlements");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database. Positions
+    /// are archived per whole event, so use this for positions older than
+    /// `market_positions_last_updated_ts` (from `get_historical_cutoff`);
+    /// unsettled positions remain in `get_positions`. Supports cursor
+    /// pagination. Added 2026-07-23.
+    ///
+    /// **Requires auth.**
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await
     }
