@@ -19,8 +19,6 @@ pub enum WsMsgType {
     MultivariateMarketLifecycle,
     EventLifecycle,
     EventFeeUpdate,
-    Multivariate,
-    MultivariateLookup,
     Communications,
     RfqCreated,
     RfqDeleted,
@@ -31,6 +29,14 @@ pub enum WsMsgType {
     UserOrder,
     CfbenchmarksValue,
     CfbenchmarksValueIndexlist,
+    /// `cfbenchmarks_value_5hz` channel value tick. Added 2026-09-03.
+    CfbenchmarksValue5hz,
+    /// Response to the `indexlist` action on a `cfbenchmarks_value_5hz` subscription.
+    CfbenchmarksValue5hzIndexlist,
+    /// `pyth_value` channel price tick. Added 2026-07-23.
+    PythValue,
+    /// Response to the `underlying_list` action on a `pyth_value` subscription.
+    PythValueUnderlyingList,
     Unknown(String),
 }
 
@@ -52,8 +58,6 @@ impl WsMsgType {
             WsMsgType::MultivariateMarketLifecycle => "multivariate_market_lifecycle",
             WsMsgType::EventLifecycle => "event_lifecycle",
             WsMsgType::EventFeeUpdate => "event_fee_update",
-            WsMsgType::Multivariate => "multivariate",
-            WsMsgType::MultivariateLookup => "multivariate_lookup",
             WsMsgType::Communications => "communications",
             WsMsgType::RfqCreated => "rfq_created",
             WsMsgType::RfqDeleted => "rfq_deleted",
@@ -64,6 +68,10 @@ impl WsMsgType {
             WsMsgType::UserOrder => "user_order",
             WsMsgType::CfbenchmarksValue => "cfbenchmarks_value",
             WsMsgType::CfbenchmarksValueIndexlist => "cfbenchmarks_value_indexlist",
+            WsMsgType::CfbenchmarksValue5hz => "cfbenchmarks_value_5hz",
+            WsMsgType::CfbenchmarksValue5hzIndexlist => "cfbenchmarks_value_5hz_indexlist",
+            WsMsgType::PythValue => "pyth_value",
+            WsMsgType::PythValueUnderlyingList => "pyth_value_underlying_list",
             WsMsgType::Unknown(value) => value.as_str(),
         }
     }
@@ -85,8 +93,6 @@ impl WsMsgType {
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
             "event_fee_update" => WsMsgType::EventFeeUpdate,
-            "multivariate" => WsMsgType::Multivariate,
-            "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
             "rfq_created" => WsMsgType::RfqCreated,
             "rfq_deleted" => WsMsgType::RfqDeleted,
@@ -97,6 +103,10 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "cfbenchmarks_value_5hz" => WsMsgType::CfbenchmarksValue5hz,
+            "cfbenchmarks_value_5hz_indexlist" => WsMsgType::CfbenchmarksValue5hzIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
             _ => return None,
         })
     }
@@ -118,8 +128,6 @@ impl WsMsgType {
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
             "event_fee_update" => WsMsgType::EventFeeUpdate,
-            "multivariate" => WsMsgType::Multivariate,
-            "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
             "rfq_created" => WsMsgType::RfqCreated,
             "rfq_deleted" => WsMsgType::RfqDeleted,
@@ -130,6 +138,10 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "cfbenchmarks_value_5hz" => WsMsgType::CfbenchmarksValue5hz,
+            "cfbenchmarks_value_5hz_indexlist" => WsMsgType::CfbenchmarksValue5hzIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
             _ => WsMsgType::Unknown(value),
         }
     }
@@ -194,5 +206,29 @@ mod tests {
     fn ws_msg_type_deserialize_unknown() {
         let msg_type: WsMsgType = serde_json::from_str("\"new_type\"").unwrap();
         assert!(matches!(msg_type, WsMsgType::Unknown(value) if value == "new_type"));
+    }
+
+    /// New 2026-09 message types (`cfbenchmarks_value_5hz` and `pyth_value`
+    /// channels) round-trip through the known-type fast path rather than
+    /// falling back to `Unknown`.
+    #[test]
+    fn ws_msg_type_deserialize_new_2026_09_types() {
+        for (raw, expected) in [
+            ("cfbenchmarks_value_5hz", WsMsgType::CfbenchmarksValue5hz),
+            (
+                "cfbenchmarks_value_5hz_indexlist",
+                WsMsgType::CfbenchmarksValue5hzIndexlist,
+            ),
+            ("pyth_value", WsMsgType::PythValue),
+            (
+                "pyth_value_underlying_list",
+                WsMsgType::PythValueUnderlyingList,
+            ),
+        ] {
+            let json = format!("\"{raw}\"");
+            let msg_type: WsMsgType = serde_json::from_str(&json).unwrap();
+            assert_eq!(msg_type, expected);
+            assert_eq!(msg_type.as_str(), raw);
+        }
     }
 }

@@ -25,10 +25,14 @@ pub struct WsSubscriptionParamsV2 {
     pub shard_factor: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard_key: Option<u32>,
-    /// CF Benchmarks index IDs for `cfbenchmarks_value` subscriptions.
-    /// Use `["all"]` to receive every available index.
+    /// CF Benchmarks index IDs for `cfbenchmarks_value` / `cfbenchmarks_value_5hz`
+    /// subscriptions. Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// Pyth underlying tickers for `pyth_value` subscriptions. Use `["all"]`
+    /// to receive every available underlying.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underlying_tickers: Option<Vec<String>>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -155,6 +159,11 @@ pub struct WsUpdateSubscriptionParamsV2 {
     /// track every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// Pyth underlying tickers to add or remove. Required for the
+    /// `subscribe_underlyings` / `unsubscribe_underlyings` actions; use
+    /// `["all"]` to track every available underlying.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underlying_tickers: Option<Vec<String>>,
 }
 
 impl WsUpdateSubscriptionParamsV2 {
@@ -173,13 +182,26 @@ pub enum WsUpdateAction {
     AddMarkets,
     DeleteMarkets,
     GetSnapshot,
-    /// Add the supplied `index_ids` to a `cfbenchmarks_value` subscription.
+    /// Add the supplied `index_ids` to a `cfbenchmarks_value` /
+    /// `cfbenchmarks_value_5hz` subscription.
     SubscribeIndices,
-    /// Remove the supplied `index_ids` from a `cfbenchmarks_value` subscription.
+    /// Remove the supplied `index_ids` from a `cfbenchmarks_value` /
+    /// `cfbenchmarks_value_5hz` subscription.
     UnsubscribeIndices,
     /// Request the available CF Benchmarks index IDs without modifying the
-    /// subscription (server replies with a `cfbenchmarks_value_indexlist`).
+    /// subscription (server replies with a `cfbenchmarks_value_indexlist` /
+    /// `cfbenchmarks_value_5hz_indexlist`).
     Indexlist,
+    /// Add the supplied `underlying_tickers` to a `pyth_value` subscription.
+    /// Added 2026-07-23.
+    SubscribeUnderlyings,
+    /// Remove the supplied `underlying_tickers` from a `pyth_value`
+    /// subscription. Added 2026-07-23.
+    UnsubscribeUnderlyings,
+    /// Request the recently-streamed Pyth underlying tickers without
+    /// modifying the subscription (server replies with a
+    /// `pyth_value_underlying_list`). Added 2026-07-23.
+    UnderlyingList,
 }
 
 impl WsUpdateAction {
@@ -191,6 +213,17 @@ impl WsUpdateAction {
             WsUpdateAction::SubscribeIndices
                 | WsUpdateAction::UnsubscribeIndices
                 | WsUpdateAction::Indexlist
+        )
+    }
+
+    /// Whether this action operates on Pyth underlying tickers rather than
+    /// market targets.
+    pub fn is_underlying_action(self) -> bool {
+        matches!(
+            self,
+            WsUpdateAction::SubscribeUnderlyings
+                | WsUpdateAction::UnsubscribeUnderlyings
+                | WsUpdateAction::UnderlyingList
         )
     }
 }
@@ -230,14 +263,24 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         .as_ref()
         .map(|v| !v.is_empty())
         .unwrap_or(false);
+    let has_underlying_tickers = params
+        .underlying_tickers
+        .as_ref()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
 
     // CF Benchmarks index actions are mutually exclusive with market targets and
-    // have their own `index_ids` requirements.
+    // Pyth underlying tickers, and have their own `index_ids` requirements.
     if params.action.is_index_action() {
         if has_any_market_tickers || has_any_market_ids {
             return Err(KalshiError::InvalidParams(
                 "update_subscription: index actions do not support market_ticker(s) or market_id(s)"
                     .to_string(),
+            ));
+        }
+        if params.underlying_tickers.is_some() {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: index actions do not support underlying_tickers".to_string(),
             ));
         }
         if matches!(
@@ -254,6 +297,39 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         return Err(KalshiError::InvalidParams(
             "update_subscription: index_ids is only valid for subscribe_indices, \
              unsubscribe_indices, or indexlist actions"
+                .to_string(),
+        ));
+    }
+
+    // Pyth underlying-ticker actions are mutually exclusive with market targets
+    // and CF Benchmarks index IDs, and have their own `underlying_tickers`
+    // requirements.
+    if params.action.is_underlying_action() {
+        if has_any_market_tickers || has_any_market_ids {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: underlying actions do not support market_ticker(s) or market_id(s)"
+                    .to_string(),
+            ));
+        }
+        if params.index_ids.is_some() {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: underlying actions do not support index_ids".to_string(),
+            ));
+        }
+        if matches!(
+            params.action,
+            WsUpdateAction::SubscribeUnderlyings | WsUpdateAction::UnsubscribeUnderlyings
+        ) && !has_underlying_tickers
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: subscribe_underlyings/unsubscribe_underlyings require underlying_tickers"
+                    .to_string(),
+            ));
+        }
+    } else if params.underlying_tickers.is_some() {
+        return Err(KalshiError::InvalidParams(
+            "update_subscription: underlying_tickers is only valid for subscribe_underlyings, \
+             unsubscribe_underlyings, or underlying_list actions"
                 .to_string(),
         ));
     }
@@ -476,6 +552,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&both).is_err());
 
@@ -490,6 +567,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&multi).is_err());
 
@@ -504,6 +582,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&valid).is_ok());
     }
@@ -521,6 +600,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -538,6 +618,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -555,6 +636,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -572,6 +654,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&missing).is_err());
 
@@ -586,6 +669,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&ok).is_ok());
     }
@@ -603,6 +687,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -620,6 +705,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -637,8 +723,126 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
+    }
+
+    #[test]
+    fn validate_update_subscribe_underlyings_requires_underlying_tickers() {
+        let missing = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeUnderlyings,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+            underlying_tickers: None,
+        };
+        assert!(validate_update(&missing).is_err());
+
+        let ok = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeUnderlyings,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+            underlying_tickers: Some(vec!["Metal.XAU/USD".to_string()]),
+        };
+        assert!(validate_update(&ok).is_ok());
+    }
+
+    #[test]
+    fn validate_update_underlying_list_allows_empty_underlying_tickers() {
+        let params = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::UnderlyingList,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+            underlying_tickers: None,
+        };
+        assert!(validate_update(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_update_underlying_actions_reject_market_targets_and_index_ids() {
+        let rejects_market = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeUnderlyings,
+            sid: Some(1),
+            sids: None,
+            market_ticker: Some("TICKER".to_string()),
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+            underlying_tickers: Some(vec!["Metal.XAU/USD".to_string()]),
+        };
+        assert!(validate_update(&rejects_market).is_err());
+
+        let rejects_index_ids = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeUnderlyings,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: Some(vec!["Metal.XAU/USD".to_string()]),
+        };
+        assert!(validate_update(&rejects_index_ids).is_err());
+    }
+
+    #[test]
+    fn validate_update_underlying_tickers_rejected_for_market_and_index_actions() {
+        let market_action = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::AddMarkets,
+            sid: Some(1),
+            sids: None,
+            market_ticker: Some("TICKER".to_string()),
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+            underlying_tickers: Some(vec!["Metal.XAU/USD".to_string()]),
+        };
+        assert!(validate_update(&market_action).is_err());
+
+        let index_action = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeIndices,
+            sid: Some(1),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: Some(vec!["Metal.XAU/USD".to_string()]),
+        };
+        assert!(validate_update(&index_action).is_err());
     }
 
     #[test]
