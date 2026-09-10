@@ -250,6 +250,10 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, the key is restricted to this single sub-account and may only read and trade
+    /// on it. Absent/null means the key is unrestricted. Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -271,6 +275,10 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Omit to create an unrestricted key.
+    /// Added 2026-07-02.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -285,6 +293,10 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63). Omit to create an unrestricted key.
+    /// Added 2026-07-02.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -348,6 +360,22 @@ impl KalshiRestClient {
             Option::<&()>::None,
             Option::<&()>::None,
             false,
+        )
+        .await
+    }
+
+    /// Self-promote to the Advanced API usage tier. Requires at least one of the caller's
+    /// last 100 Predictions orders to have been created via API. Added 2026-06-11.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Some(&EmptyResponse::default()),
+            true,
         )
         .await
     }

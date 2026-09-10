@@ -5,8 +5,8 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountApiUsageLevelVolumeProgressResponse,
-    GetAccountEndpointCostsResponse, GetEventsParams, GetExchangeAnnouncementsResponse,
-    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetAccountEndpointCostsResponse, GetEventsParams, GetExchangeScheduleResponse,
+    GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
     GetIntraExchangeInstanceTransferResponse, GetIntraExchangeInstanceTransfersResponse,
     GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
     GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
@@ -1319,19 +1319,6 @@ fn get_exchange_status_response_deserializes_index_statuses() {
     assert!(status.exchange_active);
     assert!(status.trading_active);
     assert!(status.intra_exchange_transfers_active);
-}
-
-#[test]
-fn get_exchange_announcements_response_deserializes() {
-    let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
-        ]
-    }"#;
-
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
 }
 
 #[test]

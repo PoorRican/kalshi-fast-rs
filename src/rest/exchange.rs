@@ -37,40 +37,6 @@ pub struct ExchangeIndexStatus {
     pub intra_exchange_transfers_active: bool,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementType {
-    Info,
-    Warning,
-    Error,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementStatus {
-    Active,
-    Inactive,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Announcement {
-    #[serde(rename = "type")]
-    pub r#type: AnnouncementType,
-    pub message: String,
-    pub delivery_time: String,
-    pub status: AnnouncementStatus,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetExchangeAnnouncementsResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub announcements: Vec<Announcement>,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DailySchedule {
     pub open_time: String,
@@ -170,21 +136,6 @@ impl KalshiRestClient {
     /// Get the current exchange status (open, closed, etc.).
     pub async fn get_exchange_status(&self) -> Result<GetExchangeStatusResponse, KalshiError> {
         let path = Self::full_path("/exchange/status");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
-    /// Get exchange announcements.
-    pub async fn get_exchange_announcements(
-        &self,
-    ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {
-        let path = Self::full_path("/exchange/announcements");
         self.send(
             Method::GET,
             &path,
