@@ -5,7 +5,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
+use crate::rest::series::{EventMetadata, SettlementSource};
 use crate::types::{EventStatus, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
 use reqwest::Method;
@@ -31,6 +31,9 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Comma-separated list of event tickers to filter results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
 }
 
 impl GetEventsParams {
@@ -103,8 +106,6 @@ pub struct EventData {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub available_on_brokers: Option<bool>,
-    #[serde(default)]
     pub strike_date: Option<String>,
     #[serde(default)]
     pub strike_period: Option<String>,
@@ -146,6 +147,9 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official sources used for the determination of markets within this event.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

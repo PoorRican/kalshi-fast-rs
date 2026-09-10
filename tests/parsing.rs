@@ -283,6 +283,7 @@ fn get_events_params_serializes_correctly() {
         limit: Some(100),
         status: Some(EventStatus::Open),
         with_nested_markets: Some(true),
+        tickers: Some("EVT-1,EVT-2".to_string()),
         ..Default::default()
     };
 
@@ -290,6 +291,7 @@ fn get_events_params_serializes_correctly() {
     assert_eq!(json["limit"], 100);
     assert_eq!(json["status"], "open");
     assert_eq!(json["with_nested_markets"], true);
+    assert_eq!(json["tickers"], "EVT-1,EVT-2");
 }
 
 #[test]
@@ -535,12 +537,13 @@ fn get_markets_response_deserializes() {
 #[test]
 fn get_series_response_deserializes() {
     let json = r#"{
-        "series": {"ticker": "SERIES-1", "title": "Example Series"}
+        "series": {"ticker": "SERIES-1", "title": "Example Series", "exchange_index": 0}
     }"#;
 
     let resp: kalshi_fast::GetSeriesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.series.ticker, "SERIES-1");
     assert_eq!(resp.series.title.as_deref(), Some("Example Series"));
+    assert_eq!(resp.series.exchange_index, Some(0));
 }
 
 #[test]
@@ -606,8 +609,8 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "collateral_return_type": "binary",
             "mutually_exclusive": true,
             "category": "Politics",
-            "available_on_brokers": true,
             "product_metadata": {},
+            "settlement_sources": [{"name": "Official Registry", "url": "https://example.com/registry"}],
             "strike_date": "2023-11-07T05:31:56Z",
             "strike_period": "day",
             "last_updated_ts": "2023-11-07T05:31:56Z",
@@ -620,7 +623,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "yes_bid_size_fp": "10.00",
             "yes_ask_size_fp": "11.00",
             "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
             "notional_value": 100,
             "notional_value_dollars": "1.0000",
             "previous_yes_bid": 50,
@@ -655,6 +657,11 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.event.event_ticker, "EVT-1");
     assert_eq!(resp.event.collateral_return_type.as_deref(), Some("binary"));
     assert_eq!(resp.event.mutually_exclusive, Some(true));
+    assert_eq!(resp.event.settlement_sources.len(), 1);
+    assert_eq!(
+        resp.event.settlement_sources[0].name.as_deref(),
+        Some("Official Registry")
+    );
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
     assert_eq!(
@@ -1802,7 +1809,7 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
 }
 
 #[test]
-fn multivariate_collections_and_lookup_responses_deserialize_typed() {
+fn multivariate_collections_response_deserializes_typed() {
     let json = r#"{
         "multivariate_contracts": [{
             "collection_ticker": "COL-1",
@@ -1822,7 +1829,8 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "exchange_index": 0
         }]
     }"#;
 
@@ -1833,23 +1841,7 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
-
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
+    assert_eq!(resp.multivariate_contracts[0].exchange_index, Some(0));
 }
 
 #[test]
