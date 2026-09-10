@@ -11,6 +11,10 @@ pub struct WsFill {
     pub client_order_id: Option<String>,
     #[serde(alias = "ticker")]
     pub market_ticker: String,
+    /// Identifier for the exchange shard where the fill occurred. Added
+    /// 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -49,6 +53,10 @@ pub struct WsFillRef<'a> {
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(alias = "ticker", borrow)]
     pub market_ticker: Cow<'a, str>,
+    /// Identifier for the exchange shard where the fill occurred. Added
+    /// 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -86,6 +94,7 @@ impl<'a> WsFillRef<'a> {
             order_id: self.order_id.into_owned(),
             client_order_id: self.client_order_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             side: self.side,
             action: self.action,
             outcome_side: self.outcome_side,
@@ -152,5 +161,45 @@ mod tests {
         assert!(matches!(fill.book_side, Some(BookSide::Bid)));
         assert!(fill.side.is_none());
         assert!(fill.action.is_none());
+    }
+
+    #[test]
+    fn ws_fill_exchange_index_parses_owned_and_borrowed_and_defaults_absent() {
+        let json = r#"{
+            "trade_id":"t",
+            "order_id":"o",
+            "market_ticker":"T",
+            "exchange_index":2,
+            "outcome_side":"yes",
+            "book_side":"bid",
+            "count_fp":"1",
+            "yes_price_dollars":"0.01",
+            "is_taker":true,
+            "fee_cost":"0.00",
+            "ts":0,
+            "ts_ms":0,
+            "post_position_fp":"1.00",
+            "purchased_side":"yes"
+        }"#;
+        let fill: WsFill = serde_json::from_str(json).unwrap();
+        assert_eq!(fill.exchange_index, Some(2));
+        let borrowed: WsFillRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().exchange_index, Some(2));
+
+        let without = r#"{
+            "trade_id":"t",
+            "order_id":"o",
+            "market_ticker":"T",
+            "count_fp":"1",
+            "yes_price_dollars":"0.01",
+            "is_taker":true,
+            "fee_cost":"0.00",
+            "ts":0,
+            "ts_ms":0,
+            "post_position_fp":"1.00",
+            "purchased_side":"yes"
+        }"#;
+        let fill: WsFill = serde_json::from_str(without).unwrap();
+        assert!(fill.exchange_index.is_none());
     }
 }
