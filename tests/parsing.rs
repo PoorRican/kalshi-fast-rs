@@ -386,6 +386,72 @@ fn get_settlements_params_serializes_correctly() {
     assert_eq!(json["event_ticker"], "EVT-1");
 }
 
+#[test]
+fn get_fcm_orders_params_serializes_client_order_ids_csv() {
+    let params = kalshi_fast::GetFcmOrdersParams {
+        client_order_ids: Some(vec!["c-1".into(), "c-2".into()]),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["client_order_ids"], "c-1,c-2");
+    // subtrader_id is a required String field (not Option), so it always serializes.
+    assert_eq!(json["subtrader_id"], "");
+}
+
+#[test]
+fn get_quotes_params_serializes_ts_window_and_omits_removed_fields() {
+    let params = kalshi_fast::GetQuotesParams {
+        min_ts: Some(1000),
+        max_ts: Some(2000),
+        limit: Some(10),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["min_ts"], 1000);
+    assert_eq!(json["max_ts"], 2000);
+    assert_eq!(json["limit"], 10);
+    // event_ticker / market_ticker were removed server-side (2026-06-18) and no
+    // longer exist as fields on GetQuotesParams.
+    assert!(json.get("event_ticker").is_none());
+    assert!(json.get("market_ticker").is_none());
+}
+
+#[test]
+fn create_rfq_request_serializes_target_cost_excludes_fees() {
+    let req = kalshi_fast::CreateRFQRequest {
+        market_ticker: "MKT-1".into(),
+        contracts: Some(10),
+        contracts_fp: None,
+        target_cost_centi_cents: None,
+        target_cost_dollars: Some("5.0000".into()),
+        target_cost_excludes_fees: Some(true),
+        rest_remainder: true,
+        replace_existing: None,
+        subtrader_id: None,
+        subaccount: None,
+    };
+
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["target_cost_excludes_fees"], true);
+
+    let req_default = kalshi_fast::CreateRFQRequest {
+        market_ticker: "MKT-1".into(),
+        contracts: None,
+        contracts_fp: None,
+        target_cost_centi_cents: None,
+        target_cost_dollars: None,
+        target_cost_excludes_fees: None,
+        rest_remainder: true,
+        replace_existing: None,
+        subtrader_id: None,
+        subaccount: None,
+    };
+    let json_default = serde_json::to_value(&req_default).unwrap();
+    assert!(json_default.get("target_cost_excludes_fees").is_none());
+}
+
 // ============================================================================
 // Model Deserialization Tests
 // ============================================================================

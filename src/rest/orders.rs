@@ -692,6 +692,13 @@ pub struct BatchCancelOrdersV2Response {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
     pub subtrader_id: String,
+    /// CSV max 100. At least one of `subtrader_id` or `client_order_ids` is
+    /// required by the server. Added 2026-09-03.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub client_order_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -742,6 +749,10 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        since = "0.8.0",
+        note = "Legacy /portfolio/orders create is deprecated in favor of the V2 event-order endpoint; use `create_order_v2` instead."
+    )]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +766,10 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    #[deprecated(
+        since = "0.8.0",
+        note = "Legacy /portfolio/orders cancel is deprecated in favor of the V2 event-order endpoint; use `cancel_order_v2` instead."
+    )]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +786,10 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Legacy /portfolio/orders amend is deprecated in favor of the V2 event-order endpoint; use `amend_order_v2` instead."
+    )]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +800,10 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Legacy /portfolio/orders decrease is deprecated in favor of the V2 event-order endpoint; use `decrease_order_v2` instead."
+    )]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +826,10 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Legacy /portfolio/orders/batched create is deprecated in favor of the V2 event-order endpoint; use `batch_create_orders_v2` instead."
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +839,10 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        since = "0.8.0",
+        note = "Legacy /portfolio/orders/batched cancel is deprecated in favor of the V2 event-order endpoint; use `batch_cancel_orders_v2` instead."
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -942,6 +973,27 @@ impl KalshiRestClient {
         let path = Self::full_path("/portfolio/events/orders");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
+    }
+
+    /// Cancel all resting orders via the V2 event-order endpoint, across every
+    /// exchange shard. If `subaccount` is omitted, matching orders may come from
+    /// any subaccount; if provided, only that subaccount's orders are eligible.
+    /// Newly placed orders may also be cancelled during the minute after the request.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders_v2(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
     }
 
     /// Cancel an order via the V2 event-order endpoint.
