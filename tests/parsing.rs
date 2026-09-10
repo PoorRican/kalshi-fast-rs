@@ -358,6 +358,7 @@ fn get_fills_params_serializes_correctly() {
         limit: Some(10),
         ticker: Some("MKT-1".into()),
         subaccount: Some(1),
+        exchange_index: Some(0),
         ..Default::default()
     };
 
@@ -365,6 +366,7 @@ fn get_fills_params_serializes_correctly() {
     assert_eq!(json["limit"], 10);
     assert_eq!(json["ticker"], "MKT-1");
     assert_eq!(json["subaccount"], 1);
+    assert_eq!(json["exchange_index"], 0);
 }
 
 #[test]
@@ -493,6 +495,150 @@ fn get_balance_response_deserializes() {
     assert_eq!(resp.balance, 100000);
     assert_eq!(resp.portfolio_value, 50000);
     assert_eq!(resp.updated_ts, 1700000000);
+    assert!(resp.balance_breakdown.is_none());
+}
+
+#[test]
+fn get_balance_response_deserializes_with_breakdown() {
+    let json = r#"{
+        "balance": 100000,
+        "balance_dollars": "1000.0000",
+        "portfolio_value": 50000,
+        "updated_ts": 1700000000,
+        "balance_breakdown": [
+            {"exchange_index": 0, "balance": "1000.0000"},
+            {"exchange_index": 1, "balance": "0.0000"}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.balance_dollars.as_deref(), Some("1000.0000"));
+    let breakdown = resp.balance_breakdown.expect("balance_breakdown");
+    assert_eq!(breakdown.len(), 2);
+    assert_eq!(breakdown[0].exchange_index, 0);
+    assert_eq!(breakdown[1].balance, "0.0000");
+}
+
+#[test]
+fn get_balance_params_serializes_correctly() {
+    let params = kalshi_fast::GetBalanceParams {
+        subaccount: Some(0),
+        exchange_index: Some(2),
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["subaccount"], 0);
+    assert_eq!(json["exchange_index"], 2);
+
+    // Omitted fields must not serialize, so callers can distinguish "all exchange
+    // indexes" from an explicit exchange_index (and likewise for subaccount 0 vs omitted).
+    let empty = kalshi_fast::GetBalanceParams::default();
+    let empty_json = serde_json::to_value(&empty).unwrap();
+    assert!(empty_json.get("subaccount").is_none());
+    assert!(empty_json.get("exchange_index").is_none());
+}
+
+#[test]
+fn get_portfolio_resting_order_total_value_response_deserializes_with_breakdown() {
+    let json = r#"{
+        "total_resting_order_value": 5000,
+        "resting_order_value_breakdown": [
+            {"exchange_index": 0, "balance": "50.0000"}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetPortfolioRestingOrderTotalValueResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.total_resting_order_value, 5000);
+    let breakdown = resp.resting_order_value_breakdown.expect("breakdown");
+    assert_eq!(breakdown[0].exchange_index, 0);
+    assert_eq!(breakdown[0].balance, "50.0000");
+}
+
+#[test]
+fn get_target_balance_allocation_response_deserializes() {
+    let json = r#"{
+        "allocations": [
+            {"exchange_index": 0, "percent": 70},
+            {"exchange_index": 1, "percent": 30}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetTargetBalanceAllocationResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.allocations.len(), 2);
+    assert_eq!(resp.allocations[1].percent, 30);
+}
+
+#[test]
+fn set_target_balance_allocation_request_serializes_correctly() {
+    let req = kalshi_fast::SetTargetBalanceAllocationRequest {
+        allocations: vec![
+            kalshi_fast::TargetBalanceAllocation {
+                exchange_index: 0,
+                percent: 60,
+            },
+            kalshi_fast::TargetBalanceAllocation {
+                exchange_index: 1,
+                percent: 40,
+            },
+        ],
+        resting_margin_reservation: Some(kalshi_fast::RestingMarginReservation::Max),
+    };
+
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["allocations"][0]["exchange_index"], 0);
+    assert_eq!(json["allocations"][0]["percent"], 60);
+    assert_eq!(json["resting_margin_reservation"], "max");
+
+    // Omitting resting_margin_reservation should skip the field entirely (server defaults to "sum").
+    let default_req = kalshi_fast::SetTargetBalanceAllocationRequest {
+        allocations: vec![],
+        resting_margin_reservation: None,
+    };
+    let default_json = serde_json::to_value(&default_req).unwrap();
+    assert!(default_json.get("resting_margin_reservation").is_none());
+}
+
+#[test]
+fn get_historical_positions_params_serializes_correctly() {
+    let params = kalshi_fast::GetHistoricalPositionsParams {
+        ticker: Some("MKT-1".into()),
+        event_ticker: Some("EVT-1".into()),
+        subaccount: Some(0),
+        limit: Some(50),
+        cursor: Some("c5".into()),
+    };
+
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["ticker"], "MKT-1");
+    assert_eq!(json["event_ticker"], "EVT-1");
+    assert_eq!(json["subaccount"], 0);
+    assert_eq!(json["limit"], 50);
+    assert_eq!(json["cursor"], "c5");
+}
+
+#[test]
+fn get_historical_positions_response_deserializes() {
+    // /historical/positions reuses GetPositionsResponse's shape.
+    let json = r#"{
+        "market_positions": [{
+            "ticker": "MKT-1",
+            "exchange_index": 0,
+            "total_traded_dollars": "12.3400",
+            "position_fp": "5.00",
+            "market_exposure_dollars": "3.2100",
+            "realized_pnl_dollars": "1.1100",
+            "fees_paid_dollars": "0.2200",
+            "last_updated_ts": "2026-04-16T12:00:00Z"
+        }],
+        "event_positions": [],
+        "cursor": null
+    }"#;
+
+    let resp: kalshi_fast::GetPositionsResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.market_positions.len(), 1);
+    assert_eq!(resp.market_positions[0].exchange_index, Some(0));
+    assert!(resp.cursor.is_none());
 }
 
 #[test]
@@ -859,11 +1005,11 @@ fn get_positions_response_deserializes() {
     let json = r#"{
         "market_positions": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "total_traded_dollars": "12.3400",
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -881,6 +1027,7 @@ fn get_positions_response_deserializes() {
     let resp: kalshi_fast::GetPositionsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.market_positions.len(), 1);
     assert_eq!(resp.market_positions[0].position_fp, "5.00");
+    assert_eq!(resp.market_positions[0].exchange_index, Some(0));
     assert_eq!(resp.event_positions.len(), 1);
     assert_eq!(resp.cursor, Some("abc123".into()));
 }
@@ -890,11 +1037,11 @@ fn positions_page_from_response() {
     let json = r#"{
         "market_positions": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "total_traded_dollars": "12.3400",
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -1130,6 +1277,7 @@ fn get_fills_response_deserializes() {
     let json = r#"{
         "fills": [{
             "fill_id": "f1",
+            "exchange_index": 0,
             "order_id": "o1",
             "trade_id": "t1",
             "ticker": "MKT-1",
@@ -1147,6 +1295,7 @@ fn get_fills_response_deserializes() {
 
     let resp: GetFillsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.fills.len(), 1);
+    assert_eq!(resp.fills[0].exchange_index, Some(0));
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
@@ -1155,6 +1304,7 @@ fn get_settlements_response_deserializes() {
     let json = r#"{
         "settlements": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "event_ticker": "EVT-1",
             "market_result": "yes",
             "yes_count_fp": "1.00",
@@ -1170,6 +1320,7 @@ fn get_settlements_response_deserializes() {
 
     let resp: GetSettlementsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.settlements.len(), 1);
+    assert_eq!(resp.settlements[0].exchange_index, Some(0));
     assert!(resp.cursor.is_none());
 }
 

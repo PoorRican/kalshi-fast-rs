@@ -34,8 +34,6 @@ pub struct MarketPositionRef<'a> {
     pub market_exposure_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
     pub realized_pnl_dollars: FixedPointDollarsRef<'a>,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     #[serde(borrow)]
     pub fees_paid_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
@@ -46,11 +44,12 @@ impl<'a> MarketPositionRef<'a> {
     pub fn into_owned(self) -> MarketPosition {
         MarketPosition {
             ticker: self.ticker.into_owned(),
+            // `exchange_index` isn't carried on this WS ref type; REST-only field.
+            exchange_index: None,
             total_traded_dollars: self.total_traded_dollars.into_owned(),
             position_fp: self.position_fp.into_owned(),
             market_exposure_dollars: self.market_exposure_dollars.into_owned(),
             realized_pnl_dollars: self.realized_pnl_dollars.into_owned(),
-            resting_orders_count: self.resting_orders_count,
             fees_paid_dollars: self.fees_paid_dollars.into_owned(),
             last_updated_ts: self.last_updated_ts.into_owned(),
         }
