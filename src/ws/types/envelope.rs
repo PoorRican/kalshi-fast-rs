@@ -20,7 +20,9 @@ pub struct WsListSubscriptions {
 pub struct WsError {
     #[serde(default)]
     pub code: Option<i64>,
-    #[serde(default)]
+    /// Human-readable error text. Wire key is `msg` (nested under the envelope's own `msg`
+    /// object, i.e. `msg.msg`), renamed here to avoid a confusing `msg.msg` field name.
+    #[serde(default, rename = "msg")]
     pub message: Option<String>,
 }
 
@@ -46,7 +48,8 @@ impl<'a> WsListSubscriptionsRef<'a> {
 pub struct WsErrorRef<'a> {
     #[serde(default)]
     pub code: Option<i64>,
-    #[serde(default, borrow)]
+    /// See [`WsError::message`] — wire key is `msg`.
+    #[serde(default, rename = "msg", borrow)]
     pub message: Option<Cow<'a, str>>,
 }
 

@@ -150,7 +150,7 @@ fn every_control_arm_preserves_optional_position_metadata() {
             Some(4),
         ),
         (
-            r#"{"type":"error","id":5,"sid":7,"seq":5,"msg":{"code":400,"message":"bad request"}}"#,
+            r#"{"type":"error","id":5,"sid":7,"seq":5,"msg":{"code":400,"msg":"bad request"}}"#,
             Some(7),
             Some(5),
         ),
@@ -160,6 +160,10 @@ fn every_control_arm_preserves_optional_position_metadata() {
         let wire_owned = WsMessageV2::from_bytes(frame.as_bytes()).expect("wire frame must parse");
         assert_eq!(wire_owned.subscription_id(), sid);
         assert_eq!(wire_owned.sequence(), sequence);
+        if let WsMessageV2::Error { error, .. } = &wire_owned {
+            assert_eq!(error.code, Some(400));
+            assert_eq!(error.message.as_deref(), Some("bad request"));
+        }
 
         let wire_borrowed =
             WsMessageRef::from_bytes(frame.as_bytes()).expect("borrowed wire frame must parse");

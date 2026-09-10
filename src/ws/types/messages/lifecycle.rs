@@ -33,6 +33,12 @@ pub struct WsMarketLifecycleV2 {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// The market's valid-price grid as `{start, end, step}` bands in fixed-point dollars,
+    /// same shape as the REST market object's `price_ranges`. Per the AsyncAPI this key is
+    /// only present on events that also carry `price_level_structure` (`created` and
+    /// `price_level_structure_updated`). Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<crate::rest::PriceRange>>,
     /// Determines how `floor_strike` / `cap_strike` are interpreted (e.g.
     /// "between" uses both, "greater" uses `floor_strike` only, "less" uses
     /// `cap_strike` only). Per the AsyncAPI this key exists **only** on
@@ -176,6 +182,9 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    /// See [`WsMarketLifecycleV2::price_ranges`]. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<crate::rest::PriceRange>>,
     /// Determines how `floor_strike` / `cap_strike` are interpreted; present
     /// only on `metadata_updated` events. Added 2026-06-18.
     #[serde(default, borrow)]
@@ -217,6 +226,7 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             is_deactivated: self.is_deactivated,
             fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges,
             strike_type: self.strike_type.map(Cow::into_owned),
             floor_strike: self.floor_strike,
             cap_strike: self.cap_strike,
@@ -495,6 +505,35 @@ mod tests {
 
         let borrowed_event: WsEventLifecycleRef = serde_json::from_str(event_json).unwrap();
         assert_eq!(borrowed_event.into_owned().exchange_index, Some(2));
+    }
+
+    /// Per the 2026-07-02 changelog, `created` and `price_level_structure_updated`
+    /// events carry a `price_ranges` array alongside `price_level_structure`.
+    #[test]
+    fn price_level_structure_updated_surfaces_price_ranges() {
+        let json = r#"{
+            "event_type": "price_level_structure_updated",
+            "market_ticker": "INXD-23SEP14-B4487",
+            "price_level_structure": "deci_cent",
+            "price_ranges": [
+                {"start": "0.0000", "end": "1.0000", "step": "0.0010"}
+            ]
+        }"#;
+
+        let owned: WsMarketLifecycleV2 = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.price_level_structure.as_deref(), Some("deci_cent"));
+        let ranges = owned.price_ranges.expect("price_ranges must be present");
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].start, "0.0000");
+        assert_eq!(ranges[0].end, "1.0000");
+        assert_eq!(ranges[0].step, "0.0010");
+
+        let borrowed: WsMarketLifecycleV2Ref = serde_json::from_str(json).unwrap();
+        let round_tripped = borrowed.into_owned();
+        let round_tripped_ranges = round_tripped
+            .price_ranges
+            .expect("price_ranges must round-trip");
+        assert_eq!(round_tripped_ranges[0].step, "0.0010");
     }
 
     /// Fields introduced after a message type shipped must not become

@@ -81,6 +81,7 @@ async fn test_rfq_lifecycle() {
                 replace_existing: None,
                 subtrader_id: None,
                 subaccount: None,
+                target_cost_excludes_fees: None,
             })
             .await
     })
@@ -150,6 +151,7 @@ async fn test_quote_lifecycle() {
                 replace_existing: None,
                 subtrader_id: None,
                 subaccount: None,
+                target_cost_excludes_fees: None,
             })
             .await
     })
@@ -179,7 +181,7 @@ async fn test_quote_lifecycle() {
 
     // 3. Get the quote and verify
     let get_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_quote(&quote_id).await
+        client.get_quote_scoped(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")
@@ -190,7 +192,7 @@ async fn test_quote_lifecycle() {
 
     // 4. Delete the quote (cleanup)
     let _delete_quote = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.delete_quote(&quote_id).await
+        client.delete_quote_scoped(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")

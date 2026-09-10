@@ -458,7 +458,7 @@ fn create_rfq_request_serializes_target_cost_excludes_fees() {
 
 #[test]
 fn error_response_deserializes_details_string() {
-    let json = r#"{"code":"bad","message":"oops","details":"extra info","service":"svc"}"#;
+    let json = r#"{"code":"bad","message":"oops","details":"extra info"}"#;
     let err: ErrorResponse = serde_json::from_str(json).unwrap();
     assert_eq!(err.code.as_deref(), Some("bad"));
     assert_eq!(err.details.as_deref(), Some("extra info"));
