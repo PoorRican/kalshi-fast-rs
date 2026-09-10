@@ -4,13 +4,15 @@ pub(crate) use cargo_husky as _;
 use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
-    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetAccountApiLimitsResponse, GetAccountApiUsageLevelVolumeProgressResponse,
+    GetAccountEndpointCostsResponse, GetEventsParams, GetExchangeAnnouncementsResponse,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetIntraExchangeInstanceTransferResponse, GetIntraExchangeInstanceTransfersResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -1067,6 +1069,36 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
+    assert!(resp.intra_exchange_transfers_active.is_none());
+    assert!(resp.exchange_index_statuses.is_empty());
+}
+
+#[test]
+fn get_exchange_status_response_deserializes_index_statuses() {
+    let json = r#"{
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "description": "primary",
+                "exchange_active": true,
+                "trading_active": true,
+                "intra_exchange_transfers_active": true
+            }
+        ]
+    }"#;
+
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    assert_eq!(resp.exchange_index_statuses.len(), 1);
+    let status = &resp.exchange_index_statuses[0];
+    assert_eq!(status.exchange_index, 0);
+    assert_eq!(status.description, "primary");
+    assert!(status.exchange_active);
+    assert!(status.trading_active);
+    assert!(status.intra_exchange_transfers_active);
 }
 
 #[test]
@@ -1235,12 +1267,41 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+}
+
+#[test]
+fn get_account_api_usage_level_volume_progress_response_deserializes() {
+    let json = r#"{
+        "volume_progress": [{
+            "computed_ts": 1700000000,
+            "trailing_30d_volume_fp": "1234.00",
+            "goals": [
+                {"level":"expert","earn_volume_goal_fp":"1000.00","keep_volume_goal_fp":"500.00"}
+            ]
+        }]
+    }"#;
+
+    let resp: GetAccountApiUsageLevelVolumeProgressResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.volume_progress.len(), 1);
+    let progress = &resp.volume_progress[0];
+    assert_eq!(progress.computed_ts, 1700000000);
+    assert_eq!(progress.trailing_30d_volume_fp, "1234.00");
+    assert_eq!(progress.goals.len(), 1);
+    assert_eq!(progress.goals[0].level, "expert");
+    assert_eq!(progress.goals[0].earn_volume_goal_fp, "1000.00");
+    assert_eq!(progress.goals[0].keep_volume_goal_fp, "500.00");
+
+    // Tolerates missing/null volume_progress.
+    let resp: GetAccountApiUsageLevelVolumeProgressResponse =
+        serde_json::from_str(r#"{}"#).unwrap();
+    assert!(resp.volume_progress.is_empty());
 }
 
 #[test]
@@ -1269,6 +1330,57 @@ fn get_subaccount_transfers_response_deserializes() {
 fn apply_subaccount_transfer_response_deserializes() {
     let json = r#"{}"#;
     let _resp: ApplySubaccountTransferResponse = serde_json::from_str(json).unwrap();
+}
+
+#[test]
+fn get_intra_exchange_instance_transfers_response_deserializes() {
+    let json = r#"{
+        "transfers": [{
+            "transfer_id": "t1",
+            "source": "event_contract",
+            "destination": "margined",
+            "source_exchange_shard": 0,
+            "destination_exchange_shard": 1,
+            "amount": "12.3400",
+            "status": "complete",
+            "created_ts": 1700000000
+        }],
+        "cursor": "c1"
+    }"#;
+
+    let resp: GetIntraExchangeInstanceTransfersResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.transfers.len(), 1);
+    assert_eq!(resp.transfers[0].transfer_id, "t1");
+    assert_eq!(resp.transfers[0].source, "event_contract");
+    assert_eq!(resp.transfers[0].destination, "margined");
+    assert_eq!(resp.transfers[0].source_exchange_shard, 0);
+    assert_eq!(resp.transfers[0].destination_exchange_shard, 1);
+    assert_eq!(resp.transfers[0].amount, "12.3400");
+    assert_eq!(resp.cursor, Some("c1".into()));
+
+    // Tolerates missing/null transfers and absent cursor.
+    let resp: GetIntraExchangeInstanceTransfersResponse = serde_json::from_str(r#"{}"#).unwrap();
+    assert!(resp.transfers.is_empty());
+    assert!(resp.cursor.is_none());
+}
+
+#[test]
+fn get_intra_exchange_instance_transfer_response_deserializes() {
+    let json = r#"{
+        "transfer": {
+            "transfer_id": "t1",
+            "source": "event_contract",
+            "destination": "event_contract",
+            "source_exchange_shard": 0,
+            "destination_exchange_shard": 0,
+            "amount": "1.0000",
+            "status": "pending",
+            "created_ts": 1700000000
+        }
+    }"#;
+
+    let resp: GetIntraExchangeInstanceTransferResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.transfer.transfer_id, "t1");
 }
 
 // ============================================================================
@@ -1754,6 +1866,18 @@ fn get_api_keys_response_deserializes_typed() {
     assert_eq!(resp.api_keys.len(), 1);
     assert_eq!(resp.api_keys[0].api_key_id, "key-1");
     assert_eq!(resp.api_keys[0].scopes, vec!["read", "write"]);
+    assert!(resp.api_key_region_expiration_ts.is_none());
+}
+
+#[test]
+fn get_api_keys_response_deserializes_region_expiration_ts() {
+    let json = r#"{
+        "api_keys": [],
+        "api_key_region_expiration_ts": 1700000000
+    }"#;
+
+    let resp: kalshi_fast::GetApiKeysResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.api_key_region_expiration_ts, Some(1700000000));
 }
 
 #[test]
