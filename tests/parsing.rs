@@ -2360,3 +2360,191 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         Some("politics")
     );
 }
+
+// ============================================================================
+// Live Data: Event Live Data / Weather Index
+// ============================================================================
+
+#[test]
+fn get_event_live_data_response_deserializes_crypto_chart() {
+    let json = r#"{
+        "live_data": {
+            "type": "crypto_price_chart",
+            "details": {"points": [[1730000000000, 68000.5]]},
+            "is_historical": false,
+            "default_range": "1h",
+            "range_options": ["15min", "1h", "1d"]
+        }
+    }"#;
+
+    let resp: kalshi_fast::GetEventLiveDataResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.live_data.live_data_type, "crypto_price_chart");
+    assert_eq!(resp.live_data.is_historical, Some(false));
+    assert_eq!(resp.live_data.default_range.as_deref(), Some("1h"));
+    assert_eq!(
+        resp.live_data.range_options,
+        Some(vec![
+            "15min".to_string(),
+            "1h".to_string(),
+            "1d".to_string()
+        ])
+    );
+    assert!(resp.live_data.details.contains_key("points"));
+}
+
+#[test]
+fn get_event_live_data_response_deserializes_minimal() {
+    let json = r#"{
+        "live_data": {
+            "type": "weather_observation",
+            "details": {}
+        }
+    }"#;
+
+    let resp: kalshi_fast::GetEventLiveDataResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.live_data.live_data_type, "weather_observation");
+    assert!(resp.live_data.is_historical.is_none());
+    assert!(resp.live_data.default_range.is_none());
+    assert!(resp.live_data.range_options.is_none());
+}
+
+#[test]
+fn get_weather_index_response_deserializes_canonical_points() {
+    let json = r#"{
+        "city": "miami",
+        "config_version": "miami-temperature-v1.0",
+        "units": "fahrenheit",
+        "timeseries": [
+            {"t": 1000, "v": 88.12, "status": "normal", "contributors": 5},
+            {"t": 2000, "v": 87.5, "status": "degraded", "contributors": 4}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetWeatherIndexResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.city, "miami");
+    assert_eq!(resp.units, "fahrenheit");
+    assert_eq!(resp.timeseries.len(), 2);
+    assert_eq!(resp.timeseries[0].v, Some(88.12));
+    assert_eq!(
+        resp.timeseries[0].status,
+        kalshi_fast::WeatherIndexPointStatus::Normal
+    );
+    assert_eq!(resp.timeseries[0].contributors, Some(5));
+    assert!(resp.timeseries[0].stations.is_none());
+    assert!(resp.timeseries[0].receipt_basis.is_none());
+    assert_eq!(
+        resp.timeseries[1].status,
+        kalshi_fast::WeatherIndexPointStatus::Degraded
+    );
+}
+
+#[test]
+fn get_weather_index_response_deserializes_incomplete_and_detailed_points() {
+    let json = r#"{
+        "city": "miami",
+        "config_version": "",
+        "units": "fahrenheit",
+        "timeseries": [
+            {
+                "t": 3000,
+                "status": "incomplete",
+                "stations": [
+                    {"station_id": "pending", "code": "pending", "temp_f": 89.4}
+                ]
+            },
+            {
+                "t": 4000,
+                "v": 88.9,
+                "status": "normal",
+                "contributors": 5,
+                "stations": [
+                    {"station_id": "KMIA1M", "code": "ok", "source": "hf_asos", "temp_f": 88.87}
+                ]
+            },
+            {
+                "t": 5000,
+                "v": 86.0,
+                "status": "degraded",
+                "contributors": 4,
+                "receipt_basis": "synoptic_latency"
+            }
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetWeatherIndexResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.timeseries.len(), 3);
+
+    let incomplete = &resp.timeseries[0];
+    assert_eq!(
+        incomplete.status,
+        kalshi_fast::WeatherIndexPointStatus::Incomplete
+    );
+    assert!(incomplete.v.is_none());
+    assert!(incomplete.contributors.is_none());
+    let stations = incomplete.stations.as_ref().unwrap();
+    assert_eq!(stations[0].station_id, "pending");
+    assert_eq!(stations[0].code, "pending");
+
+    let detailed_canonical = &resp.timeseries[1];
+    assert_eq!(detailed_canonical.v, Some(88.9));
+    assert_eq!(
+        detailed_canonical.stations.as_ref().unwrap()[0]
+            .source
+            .as_deref(),
+        Some("hf_asos")
+    );
+
+    let backfilled = &resp.timeseries[2];
+    assert_eq!(
+        backfilled.receipt_basis.as_deref(),
+        Some("synoptic_latency")
+    );
+}
+
+#[test]
+fn get_weather_index_calibrations_response_deserializes() {
+    let json = r#"{
+        "city": "miami",
+        "units": "celsius",
+        "calibrations": [
+            {
+                "config_version": "miami-temperature-v1.0",
+                "published_at_ms": 1000,
+                "effective_at_ms": 1000,
+                "city_reference_c": 30.5,
+                "stations": [
+                    {"station_id": "KMIA1M", "weight": 0.5, "offset_c": 0.1},
+                    {"station_id": "KOPF1M", "weight": 0.5, "offset_c": -0.1}
+                ]
+            },
+            {
+                "config_version": "miami-temperature-v1.0-cal-20260831",
+                "effective_at_ms": 2000,
+                "change_reason": "weekly offset calibration",
+                "calibration_window_start_ms": 1000,
+                "calibration_window_end_ms": 2000,
+                "city_reference_c": 30.6,
+                "stations": [
+                    {
+                        "station_id": "KMIA1M",
+                        "weight": 0.5,
+                        "offset_c": 0.12,
+                        "update_note": "updated: 500 residuals, target 0.1, applied +0.02"
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetWeatherIndexCalibrationsResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.city, "miami");
+    assert_eq!(resp.units, "celsius");
+    assert_eq!(resp.calibrations.len(), 2);
+    assert_eq!(resp.calibrations[0].stations.len(), 2);
+    assert!(resp.calibrations[0].change_reason.is_none());
+    assert_eq!(
+        resp.calibrations[1].stations[0].update_note.as_deref(),
+        Some("updated: 500 residuals, target 0.1, applied +0.02")
+    );
+}
