@@ -91,6 +91,26 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Documented exception:** the legacy (non-V2) order-mutation methods — `create_order`,
+  `cancel_order`, `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders` in
+  `rest/orders.rs` — are marked `#[deprecated(since = "0.8.0")]` rather than removed, even though
+  the live OpenAPI spec confirms their underlying REST paths (`POST`/`DELETE` on `/portfolio/orders`
+  and `/portfolio/orders/batched`, `/portfolio/orders/{order_id}/{amend,decrease}`) no longer exist —
+  only `GET /portfolio/orders` and `GET /portfolio/orders/{order_id}` remain. Calling any of these
+  deprecated methods against the live API will fail. They are kept for one release as a softer
+  landing than an unreviewed hard compile break; plan to remove them outright in the next minor
+  release. Use `create_order_v2` / `cancel_order_v2` / `amend_order_v2` / `decrease_order_v2` /
+  `batch_create_orders_v2` / `batch_cancel_orders_v2` instead.
+
+- The `GET /trade-api/v2/cfbenchmarks/*` REST passthrough (documented 2026-08-27 as also serving
+  historical CF Benchmarks values) has no fixed schema in the live OpenAPI spec — it is a generic
+  proxy, not enumerable as typed request/response structs — so it is not modeled here.
+
+- `EventMetadata.product_metadata` and `StructuredTarget.details` remain opaque `object` schemas
+  in the live OpenAPI spec (no typed sub-fields, e.g. the 2026-07-30 `cadence` field and the
+  2026-08-29 `image_url` field are not individually declared). Both already flow through the
+  crate's existing untyped `extra`/`details` maps, so no crate change was needed for either.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
