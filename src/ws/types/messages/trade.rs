@@ -21,6 +21,10 @@ pub struct WsTrade {
     /// Normalized taker book side (bid | ask). Added 2026-05-07.
     #[serde(default)]
     pub taker_book_side: Option<BookSide>,
+    /// True if the trade was matched off book as a block trade. Added
+    /// 2026-08-13.
+    #[serde(default)]
+    pub is_block_trade: Option<bool>,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
@@ -53,6 +57,8 @@ pub struct WsTradeRef<'a> {
     /// Normalized taker book side (bid | ask). Added 2026-05-07.
     #[serde(default)]
     pub taker_book_side: Option<BookSide>,
+    #[serde(default)]
+    pub is_block_trade: Option<bool>,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
@@ -73,9 +79,51 @@ impl<'a> WsTradeRef<'a> {
             taker_side: self.taker_side,
             taker_outcome_side: self.taker_outcome_side,
             taker_book_side: self.taker_book_side,
+            is_block_trade: self.is_block_trade,
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `is_block_trade` was added to Predictions trade WebSocket messages
+    /// 2026-08-13.
+    #[test]
+    fn trade_deserializes_is_block_trade() {
+        let json = r#"{
+            "trade_id": "t-1",
+            "market_ticker": "KXHIGHNY-24JAN01-T60",
+            "count_fp": "1.00",
+            "yes_price_dollars": "0.5500",
+            "no_price_dollars": "0.4500",
+            "is_block_trade": true,
+            "ts": 1700000000
+        }"#;
+
+        let owned: WsTrade = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.is_block_trade, Some(true));
+
+        let borrowed: WsTradeRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().is_block_trade, Some(true));
+    }
+
+    #[test]
+    fn trade_is_block_trade_absent_defaults_none() {
+        let json = r#"{
+            "trade_id": "t-1",
+            "market_ticker": "KXHIGHNY-24JAN01-T60",
+            "count_fp": "1.00",
+            "yes_price_dollars": "0.5500",
+            "no_price_dollars": "0.4500",
+            "ts": 1700000000
+        }"#;
+
+        let owned: WsTrade = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.is_block_trade, None);
     }
 }

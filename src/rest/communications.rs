@@ -98,10 +98,6 @@ pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
@@ -117,6 +113,18 @@ pub struct GetQuotesParams {
     /// Pass `"self"` to enable. Added 2026-05-07.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_user_filter: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to
+    /// enable. Added 2026-06-08 (present alongside `rfq_user_filter`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
+    /// Restrict results to quotes last updated after this Unix timestamp.
+    /// Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    /// Restrict results to quotes last updated before this Unix timestamp.
+    /// Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -194,6 +202,12 @@ pub struct CreateRFQRequest {
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    /// Sizes quotes against the target cost as principal only (contracts =
+    /// target cost / price), with the taker fee charged on top of the
+    /// target cost. Only valid together with a target cost. Defaults to
+    /// `false` (fee-inclusive sizing) when omitted. Added 2026-09-10.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
@@ -278,6 +292,9 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "quote-ID-only lookup is deprecated since 2026-07-09; use get_rfq_quote instead"
+    )]
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,6 +307,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "quote-ID-only action is deprecated since 2026-06-25; use delete_rfq_quote instead"
+    )]
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -302,6 +322,9 @@ impl KalshiRestClient {
         .await
     }
 
+    #[deprecated(
+        note = "quote-ID-only action is deprecated since 2026-06-25; use accept_rfq_quote instead"
+    )]
     pub async fn accept_quote(
         &self,
         quote_id: &str,
@@ -312,8 +335,85 @@ impl KalshiRestClient {
             .await
     }
 
+    #[deprecated(
+        note = "quote-ID-only action is deprecated since 2026-06-25; use confirm_rfq_quote instead"
+    )]
     pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Look up a quote scoped to its RFQ. The quote must belong to
+    /// `rfq_id`, otherwise this returns `404 Not Found`. Added 2026-06-25.
+    ///
+    /// Prefer this over [`Self::get_quote`], which is deprecated.
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Delete a quote scoped to its RFQ, so it can no longer be accepted.
+    /// Added 2026-06-25.
+    ///
+    /// Prefer this over [`Self::delete_quote`], which is deprecated.
+    pub async fn delete_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Accept a quote scoped to its RFQ. Requires the quoter to confirm.
+    /// Added 2026-06-25.
+    ///
+    /// Prefer this over [`Self::accept_quote`], which is deprecated.
+    pub async fn accept_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/accept"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote scoped to its RFQ, starting the timer for order
+    /// execution. Added 2026-06-25.
+    ///
+    /// Prefer this over [`Self::confirm_quote`], which is deprecated.
+    pub async fn confirm_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm"
+        ));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await

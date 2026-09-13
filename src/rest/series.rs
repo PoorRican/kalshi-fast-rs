@@ -46,6 +46,13 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `fifteen_min`). Added 2026-07-30.
+    ///
+    /// Not present in the manually-maintained OpenAPI schema (which types
+    /// `EventData.product_metadata` as an opaque `object`), but confirmed by
+    /// the Kalshi changelog. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -59,6 +66,11 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Discovery categories for this series. The `category` filter on Get
+    /// Series List matches any entry here, so the primary `category` above
+    /// may differ from the filter value. Added 2026-09-17.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
@@ -91,6 +103,10 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Identifier for the exchange shard hosting new events in this series.
+    /// Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

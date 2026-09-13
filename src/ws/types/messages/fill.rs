@@ -36,6 +36,10 @@ pub struct WsFill {
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
+    /// Identifier for the exchange shard where the fill occurred. Added
+    /// 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 /// Fill channel message (type: "fill")
@@ -77,6 +81,8 @@ pub struct WsFillRef<'a> {
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 impl<'a> WsFillRef<'a> {
@@ -100,6 +106,7 @@ impl<'a> WsFillRef<'a> {
             purchased_side: self.purchased_side,
             created_time: self.created_time.map(Cow::into_owned),
             subaccount: self.subaccount,
+            exchange_index: self.exchange_index,
         }
     }
 }
