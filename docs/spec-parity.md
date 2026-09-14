@@ -91,6 +91,69 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `FeeType` enum now includes `QuadraticWithComboMakerFees` (serialized `quadratic_with_combo_maker_fees`), added to the OpenAPI spec for the combo maker-fee schedule. The `#[serde(other)] Unknown` catch-all continues to protect against further additions.
+
+- The multivariate lookup surface (`PUT /multivariate_event_collections/{collection_ticker}/lookup`,
+  `GET /multivariate_event_collections/{collection_ticker}/lookup` history, and the WebSocket
+  `multivariate` channel / `multivariate_lookup` message) was removed upstream on 2026-08-06 (it
+  predated RFQs). All three are removed from the crate: `WsChannelV2::Multivariate` and the
+  `WsMultivariate` / `WsMultivariateRef` types no longer exist. Use the communications (RFQ) APIs,
+  `POST /multivariate_event_collections/{collection_ticker}`, or the `multivariate_market_lifecycle`
+  channel instead.
+
+- `GET /exchange/announcements` was removed upstream on 2026-07-04; `get_exchange_announcements()`
+  and the `Announcement` / `AnnouncementType` / `AnnouncementStatus` / `GetExchangeAnnouncementsResponse`
+  types are removed. Exchange schedule remains available through `get_exchange_schedule()`.
+
+- The `service` field on error response bodies was deprecated 2026-07-28 and removed 2026-08-06;
+  `ErrorResponse.service` is removed from the crate. Branch on `ErrorResponse.code`, which is
+  present on every error response.
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed from the Predictions REST schema on
+  2026-07-09 and are removed from the crate. `Market.price_level_structure` / `Market.price_ranges`
+  and the fixed-point count/dollar fields are the canonical replacements.
+
+- `EventData.available_on_brokers` was deprecated 2026-08-27 (stopped being populated, always
+  `false`) and removed from event responses 2026-09-10; the field is removed from the crate.
+
+- Exchange sharding: many REST responses and WebSocket messages gained an `exchange_index` field
+  through 2026-07/09 as Kalshi split volume across dedicated exchange shards (commodities,
+  basketball, crypto, tennis, baseball, and multivariate combos have all moved shards at various
+  points). The crate models `exchange_index` on `Fill`, `Settlement`, and `MarketPosition` as a
+  required `u32` (matching their upstream `required` status), and as `Option` filters/fields
+  elsewhere (`Series`, `MultivariateEventCollection`, `GetOrdersParams`/`GetPositionsParams`/
+  `GetFillsParams`, `GetBalanceParams`, WS `market_lifecycle_v2`/`event_lifecycle`/`user_orders`).
+  Because shard assignment keeps changing upstream, callers should treat `exchange_index` as
+  informational rather than hard-coding shard numbers.
+
+- `GetQuotesParams` (`GET /communications/quotes`) dropped `market_ticker` / `event_ticker`
+  filtering upstream on 2026-06-20 (removed from the crate) and gained `min_ts` / `max_ts`
+  (2026-06-18) and `user_filter` (self-filter, distinct from the existing `rfq_user_filter`).
+  RFQ-scoped quote action/lookup endpoints (`get_rfq_quote`, `delete_rfq_quote`,
+  `accept_rfq_quote`, `confirm_rfq_quote`) were added 2026-06-25/07-09 as the recommended
+  replacement for the quote-ID-only endpoints, which remain supported but deprecated upstream.
+
+- `GetBalanceResponse.balance_dollars` is documented as `required` in the current OpenAPI schema,
+  but the crate keeps it `Option<FixedPointDollars>` per its original "direct members only"
+  restriction; no changelog entry in this refresh's window lifts that restriction, so tightening
+  it to non-`Option` without evidence would risk spurious parse failures.
+
+## Known Gaps (not implemented this refresh)
+
+The following upstream additions from the 2026-06 to 2026-09 changelog window are **not yet
+modeled** in the crate. Each is a self-contained new endpoint or channel (not a change to an
+existing modeled type), so omitting them does not risk silently dropping data on existing calls;
+they are tracked here rather than silently ignored:
+
+- `GET /live_data/weather/{city}` (Kalshi Weather Index, added 2026-08-20), its `receipt_basis`
+  field (2026-09-10), and `GET /live_data/weather/{city}/calibrations` (2026-08-31).
+- `GET /live_data/events/{event_ticker}` (event-keyed live data, added 2026-07-30).
+- The `pyth_value` WebSocket channel (deduplicated Pyth prices, added 2026-07-23).
+- The `cfbenchmarks_value_5hz` WebSocket channel (5Hz CF Benchmarks values, added 2026-09-03).
+- `GET /fcm/orders` `client_order_ids` filter (added 2026-09-03); `GetFcmOrdersParams` still only
+  supports `subtrader_id`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

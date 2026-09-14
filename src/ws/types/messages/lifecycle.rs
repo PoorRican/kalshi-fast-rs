@@ -38,6 +38,23 @@ pub struct WsMarketLifecycleV2 {
     pub yes_sub_title: Option<String>,
     #[serde(default)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadata>,
+    /// Top-level updated strike type; present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Top-level updated cap strike; present only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level updated custom strike (custom/structured markets); present
+    /// only on `metadata_updated` events. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
+    /// Valid-price bands, present on `created` and `price_level_structure_updated`
+    /// events that carry a `price_level_structure`. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<crate::rest::PriceRange>>,
+    /// Exchange shard the market lives on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     /// Catches any other top-level keys the exchange attaches to a lifecycle
     /// event (e.g. future `metadata_updated` fields beyond floor_strike /
     /// yes_sub_title).
@@ -112,6 +129,9 @@ pub struct WsEventLifecycle {
     pub strike_period: Option<String>,
     #[serde(default)]
     pub additional_metadata: Option<WsEventLifecycleAdditionalMetadata>,
+    /// Exchange shard the event's markets live on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -155,6 +175,16 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub yes_sub_title: Option<Cow<'a, str>>,
     #[serde(default, borrow)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadataRef<'a>>,
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub price_ranges: Option<Vec<crate::rest::PriceRange>>,
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     /// Catches any other top-level lifecycle keys not modeled above.
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
@@ -179,6 +209,11 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             additional_metadata: self
                 .additional_metadata
                 .map(WsMarketLifecycleAdditionalMetadataRef::into_owned),
+            strike_type: self.strike_type,
+            cap_strike: self.cap_strike,
+            custom_strike: self.custom_strike,
+            price_ranges: self.price_ranges,
+            exchange_index: self.exchange_index,
             extra: self.extra,
         }
     }
@@ -256,6 +291,8 @@ pub struct WsEventLifecycleRef<'a> {
     pub strike_period: Option<Cow<'a, str>>,
     #[serde(default)]
     pub additional_metadata: Option<WsEventLifecycleAdditionalMetadataRef>,
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 impl<'a> WsEventLifecycleRef<'a> {
@@ -271,6 +308,7 @@ impl<'a> WsEventLifecycleRef<'a> {
             additional_metadata: self
                 .additional_metadata
                 .map(WsEventLifecycleAdditionalMetadataRef::into_owned),
+            exchange_index: self.exchange_index,
         }
     }
 }

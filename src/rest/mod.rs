@@ -51,7 +51,7 @@
 //!     .await?;
 //!
 //! // Authenticated endpoint
-//! let balance = client.get_balance().await?;
+//! let balance = client.get_balance(Default::default()).await?;
 //! println!("balance: {}", balance.balance);
 //! # Ok(())
 //! # }

@@ -5,6 +5,7 @@
 //! post-trade accounting feeds.
 
 use crate::KalshiError;
+use crate::rest::account::EmptyResponse;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
@@ -14,6 +15,19 @@ use crate::types::{
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+
+/// `GET /portfolio/balance` query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    /// Use a subaccount instead of the primary account. Passing `0` explicitly
+    /// (rather than omitting the parameter) is meaningful: added 2026-08-13.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Scope `balance` and `portfolio_value` to one exchange shard. Omit to
+    /// aggregate across all exchange indexes. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
@@ -54,6 +68,11 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict to one exchange shard. Omit to return positions across all
+    /// exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetPositionsParams {
@@ -90,10 +109,10 @@ pub struct MarketPosition {
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
+    /// Exchange shard this position lives on. Added 2026-08-20 / required 2026-09.
+    pub exchange_index: u32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -134,6 +153,8 @@ impl From<GetPositionsResponse> for PositionsPage {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
     pub ticker: String,
+    /// Exchange shard this settlement occurred on. Added 2026-08-20 / required 2026-09.
+    pub exchange_index: u32,
     pub event_ticker: String,
     pub market_result: String,
     pub yes_count_fp: FixedPointCount,
@@ -176,6 +197,8 @@ pub struct GetSettlementsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
     pub fill_id: String,
+    /// Exchange shard this fill occurred on. Added 2026-08-20 / required 2026-09.
+    pub exchange_index: u32,
     pub order_id: String,
     pub trade_id: String,
     pub ticker: String,
@@ -223,6 +246,11 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict to one exchange shard. Omit to return fills across all
+    /// exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -233,25 +261,90 @@ pub struct GetFillsResponse {
     pub cursor: Option<String>,
 }
 
+/// A fixed-point dollar balance scoped to one exchange shard.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: u32,
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Resting-order value broken down by exchange index. Added 2026-08-20.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub resting_order_value_breakdown: Vec<IndexedBalance>,
 }
+
+/// One exchange index's share of a target balance allocation.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TargetBalanceAllocation {
+    pub exchange_index: u32,
+    /// 0..=100.
+    pub percent: u32,
+}
+
+/// Collateral an automatic rebalance leaves behind for resting orders.
+/// `max` reserves the largest single market-side commitment; `sum` (the
+/// default) reserves the summed margin of every resting order.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestingMarginReservation {
+    Max,
+    Sum,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetTargetBalanceAllocationResponse {
+    pub allocations: Vec<TargetBalanceAllocation>,
+    /// Added 2026-09-17.
+    #[serde(default)]
+    pub resting_margin_reservation: Option<RestingMarginReservation>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SetTargetBalanceAllocationRequest {
+    /// Percentages must total 100. An empty array disables automatic rebalancing.
+    pub allocations: Vec<TargetBalanceAllocation>,
+    /// Defaults to `sum` when omitted. Added 2026-09-03.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resting_margin_reservation: Option<RestingMarginReservation>,
+}
+
+/// `GET /historical/positions` query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+/// `GET /historical/positions` shares its response shape with `GET /portfolio/positions`.
+pub type GetHistoricalPositionsResponse = GetPositionsResponse;
 
 impl KalshiRestClient {
     /// Get the account balance.
     ///
+    /// `params.exchange_index` scopes `balance` and `portfolio_value` to one
+    /// exchange shard; omit it to aggregate across all shards.
+    /// `params.subaccount` reads a subaccount's balance instead of the
+    /// primary account's.
+    ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.
@@ -300,6 +393,53 @@ impl KalshiRestClient {
             true,
         )
         .await
+    }
+
+    /// Get the caller's target balance allocation across exchange indexes.
+    ///
+    /// **Requires auth.**
+    pub async fn get_target_balance_allocation(
+        &self,
+    ) -> Result<GetTargetBalanceAllocationResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Replace the caller's target balance allocation across exchange indexes.
+    ///
+    /// Percentages must total 100. Passing an empty `allocations` array disables
+    /// automatic rebalancing.
+    ///
+    /// **Requires auth.**
+    pub async fn set_target_balance_allocation(
+        &self,
+        body: SetTargetBalanceAllocationRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database. Supports cursor pagination.
+    ///
+    /// Positions are archived per whole event and are never split between this
+    /// endpoint and [`get_positions`](Self::get_positions).
+    ///
+    /// **Requires auth.**
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetHistoricalPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// Create a pager for iterating over positions page by page.

@@ -82,6 +82,10 @@ pub struct SubaccountBalance {
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
+    /// A subaccount with funds on multiple exchange indexes appears as
+    /// multiple entries, one per index. Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -146,6 +150,13 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// Unix timestamp (seconds) when the location attestation for this key's
+    /// requests expires; absent if the account has never attested. Added 2026-08-16.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
+    /// Restricts the key to one sub-account (0-63); absent when unrestricted. Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -162,6 +173,10 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to one sub-account (0-63). Omit to create an
+    /// unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +191,10 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to one sub-account (0-63). Omit to create an
+    /// unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -208,6 +227,88 @@ pub struct SubaccountNettingConfig {
 pub struct GetSubaccountNettingResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub netting_configs: Vec<SubaccountNettingConfig>,
+}
+
+/// `POST /portfolio/intra_exchange_instance_transfer` body.
+///
+/// `source`/`destination` are exchange instances (`"event_contract"` or
+/// `"margined"`) kept as raw strings, matching [`ApiUsageLevelGrant::exchange_instance`]'s
+/// tolerance for future instance values. When the source and destination
+/// exchange shards match, this is treated as a subaccount transfer.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    pub source: String,
+    pub destination: String,
+    /// Amount to transfer, in centi-cents.
+    pub amount: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    pub source: String,
+    pub destination: String,
+    pub source_exchange_shard: u32,
+    pub destination_exchange_shard: u32,
+    pub amount: FixedPointDollars,
+    pub status: String,
+    pub created_ts: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
+}
+
+/// One volume-based API usage tier's earn/keep goals, in fixed-point contracts.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    pub level: String,
+    pub earn_volume_goal_fp: String,
+    pub keep_volume_goal_fp: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    pub computed_ts: i64,
+    pub trailing_30d_volume_fp: String,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
 }
 
 impl KalshiRestClient {
@@ -358,6 +459,80 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Transfer funds within the same account, across exchange instances/shards/subaccounts.
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List intra-exchange account transfer history. Supports cursor pagination.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get a single intra-exchange account transfer by ID.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-promote to the Advanced API usage tier.
+    ///
+    /// Requires at least 1 of the caller's last 100 Predictions orders to have
+    /// been created via API.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        let body = EmptyResponse::default();
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Get trailing 30-day volume progress toward each volume-based API usage tier.
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
     pub async fn delete_api_key(&self, api_key: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/api_keys/{api_key}"));
         self.send(
@@ -415,5 +590,41 @@ impl KalshiRestClient {
             }
         })
         .await
+    }
+
+    /// Create a pager for iterating over intra-exchange account transfers page by page.
+    ///
+    /// **Requires auth.** See [`CursorPager`].
+    pub fn intra_exchange_instance_transfers_pager(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> CursorPager<IntraExchangeInstanceTransfer> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
+            })
+        })
+    }
+
+    /// Stream intra-exchange account transfers one by one.
+    ///
+    /// **Requires auth.**
+    pub fn stream_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<IntraExchangeInstanceTransfer, KalshiError>> + Send {
+        stream_items(
+            self.intra_exchange_instance_transfers_pager(params),
+            max_items,
+        )
     }
 }

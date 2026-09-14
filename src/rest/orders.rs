@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict to one exchange shard. Omit to return orders across all
+    /// exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetOrdersParams {
@@ -433,6 +438,16 @@ pub struct GetOrderGroupResponse {
     pub contracts_limit_fp: Option<FixedPointCount>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub orders: Vec<Order>,
+}
+
+/// `PUT /portfolio/order_groups/{order_group_id}/limit` query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateOrderGroupLimitParams {
+    /// Added 2026-08-06.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -896,13 +911,16 @@ impl KalshiRestClient {
         .await
     }
 
+    /// `params.subaccount` was added 2026-08-06 so callers can target a
+    /// specific subaccount's order group.
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: UpdateOrderGroupLimitParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
@@ -1018,6 +1036,29 @@ impl KalshiRestClient {
             &path,
             Option::<&()>::None,
             Some(&body),
+            true,
+        )
+        .await
+    }
+
+    /// Cancel every resting event-market order across all exchange shards.
+    ///
+    /// If `subaccount` is omitted, matching orders may come from any
+    /// subaccount; if provided, only orders for that subaccount are eligible.
+    /// Newly placed orders may also be cancelled during the minute after the
+    /// request. Added 2026-08-27.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
             true,
         )
         .await

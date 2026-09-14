@@ -126,8 +126,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---
@@ -137,6 +135,8 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    /// Added to the OpenAPI spec 2026-08 (combo maker-fee schedule).
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
