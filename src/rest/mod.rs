@@ -31,7 +31,7 @@
 //!
 //! ```no_run
 //! use kalshi_fast::{
-//!     GetMarketsParams, KalshiAuth, KalshiEnvironment,
+//!     GetBalanceParams, GetMarketsParams, KalshiAuth, KalshiEnvironment,
 //!     KalshiRestClient, MarketStatusQuery,
 //! };
 //!
