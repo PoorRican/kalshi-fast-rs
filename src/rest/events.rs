@@ -29,8 +29,14 @@ pub struct GetEventsParams {
     pub status: Option<EventStatus>, // open|closed|settled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+    /// Comma-separated list of event tickers to retrieve. Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
@@ -103,8 +109,6 @@ pub struct EventData {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub available_on_brokers: Option<bool>,
-    #[serde(default)]
     pub strike_date: Option<String>,
     #[serde(default)]
     pub strike_period: Option<String>,
@@ -146,6 +150,19 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official sources used to determine this event's markets. Added 2026-06-18.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<crate::rest::series::SettlementSource>,
+    /// Identifier for the target exchange instance for this event. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
+    /// Fee type override for this event, taking precedence over the
+    /// series-level fee. `None` when not overridden.
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Fee multiplier override paired with `fee_type_override`.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

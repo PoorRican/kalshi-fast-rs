@@ -91,6 +91,49 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- As of the 2026-09-15 refresh, the following fields have been fully removed from the live
+  OpenAPI/AsyncAPI schemas (not merely deprecated) and were removed from the public Rust API rather
+  than kept as optional shims: `ErrorResponse.service`, `Market.response_price_units`,
+  `Market.fractional_trading_enabled`, `MarketPosition.resting_orders_count`,
+  `EventData.available_on_brokers`, and the WS `market_lifecycle_v2`
+  `WsMarketLifecycleEventType::FractionalTradingUpdated` variant/field. `GET /exchange/announcements`
+  and the `PUT .../multivariate_event_collections/{ticker}/lookup` + `GET .../lookup` history
+  endpoints were removed the same way.
+- The `multivariate` WebSocket channel (message type `multivariate_lookup`) was removed by Kalshi on
+  2026-08-06 in favor of `multivariate_market_lifecycle`. `WsChannelV2::Multivariate`,
+  `WsMsgType::Multivariate` / `MultivariateLookup`, and the `WsMultivariate` message types were
+  removed from the crate; subscribing to `"multivariate"` now surfaces as an `Unknown` message type
+  rather than a typed variant.
+- `WsQuoteCreated` was missing the AsyncAPI-required `rfq_creator_id` field entirely (a pre-existing
+  gap, not an upstream change) — it silently dropped that value. Fixed during the 2026-09-15 refresh.
+- `market_lifecycle_v2` `metadata_updated` events carry `strike_type`, `cap_strike`, and
+  `custom_strike` at the **top level** of `msg` (sibling to `floor_strike` / `yes_sub_title`), not
+  nested under `additional_metadata` (which is only populated on `created` events). Same treatment as
+  the existing `floor_strike` / `yes_sub_title` top-level fields.
+- `exchange_index` is now emitted across many REST and WS response shapes (Series, EventData,
+  MultivariateEventCollection, SubaccountBalance (required), Fill, market_lifecycle_v2/event_lifecycle
+  creation messages, fill/user_order WS messages) as Kalshi rolls out exchange sharding. All are
+  modeled as `Option` on the REST side except where the spec marks them `required` on a newly-added
+  endpoint (`SubaccountBalance.exchange_index`), and as `Option<i64>` on the WS side to tolerate
+  payloads from before each field's rollout date.
+
+## Known Gaps (not implemented)
+
+The following upstream additions from the 2026-06-08 → 2026-09-17 changelog window are genuinely new
+API surfaces (not changes to already-modeled endpoints) and were intentionally left out of the
+2026-09-15 refresh to keep it scoped. They do not affect any currently-modeled type:
+
+- Kalshi Weather Index endpoints (`GET /live_data/weather/{city}`, `.../calibrations`) and the
+  `receipt_basis` / `config_version` fields on their points.
+- `pyth_value` and `cfbenchmarks_value_5hz` WebSocket channels.
+- Target balance allocation endpoints (`/portfolio/target_balance_allocation`).
+- Localized market content via the `Accept-Language` request header (the crate does not currently
+  expose a way to set custom per-request headers).
+- FIX API surfaces are out of scope entirely (`ws.rs`/`rest.rs` only implement REST and
+  tokio-tungstenite WebSocket transports; see `CLAUDE.md`).
+- Margin-exchange endpoints beyond `GET /margin/fee_tiers`, which the crate already modeled prior to
+  this refresh.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

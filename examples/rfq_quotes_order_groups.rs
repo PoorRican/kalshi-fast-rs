@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
             contracts_fp: Some("10.00".to_string()),
             target_cost_centi_cents: None,
             target_cost_dollars: None,
+            target_cost_excludes_fees: None,
             rest_remainder: true,
             replace_existing: None,
             subtrader_id: None,
@@ -57,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
             yes_bid: "0.5200".to_string(),
             no_bid: "0.4800".to_string(),
             rest_remainder: true,
+            post_only: None,
             subaccount: None,
         })
         .await?;
