@@ -91,6 +91,93 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+## Exchange Sharding (2026-06 → 2026-09 refresh)
+
+Kalshi is progressively splitting trading across multiple "exchange indexes" (shards). The rollout
+adds an `exchange_index` field to many REST and WebSocket response types, sometimes marked
+`required` in the spec even though the field is being introduced gradually. To avoid parse failures
+during the rollout, `exchange_index` is modeled as `Option<i64>` everywhere it was added in this
+refresh: `Order`, `Fill`, `Settlement`, `MarketPosition`, `EventData`, `Series`,
+`MultivariateEventCollection`, `SubaccountBalance`, `WsFill`, `WsUserOrder`, `WsMarketLifecycleV2`,
+`WsEventLifecycle` (the last one is spec-required but still modeled `Option` for the same reason).
+`GetExchangeStatusResponse` gained `intra_exchange_transfers_active` and a new
+`exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>` breakdown. `GetOrdersParams`,
+`GetPositionsParams`, and `GetFillsParams` gained an `exchange_index` filter; `GetBalanceResponse`
+gained `balance_breakdown: Option<Vec<IndexedBalance>>` and `get_balance` now takes a
+`GetBalanceParams { subaccount, exchange_index }` argument (previously no params).
+
+This refresh does not implement the newer sharding-adjacent endpoints (target balance allocation,
+cross-shard/intra-exchange transfers, cancel-all-orders), see "Known Gaps" below.
+
+## Market Lifecycle WebSocket Additions (2026-06 → 2026-07)
+
+`WsMarketLifecycleV2` (`market_lifecycle_v2` channel) gained fields that only appear on specific
+`event_type` values, per the AsyncAPI's `oneOf`-style payload split that this crate flattens into one
+struct:
+- `strike_type`, `cap_strike`, `custom_strike` (alongside the existing `floor_strike` /
+  `yes_sub_title`) appear only on `metadata_updated` events.
+- `price_ranges: Option<Vec<PriceRange>>` (reusing the REST `PriceRange` type) appears alongside
+  `price_level_structure` only on `created` and `price_level_structure_updated` events.
+
+The `fractional_trading_enabled` field and its corresponding
+`WsMarketLifecycleEventType::FractionalTradingUpdated` event type were removed from the AsyncAPI
+spec (matching the REST `Market.fractional_trading_enabled` removal, see "Removed Fields" below) and
+have been removed from the crate.
+
+## Removed Fields And Endpoints (2026-07 → 2026-09 refresh)
+
+Per `VERSIONING.md`, fields and endpoints confirmed absent from the live OpenAPI/AsyncAPI were
+removed from the public Rust API rather than kept as compatibility shims:
+
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` — removed from the OpenAPI schema 2026-07-09.
+- `EventData.available_on_brokers` — deprecated 2026-08-27 (stopped being populated, always
+  returned `false`), removed from the schema 2026-09-10.
+- `ErrorResponse.service` — deprecated 2026-07-28, removed from the schema 2026-08-06. Branch on
+  `code` instead.
+- `GET /exchange/announcements` (`get_exchange_announcements`, `GetExchangeAnnouncementsResponse`,
+  `Announcement`, `AnnouncementType`, `AnnouncementStatus`) — removed from the OpenAPI spec
+  2026-07-04.
+- The multivariate ticker-pair lookup surface — removed from the OpenAPI spec 2026-08-06:
+  `PUT /multivariate_event_collections/{collection_ticker}/lookup`
+  (`lookup_tickers_for_market_in_multivariate_event_collection`) and the lookup-history endpoint
+  (`get_multivariate_event_collection_lookup_history`), plus their request/response types
+  (`LookupTickersForMarketInMultivariateEventCollection{Request,Response}`,
+  `GetMultivariateEventCollectionLookupHistory{Params,Response}`, `LookupPoint`). The WebSocket
+  `multivariate` channel and `multivariate_lookup` message type were removed the same day; use
+  `multivariate_market_lifecycle` for multivariate market state changes instead.
+- `GetQuotesParams.market_ticker` / `.event_ticker` — removed from `GET /communications/quotes`
+  2026-06-20. Filter by `rfq_id`, `status`, or the new `min_ts` / `max_ts` / `user_filter` /
+  `rfq_user_filter` instead.
+
+## RFQ-Scoped Quote Actions (2026-06-25)
+
+RFQ quotes are no longer guaranteed queryable/actionable without an `rfq_id` scope (a quote cleared
+by a server roll may 404 on the ID-only lookup). New RFQ-scoped methods were added —
+`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote` — and the ID-only
+methods (`get_quote`, `delete_quote`, `accept_quote`, `confirm_quote`) are marked
+`#[deprecated]` (still functional; the upstream ID-only endpoints remain supported for now).
+
+## Known Gaps (Deferred This Refresh)
+
+The following upstream additions were confirmed present in the live OpenAPI/AsyncAPI during this
+refresh but are not yet implemented, given the scope of the 2026-06-08 → 2026-09-17 changelog
+window. They do not represent contract drift in what the crate already models — no existing type or
+endpoint is wrong — just newer surface not yet wired up:
+
+- New endpoints: `GET /historical/positions`, `GET /portfolio/orders/cancel_all` (and the margin
+  equivalent), `POST`/`GET /portfolio/target_balance_allocation`,
+  `GET /account/api_usage_level/volume_progress`, `POST /account/api_usage_level/upgrade`,
+  `GET /live_data/weather/{city}` (+ `/calibrations`), `GET /live_data/events/{event_ticker}`,
+  `GET /portfolio/intra_exchange_instance_transfers` (+ `/{transfer_id}`).
+- New WebSocket channels: `pyth_value`, `cfbenchmarks_value_5hz`.
+- Cross-shard transfer fields (`source_subaccount` / `destination_subaccount` on
+  `POST /portfolio/intra_exchange_instance_transfer`) and the `resting_margin_reservation` field on
+  target balance allocation.
+
+Margin-exchange and FIX-only changelog entries are out of scope entirely: this crate models the
+Predictions REST/WebSocket surface only (see `CLAUDE.md`).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

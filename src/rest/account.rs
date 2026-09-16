@@ -82,6 +82,10 @@ pub struct SubaccountBalance {
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
+    /// Exchange index this balance entry is on. A subaccount with funds on
+    /// multiple indexes now appears as multiple entries. Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -146,6 +150,15 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// Subaccount this key is restricted to (0-63). Absent for unrestricted
+    /// keys. Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
+    /// Unix timestamp (seconds) when this key's location attestation for
+    /// trading Sports/Elections/Entertainment markets expires. Absent if the
+    /// account has never attested. Added 2026-08-16.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -162,6 +175,10 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict this key to a single subaccount (0-63). Omit for an
+    /// unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +193,10 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict this key to a single subaccount (0-63). Omit for an
+    /// unrestricted key. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

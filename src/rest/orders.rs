@@ -46,6 +46,10 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter results by exchange shard. Omit to return results from all shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +123,9 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Identifier for the exchange shard this order is on. Added 2026-08.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -441,6 +448,9 @@ pub struct UpdateOrderGroupLimitRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// Added 2026-08-06.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -691,7 +701,10 @@ pub struct BatchCancelOrdersV2Response {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
-    pub subtrader_id: String,
+    /// Required unless `client_order_ids` is supplied. Changed to `Option`
+    /// 2026-09-03 now that `client_order_ids` is an alternative filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -702,6 +715,10 @@ pub struct GetFcmOrdersParams {
     pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
+    /// Comma-separated list of up to 100 client order IDs. Only searches
+    /// orders created within the last 24 hours. Added 2026-09-03.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_order_ids: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<OrderStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]

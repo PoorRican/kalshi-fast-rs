@@ -126,8 +126,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---
@@ -137,6 +135,9 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    /// Same maker-fee structure as `QuadraticWithMakerFees` but with a 0.5 maker
+    /// multiplier instead of 0.25. Added to the OpenAPI spec in 2026.
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
@@ -147,6 +148,8 @@ pub enum FeeType {
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventStatus {
+    /// Added to the `GET /events` `status` filter enum in 2026.
+    Unopened,
     Open,
     Closed,
     Settled,
@@ -157,6 +160,7 @@ pub enum EventStatus {
 impl EventStatus {
     pub fn as_str(self) -> &'static str {
         match self {
+            EventStatus::Unopened => "unopened",
             EventStatus::Open => "open",
             EventStatus::Closed => "closed",
             EventStatus::Settled => "settled",

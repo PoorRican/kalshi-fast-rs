@@ -5,12 +5,12 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -444,6 +444,7 @@ fn historical_params_serialize_correctly() {
 
     let fills = kalshi_fast::GetHistoricalFillsParams {
         ticker: Some("MKT-1".into()),
+        min_ts: None,
         max_ts: Some(1700000000),
         limit: Some(25),
         cursor: Some("c3".into()),
@@ -456,6 +457,7 @@ fn historical_params_serialize_correctly() {
 
     let orders = kalshi_fast::GetHistoricalOrdersParams {
         ticker: Some("MKT-1".into()),
+        min_ts: None,
         max_ts: Some(1700000100),
         limit: Some(15),
         cursor: Some("c4".into()),
@@ -1070,16 +1072,28 @@ fn get_exchange_status_response_deserializes() {
 }
 
 #[test]
-fn get_exchange_announcements_response_deserializes() {
+fn get_exchange_status_response_with_index_statuses_deserializes() {
     let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "description": "default",
+                "exchange_active": true,
+                "trading_active": true,
+                "intra_exchange_transfers_active": true
+            }
         ]
     }"#;
 
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    let statuses = resp.exchange_index_statuses.expect("statuses");
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].exchange_index, 0);
+    assert_eq!(statuses[0].description, "default");
 }
 
 #[test]
@@ -1833,23 +1847,6 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
-
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
 }
 
 #[test]

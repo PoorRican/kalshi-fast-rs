@@ -91,6 +91,9 @@ pub struct GetHistoricalMarketsParams {
 pub struct GetHistoricalFillsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    /// Added 2026-09-17.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -103,6 +106,9 @@ pub struct GetHistoricalFillsParams {
 pub struct GetHistoricalOrdersParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    /// Added 2026-09-17.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
