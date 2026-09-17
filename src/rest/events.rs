@@ -31,6 +31,12 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    /// Comma-separated list of event tickers to filter to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
+    /// Filter events with metadata updated after this Unix timestamp (seconds).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 impl GetEventsParams {
@@ -103,8 +109,6 @@ pub struct EventData {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub available_on_brokers: Option<bool>,
-    #[serde(default)]
     pub strike_date: Option<String>,
     #[serde(default)]
     pub strike_period: Option<String>,
@@ -146,6 +150,19 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    /// Official sources used for determination of markets within this event.
+    #[serde(default)]
+    pub settlement_sources: Option<Vec<crate::rest::series::SettlementSource>>,
+    /// Fee type override for this event; takes precedence over the
+    /// series-level fee for this event's markets when present.
+    #[serde(default)]
+    pub fee_type_override: Option<String>,
+    /// Fee multiplier override, paired with `fee_type_override`.
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
+    /// Identifier for the exchange shard this event's markets live on.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

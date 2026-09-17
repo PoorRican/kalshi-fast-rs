@@ -59,6 +59,11 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Discovery categories for this series. The `category` filter on
+    /// `GET /series` matches any entry here, so a series returned for one
+    /// filter value can still show a different primary `category`.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
@@ -91,6 +96,9 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Identifies the target exchange instance for new events in this series.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
