@@ -46,6 +46,10 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter by exchange index. Omit to return results from all exchange indexes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -691,7 +695,13 @@ pub struct BatchCancelOrdersV2Response {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
-    pub subtrader_id: String,
+    /// Required unless `client_order_ids` is supplied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
+    /// Comma-separated client order IDs (max 100). Only orders created within the last 24
+    /// hours are searched. Required unless `subtrader_id` is supplied. Added 2026-09-03.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_order_ids: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -742,6 +752,11 @@ impl KalshiRestClient {
     /// Place a new order.
     ///
     /// **Requires auth.**
+    ///
+    /// Deprecated 2026-06-18–25: Kalshi is retiring the legacy `/portfolio/orders` mutation
+    /// endpoints (no longer present in the OpenAPI spec) in favor of the V2 event-order
+    /// endpoints. Use [`Self::create_order_v2`] instead.
+    #[deprecated(note = "use create_order_v2 instead; legacy mutation endpoint is being retired")]
     pub async fn create_order(
         &self,
         body: CreateOrderRequest,
@@ -755,6 +770,10 @@ impl KalshiRestClient {
     /// Cancel an order by ID.
     ///
     /// **Requires auth.**
+    ///
+    /// Deprecated 2026-06-18–25: use [`Self::cancel_order_v2`] instead. See
+    /// [`Self::create_order`] for details on the V1→V2 migration.
+    #[deprecated(note = "use cancel_order_v2 instead; legacy mutation endpoint is being retired")]
     pub async fn cancel_order(
         &self,
         order_id: &str,
@@ -771,6 +790,9 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated: `/portfolio/orders/{order_id}/amend` is no longer present in the OpenAPI
+    /// spec. Use [`Self::amend_order_v2`] instead.
+    #[deprecated(note = "use amend_order_v2 instead; legacy mutation endpoint is being retired")]
     pub async fn amend_order(
         &self,
         order_id: &str,
@@ -781,6 +803,9 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated: `/portfolio/orders/{order_id}/decrease` is no longer present in the OpenAPI
+    /// spec. Use [`Self::decrease_order_v2`] instead.
+    #[deprecated(note = "use decrease_order_v2 instead; legacy mutation endpoint is being retired")]
     pub async fn decrease_order(
         &self,
         order_id: &str,
@@ -803,6 +828,11 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Deprecated: `POST /portfolio/orders/batched` is no longer present in the OpenAPI spec.
+    /// Use [`Self::batch_create_orders_v2`] instead.
+    #[deprecated(
+        note = "use batch_create_orders_v2 instead; legacy mutation endpoint is being retired"
+    )]
     pub async fn batch_create_orders(
         &self,
         body: BatchCreateOrdersRequest,
@@ -812,6 +842,11 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Deprecated: `DELETE /portfolio/orders/batched` is no longer present in the OpenAPI spec.
+    /// Use [`Self::batch_cancel_orders_v2`] instead.
+    #[deprecated(
+        note = "use batch_cancel_orders_v2 instead; legacy mutation endpoint is being retired"
+    )]
     pub async fn batch_cancel_orders(
         &self,
         body: BatchCancelOrdersRequest,
@@ -896,13 +931,16 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Update an order group's contracts limit. `params.subaccount` scopes the update to a
+    /// subaccount's order group. Added 2026-08-06.
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 

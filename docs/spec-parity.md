@@ -91,6 +91,60 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **Legacy `/portfolio/orders` mutation endpoints (V1).** Kalshi began deprecating
+  `create_order`/`cancel_order`/`amend_order`/`decrease_order`/`batch_create_orders`/
+  `batch_cancel_orders` between 2026-06-18 and 2026-06-25, and by the 2026-09-18 refresh their
+  routes (`POST /portfolio/orders`, `DELETE /portfolio/orders/{order_id}`,
+  `POST /portfolio/orders/{order_id}/amend`, `POST /portfolio/orders/{order_id}/decrease`,
+  `POST`/`DELETE /portfolio/orders/batched`) are no longer present in the OpenAPI spec at all
+  (only `GET /portfolio/orders` and `GET /portfolio/orders/{order_id}` remain). Rather than
+  removing the methods outright — which would break any caller still migrating — they are marked
+  `#[deprecated]` and continue to call the same paths; use the `_v2` event-order methods
+  (`create_order_v2` etc., `/portfolio/events/orders/*`) instead. If Kalshi confirms the legacy
+  routes now hard-404, these should be removed in a future minor release.
+
+- **Multivariate lookup surface removed.** The ticker-pair lookup endpoint
+  (`PUT /multivariate_event_collections/{collection_ticker}/lookup`), the lookup-history endpoint
+  (`GET .../lookup`), and the `multivariate`/`multivariate_lookup` WebSocket channel and message
+  type were fully removed by Kalshi (deprecated 2026-07-02, removed 2026-08-06) and are absent
+  from both the current OpenAPI and AsyncAPI specs (the AsyncAPI's channel-name enum no longer
+  lists `multivariate`). The corresponding crate methods, request/response types, and
+  `WsMultivariate`/`WsMultivariateRef` message types were removed in 0.8.0. Use
+  `create_market_in_multivariate_event_collection` to create or resolve a combo market, and the
+  `multivariate_market_lifecycle` channel for lifecycle state.
+
+- **`exchange_index` is `Option<i64>` everywhere**, even on schemas where the OpenAPI/AsyncAPI
+  mark it `required`. Kalshi is mid-rollout on exchange sharding (only index `0` is live in
+  production as of this refresh; margin markets are all `exchange_index=0` for now), so treating
+  the field defensively avoids parse failures against older/cached payloads or non-Predictions
+  exchanges the crate doesn't model.
+
+- **`EventMetadata.cadence`** lives on two different response shapes that the crate models with
+  one struct: the dedicated `GET /events/{event_ticker}/metadata` response (whose OpenAPI schema
+  is `EventMetadata`: `image_url`, `settlement_sources`, `market_details`, ...) and
+  `EventData.product_metadata`, which the OpenAPI spec types as a free-form `object` with no
+  defined shape. `cadence` (added 2026-07-30) is documented only as living inside
+  `product_metadata`; it is added to the shared `EventMetadata` struct for ergonomic access on
+  both call sites, tolerated via `#[serde(default)]`.
+
+- **Deferred: new endpoints/channels not yet modeled.** The following upstream additions from the
+  2026-09-18 refresh are new API surface (not shape changes to anything already modeled), so
+  leaving them out does not desync existing behavior — they are tracked here rather than in
+  `CHANGELOG.md`'s per-release table beyond a pointer:
+  - `pyth_value` and `cfbenchmarks_value_5hz` WebSocket channels (new subscribable channels
+    alongside the already-modeled `cfbenchmarks_value`).
+  - `GET /live_data/events/{event_ticker}` (event-keyed live data), `GET /live_data/weather/{city}`
+    and `GET /live_data/weather/{city}/calibrations` (Kalshi Weather Index).
+  - Target balance allocation (`POST`/`GET /portfolio/target_balance_allocation`).
+  - Intra-exchange-instance transfer history (`GET /portfolio/intra_exchange_instance_transfers[/…]`,
+    `POST /portfolio/intra_exchange_instance_transfer`).
+  - Cancel-all-orders endpoints (new `/portfolio/*` and `/margin/*` cancel-all routes).
+  - `exchange_index`/`subaccount` scoping query params on `GET /portfolio/balance` — the crate's
+    `get_balance()` currently takes no params at all; adding scoping requires a signature change
+    and is deferred to avoid bundling an unrelated breaking change into this refresh.
+  - `resting_order_value_breakdown` (per-exchange-index breakdown) on
+    `GetPortfolioRestingOrderTotalValueResponse`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

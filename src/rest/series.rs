@@ -46,6 +46,12 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `fifteen_min`). Absent when the event has no cadence
+    /// set. Note: this field lives on `EventData.product_metadata`, a free-form object per the
+    /// OpenAPI spec; `EventMetadata` is reused there as well as for the dedicated
+    /// `/events/{event_ticker}/metadata` response. See `docs/spec-parity.md`.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -59,6 +65,12 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Discovery categories for the series. The `category` filter on `GET /series` matches any
+    /// entry here, so the returned `category` may differ from the filter value.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
