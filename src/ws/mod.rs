@@ -15,13 +15,15 @@
 //! | [`WsChannelV2::Trade`] | No | Public trades |
 //! | [`WsChannelV2::MarketLifecycleV2`] | No | Market open / close / settle events |
 //! | [`WsChannelV2::MultivariateMarketLifecycle`] | No | Multivariate market lifecycle events |
-//! | [`WsChannelV2::Multivariate`] | No | Multivariate market lookups |
 //! | [`WsChannelV2::OrderbookDelta`] | Yes | L2 order-book deltas (requires `market_tickers`) |
 //! | [`WsChannelV2::Fill`] | Yes | Your fills |
 //! | [`WsChannelV2::MarketPositions`] | Yes | Position changes |
 //! | [`WsChannelV2::Communications`] | Yes | RFQs and quotes |
 //! | [`WsChannelV2::OrderGroupUpdates`] | Yes | Order-group lifecycle |
 //! | [`WsChannelV2::UserOrders`] | Yes | User order lifecycle updates |
+//! | [`WsChannelV2::CfbenchmarksValue`] | No | CF Benchmarks index values |
+//! | [`WsChannelV2::CfbenchmarksValue5hz`] | No | CF Benchmarks index values, 5Hz |
+//! | [`WsChannelV2::PythValue`] | Yes | Pyth prices by underlying ticker |
 //!
 //! # Quick Start — Public Ticker
 //!

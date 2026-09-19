@@ -91,6 +91,55 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- 2026-09 refresh: several fields confirmed fully removed from the live OpenAPI/AsyncAPI were
+  removed from the crate's public API rather than kept as dead `Option` fields (breaking, 0.7.0 →
+  0.8.0 per `VERSIONING.md`): `Market.response_price_units`, `Market.fractional_trading_enabled`
+  (also removed from `WsMarketLifecycleV2`/`Ref` and the `FractionalTradingUpdated` lifecycle event
+  variant), `MarketPosition.resting_orders_count`, `EventData.available_on_brokers`,
+  `get_exchange_announcements`/`Announcement`/`GetExchangeAnnouncementsResponse` (`GET
+  /exchange/announcements` was removed 2026-07-04), the multivariate lookup REST methods
+  (`get_multivariate_event_collection_lookup_history`,
+  `lookup_tickers_for_market_in_multivariate_event_collection`, both hit the now-gone `PUT
+  /multivariate_event_collections/{ticker}/lookup`), and the `multivariate` WebSocket channel /
+  `multivariate_lookup` message type (subscribing now returns an unknown-channel error upstream;
+  use `multivariate_market_lifecycle` instead). `GetQuotesParams.market_ticker` /
+  `.event_ticker` were also removed (dropped from the live API 2026-06-20); use `rfq_id` /
+  `rfq_creator_user_id` / the new `min_ts` / `max_ts` filters instead.
+
+- `ErrorResponse.service` is marked `#[deprecated]` rather than removed. Kalshi deprecated it
+  2026-07-28 and stopped returning it 2026-08-06 (it is always `None` now), but since it was
+  already `Option<String>` and costs nothing to keep, the crate keeps the field and steers callers
+  to `code` via the deprecation note instead of a breaking removal.
+
+- Kalshi's legacy quote-ID-only communications endpoints (`get_quote`, `delete_quote`,
+  `accept_quote`, `confirm_quote`) are deprecated in favor of RFQ-scoped equivalents
+  (`get_rfq_quote`, `delete_rfq_quote`, `accept_rfq_quote`, `confirm_rfq_quote`) introduced
+  2026-06-25 (RFQ ID may become required for quote actions in a future Kalshi release). The
+  legacy methods remain supported by the API and are kept in the crate with a doc-comment
+  deprecation notice rather than `#[deprecated]`, since Kalshi has not set a removal date. The
+  same applies to legacy `/portfolio/orders` mutation endpoints (deprecated by Kalshi starting
+  2026-06-18 in favor of the V2 event-order endpoints already modeled here); the crate keeps both
+  without further action since Kalshi has not removed the legacy endpoints.
+
+- `price_level_structure` (REST `Market`, WS lifecycle messages) is intentionally a raw
+  `Option<String>`, not an enum. Kalshi has added many new string values over time (seven new
+  `center_*_edge_*_cent` variants 2026-07-23, `center_deci_edge_centi_cent` 2026-08-13) and none of
+  them require a crate change — always read valid prices from the `price_ranges` array
+  (`{ start, end, step }`) rather than keying logic off the structure name, per Kalshi's own
+  guidance.
+
+- `exchange_index` (identifying which exchange shard/instance a resource belongs to) was added
+  across many REST and WebSocket response types in the 2026-07/09 sharding rollout: `Series`,
+  `MultivariateEventCollection`, `GetExchangeStatusResponse` (via `exchange_index_statuses`),
+  `Fill`, order/position/fill list filters, and the `market_lifecycle_v2` / `event_lifecycle` /
+  `WsFill` / `WsUserOrder` WebSocket messages. All are modeled as `Option<i64>` since older
+  snapshots and non-sharded resources omit the field; as of this refresh only exchange index `0`
+  is used in production.
+
+- `WsTicker`/`WsTickerRef` `dollar_volume` / `dollar_open_interest` were already `i64` (signed)
+  before Kalshi's 2026-09-17 AsyncAPI correction confirming negative values are possible — no code
+  change was needed for that entry.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

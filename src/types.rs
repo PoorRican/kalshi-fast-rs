@@ -126,7 +126,15 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Named the internal Kalshi service that produced the error. Deprecated
+    /// by Kalshi 2026-07-28 and removed from all error responses 2026-08-06;
+    /// always `None` now. Kept as `Option<String>` rather than removed so
+    /// any code still reading it opportunistically keeps compiling. Branch
+    /// on `code` instead.
     #[serde(default)]
+    #[deprecated(
+        note = "Kalshi removed `service` from error responses in 2026-08; always None now. Branch on `code` instead."
+    )]
     pub service: Option<String>,
 }
 

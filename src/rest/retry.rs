@@ -74,6 +74,7 @@ pub(crate) fn build_http_error(
     }
 
     let raw_body = String::from_utf8_lossy(bytes).to_string();
+    #[allow(deprecated)]
     let normalize = |error: ErrorResponse| {
         if error.code.is_some()
             || error.message.is_some()

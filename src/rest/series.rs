@@ -59,6 +59,11 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Discovery categories for this series (the `category` filter on `GET
+    /// /series` matches any entry here). `category` above remains the
+    /// primary category.
+    #[serde(default)]
+    pub categories: Option<Vec<String>>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
@@ -91,6 +96,9 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Identifier for the exchange shard this series' markets live on.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

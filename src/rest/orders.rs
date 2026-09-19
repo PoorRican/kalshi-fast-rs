@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter results by exchange shard. Omit to return results from all
+    /// exchange shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -692,6 +697,14 @@ pub struct BatchCancelOrdersV2Response {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
     pub subtrader_id: String,
+    /// Client order IDs to filter by (comma-separated on the wire, max 100).
+    /// Only orders created within the last 24 hours are searched. Required
+    /// unless `subtrader_id` is supplied.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub client_order_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -899,10 +912,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
@@ -926,6 +940,29 @@ impl KalshiRestClient {
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
+    }
+
+    /// Cancel all resting event-market (Predictions) orders for the
+    /// authenticated Direct member across every exchange shard. If
+    /// `subaccount` is omitted, matching orders may come from any
+    /// subaccount; if provided, only orders for that subaccount are
+    /// eligible. Newly placed orders may also be cancelled during the
+    /// minute after the request.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
     }
 
     // --- V2 event-order endpoints ---

@@ -8,7 +8,6 @@ pub enum WsChannelV2 {
     Trade,
     MarketLifecycleV2,
     MultivariateMarketLifecycle,
-    Multivariate,
     OrderbookDelta,
     Fill,
     MarketPositions,
@@ -17,6 +16,15 @@ pub enum WsChannelV2 {
     UserOrders,
     /// CF Benchmarks reference index value feed. Added 2026-06-08 (AsyncAPI 2.0.0).
     CfbenchmarksValue,
+    /// Higher-frequency (5Hz) CF Benchmarks reference index value feed.
+    ///
+    /// Explicit `rename` because serde's `snake_case` rule would otherwise
+    /// produce `cfbenchmarks_value5hz` (no separator before a digit run),
+    /// not the wire value `cfbenchmarks_value_5hz`.
+    #[serde(rename = "cfbenchmarks_value_5hz")]
+    CfbenchmarksValue5hz,
+    /// Deduplicated Pyth prices by underlying ticker. Authenticated channel.
+    PythValue,
 }
 
 impl WsChannelV2 {
@@ -26,7 +34,6 @@ impl WsChannelV2 {
             WsChannelV2::Trade => "trade",
             WsChannelV2::MarketLifecycleV2 => "market_lifecycle_v2",
             WsChannelV2::MultivariateMarketLifecycle => "multivariate_market_lifecycle",
-            WsChannelV2::Multivariate => "multivariate",
             WsChannelV2::OrderbookDelta => "orderbook_delta",
             WsChannelV2::Fill => "fill",
             WsChannelV2::MarketPositions => "market_positions",
@@ -34,6 +41,8 @@ impl WsChannelV2 {
             WsChannelV2::OrderGroupUpdates => "order_group_updates",
             WsChannelV2::UserOrders => "user_orders",
             WsChannelV2::CfbenchmarksValue => "cfbenchmarks_value",
+            WsChannelV2::CfbenchmarksValue5hz => "cfbenchmarks_value_5hz",
+            WsChannelV2::PythValue => "pyth_value",
         }
     }
 
@@ -46,6 +55,7 @@ impl WsChannelV2 {
                 | WsChannelV2::Communications
                 | WsChannelV2::OrderGroupUpdates
                 | WsChannelV2::UserOrders
+                | WsChannelV2::PythValue
         )
     }
 }
@@ -68,9 +78,42 @@ mod tests {
         assert!(WsChannelV2::Communications.is_private());
         assert!(WsChannelV2::OrderGroupUpdates.is_private());
 
+        assert!(WsChannelV2::PythValue.is_private());
+
         assert!(!WsChannelV2::Ticker.is_private());
         assert!(!WsChannelV2::Trade.is_private());
         assert!(!WsChannelV2::MarketLifecycleV2.is_private());
-        assert!(!WsChannelV2::Multivariate.is_private());
+        assert!(!WsChannelV2::CfbenchmarksValue5hz.is_private());
+    }
+
+    /// Guards against serde's derived `snake_case` rule silently diverging
+    /// from `as_str()` / the real wire values (e.g. it would otherwise
+    /// render `CfbenchmarksValue5hz` as `cfbenchmarks_value5hz`, dropping
+    /// the separator before the digit run).
+    #[test]
+    fn serialized_json_matches_as_str_for_every_channel() {
+        let all = [
+            WsChannelV2::Ticker,
+            WsChannelV2::Trade,
+            WsChannelV2::MarketLifecycleV2,
+            WsChannelV2::MultivariateMarketLifecycle,
+            WsChannelV2::OrderbookDelta,
+            WsChannelV2::Fill,
+            WsChannelV2::MarketPositions,
+            WsChannelV2::Communications,
+            WsChannelV2::OrderGroupUpdates,
+            WsChannelV2::UserOrders,
+            WsChannelV2::CfbenchmarksValue,
+            WsChannelV2::CfbenchmarksValue5hz,
+            WsChannelV2::PythValue,
+        ];
+        for channel in all {
+            let json = serde_json::to_string(&channel).unwrap();
+            let expected = format!("\"{}\"", channel.as_str());
+            assert_eq!(json, expected, "serde output diverged from as_str()");
+
+            let round_tripped: WsChannelV2 = serde_json::from_str(&json).unwrap();
+            assert_eq!(round_tripped, channel);
+        }
     }
 }
