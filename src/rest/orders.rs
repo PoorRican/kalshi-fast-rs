@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict results to one exchange shard. Added 2026-08-20. Omitting it
+    /// returns orders from every exchange index.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +124,9 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Exchange shard the order resides on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -691,7 +699,20 @@ pub struct BatchCancelOrdersV2Response {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
-    pub subtrader_id: String,
+    /// At least one of `subtrader_id` or `client_order_ids` is required.
+    /// Supplying both returns only orders matching both filters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
+    /// Up to 100 client order IDs (comma-separated upstream). Added 2026-09-03.
+    /// A `client_order_ids` lookup searches only orders created in the last 24
+    /// hours, and a `min_ts` earlier than that is raised to 24 hours ago.
+    /// Client order IDs are only unique within a subtrader among live and
+    /// recent orders, so one ID can match orders across subtraders or time.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub client_order_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -896,13 +917,19 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Update an order group's rolling contracts limit.
+    ///
+    /// `params.subaccount` scopes the update to a subaccount (added 2026-08-06).
+    /// Subaccount-restricted API keys may omit it; the locked subaccount is
+    /// inferred.
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: SubaccountQueryParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
@@ -953,6 +980,29 @@ impl KalshiRestClient {
         params: CancelOrderV2Params,
     ) -> Result<CancelOrderV2Response, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/events/orders/{order_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Cancel every resting event-market order across all exchange shards.
+    ///
+    /// Omitting `params.subaccount` makes orders from any subaccount eligible;
+    /// providing it restricts cancellation to that subaccount. Newly placed
+    /// orders may also be cancelled during the minute after the request.
+    /// Costs the same write tokens as cancelling a single order.
+    ///
+    /// **Requires auth.** Added 2026-08-27.
+    pub async fn cancel_all_orders(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
         self.send(
             Method::DELETE,
             &path,

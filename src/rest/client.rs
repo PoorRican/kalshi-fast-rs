@@ -630,14 +630,16 @@ mod tests {
 
     #[test]
     fn http_error_parses_wrapped_error_envelope() {
-        let body = br#"{"error":{"code":"bad_request","message":"invalid","service":"trade-api"}}"#;
+        // `service` was removed from Kalshi error bodies on 2026-08-06; a payload
+        // that still carries it must parse and simply ignore the stale key.
+        let body = br#"{"error":{"code":"bad_request","message":"invalid","details":"leg 1","service":"trade-api"}}"#;
         let err = build_http_error(StatusCode::BAD_REQUEST, body, None);
         match err {
             KalshiError::Http { api_error, .. } => {
                 let api_error = api_error.expect("expected api error");
                 assert_eq!(api_error.code.as_deref(), Some("bad_request"));
                 assert_eq!(api_error.message.as_deref(), Some("invalid"));
-                assert_eq!(api_error.service.as_deref(), Some("trade-api"));
+                assert_eq!(api_error.details.as_deref(), Some("leg 1"));
             }
             other => panic!("unexpected error: {:?}", other),
         }

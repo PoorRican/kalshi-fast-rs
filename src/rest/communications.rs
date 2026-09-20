@@ -3,6 +3,12 @@
 //! RFQs express interest in a given market and notional. Market makers respond
 //! with quotes that the RFQ creator can accept/confirm to execute a trade.
 //! All endpoints require authentication.
+//!
+//! Prefer the RFQ-scoped quote endpoints (`*_rfq_quote`) over the quote-ID-only
+//! variants: Kalshi deprecated the latter on 2026-06-25 / 2026-07-09 and
+//! expects `rfq_id` to become required in a future migration. Open and
+//! cancelled quotes are also only best-effort queryable since 2026-06-25 —
+//! only `accepted`, `confirmed`, and `executed` quotes are durable records.
 
 use crate::KalshiError;
 use crate::rest::account::EmptyResponse;
@@ -97,10 +103,14 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restrict to quotes last updated at or after this Unix timestamp.
+    /// Added 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
+    pub min_ts: Option<i64>,
+    /// Restrict to quotes last updated at or before this Unix timestamp.
+    /// Added 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,6 +123,9 @@ pub struct GetQuotesParams {
     pub rfq_creator_subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_id: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
     /// Filter to quotes responding to RFQs created by the authenticated user.
     /// Pass `"self"` to enable. Added 2026-05-07.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -194,6 +207,12 @@ pub struct CreateRFQRequest {
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    /// Size derived quote contracts as principal only (contracts = target cost
+    /// / price) with the taker fee charged *on top of* the target cost, instead
+    /// of the default fee-inclusive sizing that keeps the total debit inside
+    /// the cash amount. Added 2026-09-10. Rejected without a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
@@ -278,6 +297,86 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Look up a quote inside a specific RFQ.
+    ///
+    /// Preferred over [`KalshiRestClient::get_quote`], which Kalshi deprecated
+    /// on 2026-07-09. The quote must belong to `rfq_id`, otherwise the
+    /// endpoint returns `404 Not Found`.
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Cancel a quote inside a specific RFQ.
+    ///
+    /// Preferred over [`KalshiRestClient::delete_quote`], which Kalshi
+    /// deprecated on 2026-06-25.
+    pub async fn delete_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Accept a quote inside a specific RFQ.
+    ///
+    /// Preferred over [`KalshiRestClient::accept_quote`], which Kalshi
+    /// deprecated on 2026-06-25.
+    pub async fn accept_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/accept"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote inside a specific RFQ.
+    ///
+    /// Preferred over [`KalshiRestClient::confirm_quote`], which Kalshi
+    /// deprecated on 2026-06-25. Supplying the RFQ ID also lowers the request's
+    /// rate-limit cost (2026-09-17).
+    pub async fn confirm_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm"
+        ));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Look up a quote by ID alone.
+    ///
+    /// Deprecated upstream on 2026-07-09; prefer
+    /// [`KalshiRestClient::get_rfq_quote`].
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,6 +389,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Cancel a quote by ID alone.
+    ///
+    /// Deprecated upstream on 2026-06-25; prefer
+    /// [`KalshiRestClient::delete_rfq_quote`].
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -302,6 +405,10 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Accept a quote by ID alone.
+    ///
+    /// Deprecated upstream on 2026-06-25; prefer
+    /// [`KalshiRestClient::accept_rfq_quote`].
     pub async fn accept_quote(
         &self,
         quote_id: &str,
@@ -312,6 +419,11 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Confirm a quote by ID alone.
+    ///
+    /// Deprecated upstream on 2026-06-25; prefer
+    /// [`KalshiRestClient::confirm_rfq_quote`], which also costs fewer
+    /// rate-limit tokens.
     pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
         let body = EmptyResponse::default();

@@ -18,9 +18,14 @@ pub struct WsListSubscriptions {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsError {
+    /// Numeric error code. Kept as a plain `i64` rather than an enum so the
+    /// retired codes (6, 16, 17) and any future additions round-trip without a
+    /// crate update. See `docs/spec-parity.md`.
     #[serde(default)]
     pub code: Option<i64>,
-    #[serde(default)]
+    /// Human-readable error message. The AsyncAPI names this field `msg`
+    /// inside the error object; `message` is accepted as an alias.
+    #[serde(default, alias = "msg")]
     pub message: Option<String>,
 }
 
@@ -46,7 +51,8 @@ impl<'a> WsListSubscriptionsRef<'a> {
 pub struct WsErrorRef<'a> {
     #[serde(default)]
     pub code: Option<i64>,
-    #[serde(default, borrow)]
+    /// The AsyncAPI names this field `msg`; `message` is accepted as an alias.
+    #[serde(default, borrow, alias = "msg")]
     pub message: Option<Cow<'a, str>>,
 }
 
@@ -212,13 +218,6 @@ impl WsEnvelope {
                 seq,
                 msg: parse_msg(&msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageV2::Data(WsDataMessageV2::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_msg(&msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -437,13 +436,6 @@ impl<'a> WsEnvelopeRef<'a> {
                 seq,
                 msg: parse_borrowed_msg(msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageRef::Data(WsDataMessageRef::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_borrowed_msg(msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
@@ -601,11 +593,6 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsEventFeeUpdate,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariate,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -631,6 +618,26 @@ pub enum WsDataMessageV2 {
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
     },
+    CfbenchmarksValue5Hz {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksValue5Hz,
+    },
+    CfbenchmarksValue5HzIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksIndexList,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
+    },
 }
 
 macro_rules! data_message_position {
@@ -646,12 +653,15 @@ macro_rules! data_message_position {
             | Self::MultivariateMarketLifecycle { $field, .. }
             | Self::EventLifecycle { $field, .. }
             | Self::EventFeeUpdate { $field, .. }
-            | Self::Multivariate { $field, .. }
             | Self::Communications { $field, .. }
             | Self::OrderGroupUpdates { $field, .. }
             | Self::UserOrder { $field, .. }
             | Self::CfbenchmarksValue { $field, .. }
-            | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
+            | Self::CfbenchmarksValueIndexlist { $field, .. }
+            | Self::CfbenchmarksValue5Hz { $field, .. }
+            | Self::CfbenchmarksValue5HzIndexlist { $field, .. }
+            | Self::PythValue { $field, .. }
+            | Self::PythValueUnderlyingList { $field, .. } => *$field,
         }
     };
 }
@@ -718,11 +728,6 @@ pub enum WsDataMessageRef<'a> {
         seq: Option<u64>,
         msg: WsEventFeeUpdateRef<'a>,
     },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariateRef<'a>,
-    },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
@@ -747,6 +752,26 @@ pub enum WsDataMessageRef<'a> {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    CfbenchmarksValue5Hz {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksValue5HzRef<'a>,
+    },
+    CfbenchmarksValue5HzIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -819,11 +844,6 @@ impl<'a> WsDataMessageRef<'a> {
                 seq,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::Multivariate { sid, seq, msg } => WsDataMessageV2::Multivariate {
-                sid,
-                seq,
-                msg: msg.into_owned(),
-            },
             WsDataMessageRef::Communications { sid, seq, msg } => WsDataMessageV2::Communications {
                 sid,
                 seq,
@@ -848,6 +868,32 @@ impl<'a> WsDataMessageRef<'a> {
             }
             WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::CfbenchmarksValue5Hz { sid, seq, msg } => {
+                WsDataMessageV2::CfbenchmarksValue5Hz {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::CfbenchmarksValue5HzIndexlist { sid, seq, msg } => {
+                WsDataMessageV2::CfbenchmarksValue5HzIndexlist {
+                    sid,
+                    seq,
+                    msg: msg.into_owned(),
+                }
+            }
+            WsDataMessageRef::PythValue { sid, seq, msg } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList { sid, seq, msg } => {
+                WsDataMessageV2::PythValueUnderlyingList {
                     sid,
                     seq,
                     msg: msg.into_owned(),
@@ -1251,7 +1297,9 @@ mod tests {
 
         let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
         match msg {
-            WsMessageV2::ListSubscriptions { id, subscriptions } => {
+            WsMessageV2::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));
@@ -1262,7 +1310,9 @@ mod tests {
 
         let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
         match msg_ref {
-            WsMessageRef::ListSubscriptions { id, subscriptions } => {
+            WsMessageRef::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));
@@ -1392,5 +1442,337 @@ mod tests {
             msg,
             WsMessageRef::Data(WsDataMessageRef::Ticker { .. })
         ));
+    }
+
+    /// `cfbenchmarks_value_5hz` (added 2026-09-03) routes through both the
+    /// wire and envelope parse paths, in owned and borrowed form.
+    #[test]
+    fn cfbenchmarks_value_5hz_routes_on_both_paths() {
+        let json = r#"{
+            "type":"cfbenchmarks_value_5hz",
+            "sid":4,
+            "seq":11,
+            "msg":{
+                "index_id":"BRTI",
+                "value_usd":"64210.12345678",
+                "source_ts_ms":1700000000200,
+                "received_at":1700000000215,
+                "data":"{\"raw\":1}"
+            }
+        }"#;
+
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match &msg {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5Hz { sid, seq, msg }) => {
+                assert_eq!(*sid, Some(4));
+                assert_eq!(*seq, Some(11));
+                assert_eq!(msg.index_id, "BRTI");
+                assert_eq!(msg.value_usd, "64210.12345678");
+                assert_eq!(msg.source_ts_ms, 1700000000200);
+            }
+            other => panic!("expected cfbenchmarks_value_5hz, got {other:?}"),
+        }
+        assert_eq!(msg.subscription_id(), Some(4));
+        assert_eq!(msg.sequence(), Some(11));
+
+        let borrowed = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match borrowed.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5Hz { msg, .. }) => {
+                assert_eq!(msg.index_id, "BRTI");
+                assert_eq!(msg.received_at, 1700000000215);
+            }
+            other => panic!("expected borrowed cfbenchmarks_value_5hz, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cfbenchmarks_value_5hz_indexlist_routes() {
+        let json = r#"{
+            "type":"cfbenchmarks_value_5hz_indexlist",
+            "id":7,
+            "sid":4,
+            "seq":12,
+            "msg":{"index_ids":["BRTI","ETHUSD_RTI"]}
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5HzIndexlist { msg, .. }) => {
+                assert_eq!(msg.index_ids, vec!["BRTI", "ETHUSD_RTI"]);
+            }
+            other => panic!("expected 5hz indexlist, got {other:?}"),
+        }
+    }
+
+    /// `pyth_value` (added 2026-07-23) routes through both parse paths.
+    #[test]
+    fn pyth_value_routes_on_both_paths() {
+        let json = r#"{
+            "type":"pyth_value",
+            "sid":5,
+            "seq":2,
+            "msg":{
+                "underlying_ticker":"Metal.XPT/USD",
+                "value_usd":"1024.50000000",
+                "source_ts_ms":1700000000000,
+                "received_at":1700000000010
+            }
+        }"#;
+
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match &msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.underlying_ticker, "Metal.XPT/USD");
+                assert_eq!(msg.value_usd, "1024.50000000");
+            }
+            other => panic!("expected pyth_value, got {other:?}"),
+        }
+        assert_eq!(msg.subscription_id(), Some(5));
+        assert_eq!(msg.sequence(), Some(2));
+
+        let borrowed = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
+        match borrowed.into_owned().unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::PythValue { msg, .. }) => {
+                assert_eq!(msg.source_ts_ms, 1700000000000);
+            }
+            other => panic!("expected borrowed pyth_value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pyth_underlying_list_routes() {
+        let json = r#"{
+            "type":"pyth_value_underlying_list",
+            "id":3,
+            "sid":5,
+            "seq":4,
+            "msg":{"underlying_tickers":["Metal.XPT/USD","Crypto.BTC/USD"]}
+        }"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { msg, .. }) => {
+                assert_eq!(msg.underlying_tickers.len(), 2);
+            }
+            other => panic!("expected pyth underlying list, got {other:?}"),
+        }
+    }
+
+    /// The `multivariate` channel and its `multivariate_lookup` message were
+    /// removed upstream on 2026-08-06. They must now surface as `Unknown`
+    /// rather than being silently routed to a stale typed variant.
+    #[test]
+    fn removed_multivariate_lookup_surfaces_as_unknown() {
+        let json = r#"{"type":"multivariate_lookup","sid":1,"seq":2,"msg":{"a":1}}"#;
+        let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
+        match msg {
+            WsMessageV2::Unknown {
+                msg_type: WsMsgType::Unknown(value),
+                sid,
+                seq,
+                ..
+            } => {
+                assert_eq!(value, "multivariate_lookup");
+                assert_eq!(sid, Some(1));
+                assert_eq!(seq, Some(2));
+            }
+            other => panic!("expected unknown message, got {other:?}"),
+        }
+    }
+
+    /// Block-trade flag added to WebSocket trade messages 2026-08-13; payloads
+    /// predating it must still parse as `false`.
+    #[test]
+    fn trade_message_carries_is_block_trade() {
+        let with_flag = r#"{
+            "type":"trade","sid":1,"seq":1,
+            "msg":{
+                "trade_id":"t","market_ticker":"MKT","count_fp":"1.00",
+                "yes_price_dollars":"0.5000","no_price_dollars":"0.5000",
+                "taker_outcome_side":"yes","taker_book_side":"bid",
+                "is_block_trade":true,"ts":0,"ts_ms":0
+            }
+        }"#;
+        match WsMessageV2::from_bytes(with_flag.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::Trade { msg, .. }) => {
+                assert!(msg.is_block_trade)
+            }
+            other => panic!("expected trade, got {other:?}"),
+        }
+
+        let without_flag = r#"{
+            "type":"trade","sid":1,"seq":1,
+            "msg":{
+                "trade_id":"t","market_ticker":"MKT","count_fp":"1.00",
+                "yes_price_dollars":"0.5000","no_price_dollars":"0.5000",
+                "ts":0,"ts_ms":0
+            }
+        }"#;
+        match WsMessageV2::from_bytes(without_flag.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::Trade { msg, .. }) => {
+                assert!(!msg.is_block_trade)
+            }
+            other => panic!("expected trade, got {other:?}"),
+        }
+    }
+
+    /// `exchange_index` added to WebSocket fill messages 2026-08-20 and to
+    /// `user_orders` 2026-08-27.
+    #[test]
+    fn fill_and_user_order_carry_exchange_index() {
+        let fill = r#"{
+            "type":"fill","sid":1,
+            "msg":{
+                "trade_id":"t","order_id":"o","market_ticker":"MKT",
+                "exchange_index":3,"outcome_side":"yes","book_side":"bid",
+                "count_fp":"1.00","yes_price_dollars":"0.5000","is_taker":true,
+                "fee_cost":"0.0000","ts":0,"ts_ms":0,
+                "post_position_fp":"1.00","purchased_side":"yes"
+            }
+        }"#;
+        match WsMessageV2::from_bytes(fill.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::Fill { msg, .. }) => {
+                assert_eq!(msg.exchange_index, Some(3))
+            }
+            other => panic!("expected fill, got {other:?}"),
+        }
+
+        let order = r#"{
+            "type":"user_order","sid":1,
+            "msg":{"order_id":"o","user_id":"u","ticker":"MKT","exchange_index":2}
+        }"#;
+        match WsMessageV2::from_bytes(order.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::UserOrder { msg, .. }) => {
+                assert_eq!(msg.exchange_index, Some(2))
+            }
+            other => panic!("expected user_order, got {other:?}"),
+        }
+    }
+
+    /// `price_ranges` and `exchange_index` arrive on lifecycle `created` /
+    /// `price_level_structure_updated` events (2026-07-02 / 2026-07-30);
+    /// `strike_type`, `cap_strike` and `custom_strike` arrive at the top level
+    /// on `metadata_updated` (2026-06-18).
+    #[test]
+    fn lifecycle_created_carries_price_ranges_and_exchange_index() {
+        let json = r#"{
+            "type":"market_lifecycle_v2","sid":1,"seq":1,
+            "msg":{
+                "market_ticker":"MKT","event_type":"created","exchange_index":3,
+                "price_level_structure":"center_deci_edge_centi_cent",
+                "price_ranges":[
+                    {"start":"0.0000","end":"0.0100","step":"0.0001"},
+                    {"start":"0.0100","end":"0.9900","step":"0.0010"}
+                ]
+            }
+        }"#;
+        match WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::MarketLifecycleV2 { msg, .. }) => {
+                assert_eq!(msg.exchange_index, Some(3));
+                let ranges = msg.price_ranges.expect("price_ranges");
+                assert_eq!(ranges.len(), 2);
+                assert_eq!(ranges[0].step, "0.0001");
+                assert_eq!(ranges[1].step, "0.0010");
+            }
+            other => panic!("expected lifecycle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lifecycle_metadata_updated_carries_full_strike_range() {
+        let json = r#"{
+            "type":"market_lifecycle_v2","sid":1,"seq":1,
+            "msg":{
+                "market_ticker":"MKT","event_type":"metadata_updated",
+                "strike_type":"between","floor_strike":60.0,"cap_strike":65.0,
+                "custom_strike":{"team":"NYY"},"yes_sub_title":"60-65"
+            }
+        }"#;
+        let owned = match WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::MarketLifecycleV2 { msg, .. }) => msg,
+            other => panic!("expected lifecycle, got {other:?}"),
+        };
+        assert_eq!(owned.strike_type.as_deref(), Some("between"));
+        assert_eq!(owned.floor_strike, Some(60.0));
+        assert_eq!(owned.cap_strike, Some(65.0));
+        assert!(owned.custom_strike.is_some());
+
+        // Borrowed path must surface the same values.
+        let borrowed = match WsMessageRef::from_bytes(json.as_bytes())
+            .unwrap()
+            .into_owned()
+            .unwrap()
+        {
+            WsMessageV2::Data(WsDataMessageV2::MarketLifecycleV2 { msg, .. }) => msg,
+            other => panic!("expected borrowed lifecycle, got {other:?}"),
+        };
+        assert_eq!(borrowed.strike_type.as_deref(), Some("between"));
+        assert_eq!(borrowed.cap_strike, Some(65.0));
+    }
+
+    /// `subaccount` added to `quote_created` 2026-07-30.
+    #[test]
+    fn quote_created_carries_subaccount() {
+        let json = r#"{
+            "type":"quote_created","sid":1,"seq":1,
+            "msg":{
+                "quote_id":"q","rfq_id":"r","quote_creator_id":"qc",
+                "rfq_creator_id":"rc","market_ticker":"MKT",
+                "yes_bid_dollars":"0.5000","no_bid_dollars":"0.5000",
+                "created_ts":"2026-07-30T00:00:00Z","subaccount":7
+            }
+        }"#;
+        match WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::Communications {
+                msg: WsCommunications::QuoteCreated(quote),
+                ..
+            }) => {
+                assert_eq!(quote.subaccount, Some(7));
+                assert_eq!(quote.rfq_creator_id.as_deref(), Some("rc"));
+            }
+            other => panic!("expected quote_created, got {other:?}"),
+        }
+    }
+
+    /// The AsyncAPI names the human-readable error text `msg` inside the error
+    /// object, not `message`. Both spellings must populate `WsError.message`,
+    /// on the owned and borrowed paths, and subscription-scoped errors carry
+    /// `sid` / `seq` (documented 2026-09-10).
+    #[test]
+    fn error_message_parses_from_asyncapi_msg_field() {
+        let wire = r#"{"type":"error","id":9,"sid":7,"seq":5,"msg":{"code":24,"msg":"Index IDs required"}}"#;
+        match WsMessageV2::from_bytes(wire.as_bytes()).unwrap() {
+            WsMessageV2::Error {
+                id,
+                sid,
+                seq,
+                error,
+            } => {
+                assert_eq!(id, Some(9));
+                assert_eq!(sid, Some(7));
+                assert_eq!(seq, Some(5));
+                assert_eq!(error.code, Some(24));
+                assert_eq!(error.message.as_deref(), Some("Index IDs required"));
+            }
+            other => panic!("expected error, got {other:?}"),
+        }
+
+        match WsMessageRef::from_bytes(wire.as_bytes())
+            .unwrap()
+            .into_owned()
+            .unwrap()
+        {
+            WsMessageV2::Error { error, .. } => {
+                assert_eq!(error.message.as_deref(), Some("Index IDs required"));
+            }
+            other => panic!("expected borrowed error, got {other:?}"),
+        }
+
+        // The `message` spelling still works.
+        let legacy = r#"{"type":"error","msg":{"code":8,"message":"Unknown channel name"}}"#;
+        match WsMessageV2::from_bytes(legacy.as_bytes()).unwrap() {
+            WsMessageV2::Error { error, .. } => {
+                assert_eq!(error.message.as_deref(), Some("Unknown channel name"));
+            }
+            other => panic!("expected error, got {other:?}"),
+        }
     }
 }

@@ -126,8 +126,16 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    // Restructured 2026-06-06 (automated API rate-limit tiers): nested bucket
+    // limits plus the grants array.
+    assert!(resp.read.refill_rate >= 0);
+    assert!(resp.read.bucket_capacity >= 0);
+    assert!(resp.write.refill_rate >= 0);
+    assert!(resp.write.bucket_capacity >= 0);
+    for grant in &resp.grants {
+        assert!(!grant.level.is_empty());
+        assert!(!grant.exchange_instance.is_empty());
+    }
 }
 
 #[tokio::test]
@@ -545,7 +553,6 @@ async fn test_get_subaccount_netting() {
             assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
             let api_error = api_error.expect("expected api error");
             assert_eq!(api_error.code.as_deref(), Some("internal_server_error"));
-            assert_eq!(api_error.service.as_deref(), Some("users"));
         }
         Err(err) => panic!("unexpected error: {err:?}"),
     }

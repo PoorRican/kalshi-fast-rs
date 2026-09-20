@@ -124,10 +124,11 @@ pub struct ErrorResponse {
     pub code: Option<String>,
     #[serde(default)]
     pub message: Option<String>,
+    /// Additional details about the error, when available. For multivariate
+    /// combo-validation failures this carries the offending market tickers as a
+    /// comma-separated string (2026-07-30).
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---

@@ -38,6 +38,10 @@ pub struct EventMetadata {
     pub image_url: Option<String>,
     #[serde(default)]
     pub featured_image_url: Option<String>,
+    /// How often the event recurs (e.g. `"fifteen_min"`). Added 2026-07-30.
+    /// Absent for events without a cadence.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub market_details: Vec<MarketMetadata>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
@@ -57,8 +61,15 @@ pub struct Series {
     pub frequency: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
+    /// Primary discovery category for the series.
     #[serde(default)]
     pub category: Option<String>,
+    /// Every discovery category this series appears under. Added 2026-09-17.
+    /// The `category` filter on `GET /series` matches any entry here, so a
+    /// series returned for `category=Commodities` may report a different
+    /// primary `category`. May be empty.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
@@ -91,6 +102,9 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Target exchange instance for new events in this series. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

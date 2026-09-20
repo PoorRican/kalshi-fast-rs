@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::orders::GetOrdersResponse;
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::portfolio::GetFillsResponse;
+use crate::rest::portfolio::{GetFillsResponse, GetPositionsResponse};
 use crate::types::{
     BookSide, FixedPointCount, FixedPointDollars, MveFilter, TradeTakerSide,
     deserialize_null_as_empty_vec,
@@ -91,6 +91,9 @@ pub struct GetHistoricalMarketsParams {
 pub struct GetHistoricalFillsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    /// Lower bound on fill time. Added 2026-09-17.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -103,8 +106,29 @@ pub struct GetHistoricalFillsParams {
 pub struct GetHistoricalOrdersParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    /// Lower bound on order cancellation/execution time. Added 2026-09-17.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+/// GET /historical/positions query params. Added 2026-07-23; `subaccount`
+/// added 2026-09-03.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    /// Retrieve archived positions for a numbered subaccount. Omitting it
+    /// returns the primary subaccount's positions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -115,7 +139,16 @@ pub struct GetHistoricalOrdersParams {
 pub struct GetHistoricalCutoffResponse {
     pub market_settled_ts: String,
     pub trades_created_ts: String,
+    /// Cutoff for order cancellation/execution time. Since 2026-09-24 this
+    /// advances independently of the other cutoffs and sits roughly two weeks
+    /// behind the present, so read it before querying orders rather than
+    /// assuming it tracks `trades_created_ts`.
     pub orders_updated_ts: String,
+    /// Cutoff for position last-update time. Settled positions archived before
+    /// this timestamp are served by `GET /historical/positions`. Added
+    /// 2026-07-23.
+    #[serde(default)]
+    pub market_positions_last_updated_ts: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -161,6 +194,23 @@ impl KalshiRestClient {
         params: GetHistoricalOrdersParams,
     ) -> Result<GetOrdersResponse, KalshiError> {
         let path = Self::full_path("/historical/orders");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database.
+    ///
+    /// Positions are archived per whole event, so a settled event's positions
+    /// move here together and are never split between this endpoint and
+    /// `GET /portfolio/positions`. Use it for positions older than
+    /// `market_positions_last_updated_ts` on `GET /historical/cutoff`.
+    ///
+    /// **Requires auth.** Added 2026-07-23.
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await
     }

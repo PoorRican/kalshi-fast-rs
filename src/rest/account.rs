@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -71,6 +71,36 @@ pub struct GetAccountEndpointCostsResponse {
     pub endpoint_costs: Vec<EndpointTokenCost>,
 }
 
+/// Earn/keep volume goal for one volume-based API usage level.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal applies to (e.g. `"premier"`, `"prime"`).
+    pub level: String,
+    /// Trailing-30d volume required to earn the level, as a fixed-point count.
+    pub earn_volume_goal_fp: FixedPointCount,
+    /// Trailing-30d volume required to keep the level, as a fixed-point count.
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// One cron-computed snapshot of trailing-30d volume and the tier goals it is
+/// measured against.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) at which this progress snapshot was computed.
+    pub computed_ts: i64,
+    /// Trailing-30d traded volume ending at `computed_ts`, as a fixed-point count.
+    pub trailing_30d_volume_fp: FixedPointCount,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateSubaccountResponse {
     pub subaccount_number: u32,
@@ -79,6 +109,10 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on. Added 2026-07-02: a subaccount
+    /// with funds on several indexes now appears as one entry per index.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -146,6 +180,13 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// Sub-account (0..=63) this key is restricted to. `None` means the key is
+    /// unrestricted. Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
+    /// FCM subtrader this key is bound to, if any. Added 2026-07-02.
+    #[serde(default)]
+    pub fcm_subtrader_id: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -154,6 +195,12 @@ pub struct ApiKey {
 pub struct GetApiKeysResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub api_keys: Vec<ApiKey>,
+    /// Unix timestamp (seconds) when the account's location attestation for API
+    /// key requests expires. Absent when the account has never attested. Added
+    /// 2026-08-16. Once past, API keys cannot trade Sports, Elections, or
+    /// Entertainment markets.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +209,14 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0..=63). Added 2026-07-02.
+    /// Mutually exclusive with `fcm_subtrader_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind the key to one FCM subtrader. Added 2026-07-02.
+    /// Mutually exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -176,6 +231,14 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0..=63). Added 2026-07-02.
+    /// Mutually exclusive with `fcm_subtrader_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind the key to one FCM subtrader. Added 2026-07-02.
+    /// Mutually exclusive with `subaccount`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -202,6 +265,36 @@ pub struct UpdateSubaccountNettingRequest {
 pub struct SubaccountNettingConfig {
     pub subaccount_number: u32,
     pub enabled: bool,
+}
+
+/// Request body for `POST /portfolio/intra_exchange_instance_transfer`.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    /// Source exchange instance (`"event_contract"` or `"margined"`). Kept as
+    /// a raw string so future instances need no crate update.
+    pub source: String,
+    pub destination: String,
+    /// Amount to transfer, in centicents.
+    pub amount: i64,
+    /// Source exchange shard index (0..=100, default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<i32>,
+    /// Destination exchange shard index (0..=100, default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<i32>,
+    /// Source subaccount number (default 0 = primary). Added 2026-08-20.
+    /// Only supported for event-contract to event-contract transfers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    /// Destination subaccount number (default 0 = primary). Added 2026-08-20.
+    /// Only supported for event-contract to event-contract transfers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -241,6 +334,58 @@ impl KalshiRestClient {
             false,
         )
         .await
+    }
+
+    /// Report trailing-30d volume and the earn/keep goals for each volume-based
+    /// API usage tier on the Predictions lane.
+    ///
+    /// **Requires auth.** Added 2026-06-11.
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-promote to the Advanced API usage tier.
+    ///
+    /// Requires at least one of the account's last 100 Predictions orders to
+    /// have been created via the API. Costs 30 write tokens.
+    ///
+    /// **Requires auth.** Added 2026-06-11.
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Transfer funds within the same account, across exchange instances,
+    /// exchange shards, and (since 2026-08-20) sub-accounts.
+    ///
+    /// Cross-exchange-index sub-account transfers run in up to three
+    /// non-atomic steps; a later failure does not roll back completed steps.
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
     }
 
     /// Create a new subaccount.
