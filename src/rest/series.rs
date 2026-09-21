@@ -46,6 +46,10 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    /// How often the event recurs (e.g. `"fifteen_min"`). Added 2026-07-30;
+    /// absent when the event has no cadence set.
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -59,6 +63,11 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Discovery categories for this series. The `category` filter on
+    /// `GET /series` matches any entry here, so a series returned for a given
+    /// category can show a different primary `category`. Added 2026-09-17.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
@@ -91,6 +100,9 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Exchange shard for new events under this series. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

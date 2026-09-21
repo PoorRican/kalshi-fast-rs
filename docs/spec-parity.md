@@ -91,6 +91,44 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- The legacy `/portfolio/orders` mutation endpoints (create/cancel/amend/decrease/batch) were
+  removed from the OpenAPI spec entirely (Kalshi announced deprecation 2026-06-18; by this refresh,
+  2026-09-21, the paths no longer exist). This crate does not re-add them; use the V2 event-order
+  endpoints (`create_order_v2`, `cancel_order_v2`, `amend_order_v2`, `decrease_order_v2`,
+  `batch_create_orders_v2`, `batch_cancel_orders_v2`). `GET /portfolio/orders` and
+  `GET /portfolio/orders/{order_id}` remain (read-only) and are unaffected.
+
+- This crate's public API surface is a deliberate subset of the full Kalshi API. Not implemented:
+  FIX (any protocol), all Margin market/order/position/risk/exit-trigger endpoints (only
+  `GET /margin/fee_tiers` is modeled), `POST`/`GET /portfolio/target_balance_allocation`,
+  `POST /portfolio/intra_exchange_instance_transfer` and its history endpoints, the "cancel all
+  resting orders across subaccounts" endpoints, and the WS `pyth_value` and `cfbenchmarks_value_5hz`
+  channels. These are known gaps versus the live spec, not oversights during this refresh; note them
+  here rather than silently dropping them from disposition tracking.
+
+- `exchange_index` (a multi-exchange-shard identifier) was added across most of the REST and
+  WebSocket surface starting mid-2026 as Kalshi provisions dedicated exchange shards for high-volume
+  categories (Crypto, Tennis, Baseball, commodities, basketball, NFL combos, etc). It is modeled as
+  `Option<u32>` everywhere it appears on a response (defaults to shard 0 when omitted) and as an
+  `Option<u32>` filter/query param where the endpoint accepts one. `Order.exchange_index` (V1
+  read-only shape, still used by `GET /portfolio/orders`) and the V2 order types' `exchange_index`
+  request field (which accepts `-1` for auto-routing by ticker) are separate fields serving
+  different purposes — the V1 field is server-reported, the V2 field is caller-specified routing.
+
+- `WsMarketLifecycleV2` unifies every `market_lifecycle_v2` / `multivariate_market_lifecycle` event
+  type (`created`, `activated`, `deactivated`, `close_date_updated`, `determined`, `settled`,
+  `price_level_structure_updated`, `metadata_updated`) into one struct even though the AsyncAPI
+  models `metadata_updated` as a structurally distinct, minimal message
+  (`marketMetadataUpdatedPayload`). Fields exist only on the event types that document them
+  (`price_ranges`/`exchange_index` on creation; `strike_type`/`floor_strike`/`cap_strike`/
+  `custom_strike`/`yes_sub_title` only on `metadata_updated`) — this is intentional and predates
+  this refresh; the additions here follow the existing pattern rather than splitting the type.
+
+- `WsQuoteCreated` was missing the AsyncAPI-required `rfq_creator_id` field entirely before this
+  refresh (a pre-existing gap unrelated to any specific changelog entry, found while adding the new
+  `subaccount` field to the same message). It is now modeled as a required `String`, matching the
+  spec.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

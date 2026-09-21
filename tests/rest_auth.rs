@@ -16,10 +16,14 @@ async fn test_get_balance() {
     let auth = common::load_auth();
     let client = common::demo_auth_client(auth);
 
-    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async { client.get_balance().await })
-        .await
-        .expect("timeout")
-        .expect("request failed");
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_balance(kalshi_fast::GetBalanceParams::default())
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
 
     // Balance fields should exist (may be 0)
     assert!(resp.balance >= 0);
@@ -126,8 +130,8 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    assert!(resp.read.refill_rate >= 0);
+    assert!(resp.write.refill_rate >= 0);
 }
 
 #[tokio::test]
@@ -173,8 +177,12 @@ async fn test_get_subaccount_transfers() {
 async fn test_auth_required_without_auth() {
     let client = common::demo_client();
 
-    let result =
-        tokio::time::timeout(common::TEST_TIMEOUT, async { client.get_balance().await }).await;
+    let result = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_balance(kalshi_fast::GetBalanceParams::default())
+            .await
+    })
+    .await;
 
     match result {
         Ok(Err(KalshiError::AuthRequired(_))) => {
@@ -545,7 +553,6 @@ async fn test_get_subaccount_netting() {
             assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
             let api_error = api_error.expect("expected api error");
             assert_eq!(api_error.code.as_deref(), Some("internal_server_error"));
-            assert_eq!(api_error.service.as_deref(), Some("users"));
         }
         Err(err) => panic!("unexpected error: {err:?}"),
     }
