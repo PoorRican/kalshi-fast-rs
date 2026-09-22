@@ -59,6 +59,12 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Discovery categories for the series. The `category` filter on
+    /// `GET /series` matches any entry here, so a series returned for a
+    /// given `category` filter can show a different primary `category`.
+    /// Added 2026-09-17.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
@@ -82,8 +88,6 @@ pub struct Series {
     #[serde(default)]
     pub product_metadata: Option<Map<String, Value>>,
     #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default)]
     pub volume_fp: Option<String>,
     #[serde(default)]
     pub latest_event_ticker: Option<String>,
@@ -91,6 +95,10 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Identifier for the exchange shard that new events in this series are
+    /// created on. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

@@ -6,6 +6,10 @@ use std::borrow::Cow;
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsFill {
     pub trade_id: String,
+    /// Identifier for the exchange shard where the fill occurred. Marked
+    /// required by the current schema; kept `Option` for defensive parsing.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub order_id: String,
     #[serde(default)]
     pub client_order_id: Option<String>,
@@ -43,6 +47,8 @@ pub struct WsFill {
 pub struct WsFillRef<'a> {
     #[serde(borrow)]
     pub trade_id: Cow<'a, str>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(borrow)]
     pub order_id: Cow<'a, str>,
     #[serde(default, borrow)]
@@ -83,6 +89,7 @@ impl<'a> WsFillRef<'a> {
     pub fn into_owned(self) -> WsFill {
         WsFill {
             trade_id: self.trade_id.into_owned(),
+            exchange_index: self.exchange_index,
             order_id: self.order_id.into_owned(),
             client_order_id: self.client_order_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),

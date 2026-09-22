@@ -28,6 +28,11 @@ pub struct WsTrade {
     pub ts_ms: Option<i64>,
     #[serde(default)]
     pub created_time: Option<String>,
+    /// True if the trade was matched off book as a block trade. Added
+    /// 2026-08-13. Defaults to `false` for payloads predating the flag,
+    /// matching the REST `Trade.is_block_trade` convention.
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 /// Trade channel message (type: "trade")
@@ -60,6 +65,10 @@ pub struct WsTradeRef<'a> {
     pub ts_ms: Option<i64>,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
+    /// True if the trade was matched off book as a block trade. Added
+    /// 2026-08-13.
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 impl<'a> WsTradeRef<'a> {
@@ -76,6 +85,7 @@ impl<'a> WsTradeRef<'a> {
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),
+            is_block_trade: self.is_block_trade,
         }
     }
 }

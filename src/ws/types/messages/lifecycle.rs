@@ -7,6 +7,10 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsMarketLifecycleV2 {
     pub market_ticker: String,
+    /// Identifier for the exchange shard the market lives on. Only present
+    /// on `created` events. Added 2026-07-30.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
     #[serde(default)]
@@ -24,14 +28,29 @@ pub struct WsMarketLifecycleV2 {
     #[serde(default)]
     pub is_deactivated: Option<bool>,
     #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
     pub price_level_structure: Option<String>,
+    /// Valid price bands for the market, in fixed-point dollars. Emitted
+    /// alongside `price_level_structure` on `created` and
+    /// `price_level_structure_updated` events. Added 2026-07-02.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<WsLifecyclePriceRange>>,
     /// Top-level updated floor strike. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events and is distinct from
     /// `additional_metadata.floor_strike` (which is emitted on market creation).
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    /// Top-level updated strike type; present only on `metadata_updated`
+    /// events that change it. Added 2026-06-18.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Top-level updated cap strike; present only on `metadata_updated`
+    /// events that change it. Added 2026-06-18.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level updated custom strike (structured markets); present only on
+    /// `metadata_updated` events that change it. Added 2026-06-18.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle. Per the AsyncAPI this key exists **only**
     /// on `metadata_updated` events.
     #[serde(default)]
@@ -39,10 +58,40 @@ pub struct WsMarketLifecycleV2 {
     #[serde(default)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadata>,
     /// Catches any other top-level keys the exchange attaches to a lifecycle
-    /// event (e.g. future `metadata_updated` fields beyond floor_strike /
-    /// yes_sub_title).
+    /// event (e.g. future `metadata_updated` fields beyond those modeled
+    /// above).
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// Price band entry on `market_lifecycle_v2` `price_ranges`. Fields are
+/// fixed-point dollar strings, matching the REST `PriceRange` shape.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsLifecyclePriceRange {
+    pub start: String,
+    pub end: String,
+    pub step: String,
+}
+
+/// Borrowed version of [`WsLifecyclePriceRange`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsLifecyclePriceRangeRef<'a> {
+    #[serde(borrow)]
+    pub start: Cow<'a, str>,
+    #[serde(borrow)]
+    pub end: Cow<'a, str>,
+    #[serde(borrow)]
+    pub step: Cow<'a, str>,
+}
+
+impl<'a> WsLifecyclePriceRangeRef<'a> {
+    pub fn into_owned(self) -> WsLifecyclePriceRange {
+        WsLifecyclePriceRange {
+            start: self.start.into_owned(),
+            end: self.end.into_owned(),
+            step: self.step.into_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -128,6 +177,8 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
     #[serde(default)]
+    pub exchange_index: Option<i64>,
+    #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
     #[serde(default)]
     pub open_ts: Option<i64>,
@@ -143,13 +194,19 @@ pub struct WsMarketLifecycleV2Ref<'a> {
     pub settled_ts: Option<i64>,
     #[serde(default)]
     pub is_deactivated: Option<bool>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
     #[serde(default, borrow)]
     pub price_level_structure: Option<Cow<'a, str>>,
+    #[serde(default, borrow)]
+    pub price_ranges: Option<Vec<WsLifecyclePriceRangeRef<'a>>>,
     /// Top-level updated floor strike; present only on `metadata_updated` events.
     #[serde(default)]
     pub floor_strike: Option<f64>,
+    #[serde(default, borrow)]
+    pub strike_type: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
     /// Top-level updated yes subtitle; present only on `metadata_updated` events.
     #[serde(default, borrow)]
     pub yes_sub_title: Option<Cow<'a, str>>,
@@ -164,6 +221,7 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
     pub fn into_owned(self) -> WsMarketLifecycleV2 {
         WsMarketLifecycleV2 {
             market_ticker: self.market_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             event_type: self.event_type,
             open_ts: self.open_ts,
             close_ts: self.close_ts,
@@ -172,9 +230,17 @@ impl<'a> WsMarketLifecycleV2Ref<'a> {
             settlement_value: self.settlement_value.map(Cow::into_owned),
             settled_ts: self.settled_ts,
             is_deactivated: self.is_deactivated,
-            fractional_trading_enabled: self.fractional_trading_enabled,
             price_level_structure: self.price_level_structure.map(Cow::into_owned),
+            price_ranges: self.price_ranges.map(|ranges| {
+                ranges
+                    .into_iter()
+                    .map(WsLifecyclePriceRangeRef::into_owned)
+                    .collect()
+            }),
             floor_strike: self.floor_strike,
+            strike_type: self.strike_type.map(Cow::into_owned),
+            cap_strike: self.cap_strike,
+            custom_strike: self.custom_strike,
             yes_sub_title: self.yes_sub_title.map(Cow::into_owned),
             additional_metadata: self
                 .additional_metadata

@@ -79,6 +79,10 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index this balance is held on. A subaccount with funds on
+    /// multiple exchange indexes appears as multiple entries. Added
+    /// 2026-07-02 (per-index subaccount balances).
+    pub exchange_index: i64,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -208,6 +212,115 @@ pub struct SubaccountNettingConfig {
 pub struct GetSubaccountNettingResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub netting_configs: Vec<SubaccountNettingConfig>,
+}
+
+// ---------------------------------------------------------------------------
+// Intra-exchange-instance (cross-shard) transfers. Added 2026-08-13/2026-08-20.
+// ---------------------------------------------------------------------------
+
+/// Request body for `POST /portfolio/intra_exchange_instance_transfer`.
+///
+/// Kept as raw strings (rather than an enum) for `source`/`destination` to
+/// tolerate future exchange-instance values without a crate update, matching
+/// the existing `ApiUsageLevelGrant.exchange_instance` convention (see
+/// `docs/spec-parity.md`). Current values: `"event_contract"`, `"margined"`.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    pub source: String,
+    pub destination: String,
+    /// Amount to transfer, in centi-cents.
+    pub amount: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<i64>,
+    /// Only supported for event-contract-to-event-contract transfers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    pub source: String,
+    pub destination: String,
+    pub source_exchange_shard: i64,
+    pub destination_exchange_shard: i64,
+    /// Transfer amount in dollars.
+    pub amount: FixedPointDollars,
+    /// `"pending"` or `"complete"`. Kept as a raw string so unrecognized
+    /// future statuses round-trip losslessly.
+    pub status: String,
+    pub created_ts: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
+}
+
+// ---------------------------------------------------------------------------
+// Target balance allocation (automatic cross-shard rebalancing). Added
+// 2026-08-20; `resting_margin_reservation` added 2026-09-17/2026-09-24.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TargetBalanceAllocation {
+    pub exchange_index: i64,
+    pub percent: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TargetBalanceAllocationInput {
+    pub exchange_index: i64,
+    pub percent: i64,
+}
+
+/// Collateral an automatic rebalance leaves behind for resting orders.
+/// `"none"` reserves nothing, `"max"` reserves the largest single
+/// market-side commitment, `"sum"` (the default) reserves the summed margin
+/// of every resting order. Kept as a raw string so a future value round-trips
+/// losslessly without a crate update.
+pub type RestingMarginReservation = String;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetTargetBalanceAllocationResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub allocations: Vec<TargetBalanceAllocation>,
+    #[serde(default)]
+    pub resting_margin_reservation: Option<RestingMarginReservation>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetTargetBalanceAllocationRequest {
+    pub allocations: Vec<TargetBalanceAllocationInput>,
+    /// Defaults to `"sum"` when omitted. Pass `"none"` to reserve no
+    /// collateral for resting orders during rebalancing (added 2026-09-24).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resting_margin_reservation: Option<RestingMarginReservation>,
 }
 
 impl KalshiRestClient {
@@ -415,5 +528,106 @@ impl KalshiRestClient {
             }
         })
         .await
+    }
+
+    /// Transfer funds between exchange instances/shards (and optionally
+    /// between subaccounts in the same request). When source and destination
+    /// shards match, this is treated as a subaccount transfer. Added
+    /// 2026-08-13/2026-08-20.
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List intra-exchange-instance transfer history. Supports cursor
+    /// pagination. Added 2026-08-13.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get a single intra-exchange-instance transfer by ID. Added 2026-08-13.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Create a pager for iterating over intra-exchange-instance transfers
+    /// page by page. See [`CursorPager`].
+    pub fn intra_exchange_instance_transfers_pager(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> CursorPager<IntraExchangeInstanceTransfer> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
+            })
+        })
+    }
+
+    /// Get the caller's target balance allocation across exchange indexes.
+    /// Added 2026-08-20.
+    ///
+    /// **Requires auth.**
+    pub async fn get_target_balance_allocation(
+        &self,
+    ) -> Result<GetTargetBalanceAllocationResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Replace the caller's target balance allocation across exchange
+    /// indexes. Percentages must total 100; an empty `allocations` array
+    /// disables automatic rebalancing. Added 2026-08-20.
+    ///
+    /// **Requires auth.**
+    pub async fn set_target_balance_allocation(
+        &self,
+        body: SetTargetBalanceAllocationRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/target_balance_allocation");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
     }
 }

@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict results to one exchange index. Omitting it returns results
+    /// from all exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +124,9 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Identifier for the exchange shard this order lives on. Added 2026.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -435,6 +443,16 @@ pub struct GetOrderGroupResponse {
     pub orders: Vec<Order>,
 }
 
+/// Query params for `PUT /portfolio/order_groups/{order_group_id}/limit`.
+/// Added 2026-08-06 (`subaccount`).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateOrderGroupLimitParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct UpdateOrderGroupLimitRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -691,6 +709,9 @@ pub struct BatchCancelOrdersV2Response {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
+    /// Required unless the API key is bound to a subtrader. At least one of
+    /// `subtrader_id` or `client_order_ids` is required.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub subtrader_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
@@ -706,6 +727,14 @@ pub struct GetFcmOrdersParams {
     pub status: Option<OrderStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    /// Up to 100 comma-separated client order IDs. Only searches orders
+    /// created within the last 24 hours; a `min_ts` older than that is
+    /// raised to 24 hours ago server-side. Added 2026-09-03.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub client_order_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -899,10 +928,11 @@ impl KalshiRestClient {
     pub async fn update_order_group_limit(
         &self,
         order_group_id: &str,
+        params: UpdateOrderGroupLimitParams,
         body: UpdateOrderGroupLimitRequest,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/portfolio/order_groups/{order_group_id}/limit"));
-        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+        self.send(Method::PUT, &path, Some(&params), Some(&body), true)
             .await
     }
 
@@ -1021,6 +1051,31 @@ impl KalshiRestClient {
             true,
         )
         .await
+    }
+
+    /// Cancel all resting event-market orders across every exchange shard.
+    ///
+    /// If `params.subaccount` is omitted, matching orders may come from any
+    /// subaccount; if provided, only orders for that subaccount are
+    /// eligible. Newly placed orders may also be cancelled during the
+    /// minute after the request. Added 2026-08-27.
+    ///
+    /// **Requires auth.**
+    pub async fn cancel_all_orders_v2(
+        &self,
+        params: SubaccountQueryParams,
+    ) -> Result<(), KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        let _: EmptyResponse = self
+            .send(
+                Method::DELETE,
+                &path,
+                Some(&params),
+                Option::<&()>::None,
+                true,
+            )
+            .await?;
+        Ok(())
     }
 
     pub async fn get_fcm_orders(

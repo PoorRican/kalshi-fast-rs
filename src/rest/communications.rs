@@ -61,6 +61,22 @@ pub struct Quote {
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_contracts_fp: Option<FixedPointCount>,
+    /// Visible when the caller is the quote creator. Added ~2026-08-22
+    /// (post-only quotes preserved).
+    #[serde(default)]
+    pub post_only: Option<bool>,
+    /// True when the parent RFQ's target cost is principal-only. Added
+    /// 2026-09-10.
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Subaccount number of the quote creator. Visible when the caller is
+    /// the quote creator. Added 2026-07-02/2026-07-30.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    /// Subaccount number of the RFQ creator. Visible when the caller is the
+    /// RFQ creator. Added 2026-07-02/2026-07-30.
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -73,6 +89,10 @@ pub struct RFQ {
     pub contracts_fp: FixedPointCount,
     #[serde(default)]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    /// True when `target_cost_dollars` is principal-only (fees charged on
+    /// top rather than reserved inside it). Added 2026-09-10.
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
     pub status: String,
     pub created_ts: String,
     #[serde(default)]
@@ -85,6 +105,10 @@ pub struct RFQ {
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
+    /// Subaccount number of the RFQ creator. Visible when the caller is the
+    /// RFQ creator. Added 2026-07-02/2026-07-30.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default)]
     pub cancelled_ts: Option<String>,
     #[serde(default)]
@@ -97,10 +121,6 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +137,18 @@ pub struct GetQuotesParams {
     /// Pass `"self"` to enable. Added 2026-05-07.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_user_filter: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to
+    /// enable. Added 2026 (parallels `rfq_user_filter`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
+    /// Restrict results to quotes last updated after this Unix timestamp.
+    /// Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    /// Restrict results to quotes last updated before this Unix timestamp.
+    /// Added 2026-06-18.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -138,6 +170,11 @@ pub struct CreateQuoteRequest {
     pub yes_bid: String,
     pub no_bid: String,
     pub rest_remainder: bool,
+    /// If true, the quote creator's resting order is cancelled rather than
+    /// crossed if it would take liquidity. Defaults to `false`. Added
+    /// 2026 (preserved by the August 2026 post-only policy update).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
 }
@@ -194,6 +231,12 @@ pub struct CreateRFQRequest {
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    /// Sizes quotes against the target cost as principal only (contracts =
+    /// target cost / price), with taker fees charged on top of the target
+    /// cost. By default (`false`/omitted) the target cost caps principal
+    /// plus fees. Only valid together with a target cost. Added 2026-09-10.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
@@ -278,6 +321,12 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Look up a quote by ID only.
+    ///
+    /// Deprecated 2026-07-09 in favor of [`Self::get_rfq_quote`] (scoped by
+    /// `rfq_id` + `quote_id`), which remains durably queryable; a quote-ID-only
+    /// lookup may 404 once the quote has been cleared. This endpoint remains
+    /// supported for now.
     pub async fn get_quote(&self, quote_id: &str) -> Result<GetQuoteResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -290,6 +339,29 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Look up a quote scoped to a specific RFQ. Returns 404 if the quote
+    /// does not belong to `rfq_id`. Added 2026-07-09; prefer this over
+    /// [`Self::get_quote`].
+    pub async fn get_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<GetQuoteResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Delete a quote by ID only.
+    ///
+    /// Deprecated 2026-06-25 in favor of [`Self::delete_rfq_quote`]. This
+    /// endpoint remains supported for now.
     pub async fn delete_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}"));
         self.send(
@@ -302,6 +374,28 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Delete a quote scoped to a specific RFQ. Added 2026-06-25; prefer this
+    /// over [`Self::delete_quote`].
+    pub async fn delete_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/communications/rfqs/{rfq_id}/quotes/{quote_id}"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Accept a quote by ID only.
+    ///
+    /// Deprecated 2026-06-25 in favor of [`Self::accept_rfq_quote`]. This
+    /// endpoint remains supported for now.
     pub async fn accept_quote(
         &self,
         quote_id: &str,
@@ -312,8 +406,42 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Accept a quote scoped to a specific RFQ. Added 2026-06-25; prefer this
+    /// over [`Self::accept_quote`].
+    pub async fn accept_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+        body: AcceptQuoteRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/accept"
+        ));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote by ID only.
+    ///
+    /// Deprecated 2026-06-25 in favor of [`Self::confirm_rfq_quote`]. This
+    /// endpoint remains supported for now.
     pub async fn confirm_quote(&self, quote_id: &str) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/communications/quotes/{quote_id}/confirm"));
+        let body = EmptyResponse::default();
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Confirm a quote scoped to a specific RFQ. Added 2026-06-25; prefer
+    /// this over [`Self::confirm_quote`].
+    pub async fn confirm_rfq_quote(
+        &self,
+        rfq_id: &str,
+        quote_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm"
+        ));
         let body = EmptyResponse::default();
         self.send(Method::PUT, &path, Option::<&()>::None, Some(&body), true)
             .await

@@ -75,3 +75,67 @@ impl<'a> WsCfBenchmarksIndexListRef<'a> {
         }
     }
 }
+
+/// Message payload for the `cfbenchmarks_value_5hz` WebSocket channel. Added
+/// 2026-09-03. Streams raw ticks (no rolling averages) at up to 5
+/// updates/second on indices the vendor publishes at 200ms granularity.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsCfBenchmarksValue5Hz {
+    /// CF Benchmarks index ID (e.g. `"BRTI"`).
+    pub index_id: String,
+    /// Index value in USD, formatted with exactly 8 decimal places.
+    pub value_usd: String,
+    /// Upstream publication timestamp of the tick (unix ms).
+    pub source_ts_ms: i64,
+    /// When Kalshi received the upstream frame (unix ms).
+    pub received_at: i64,
+    /// The raw CF Benchmarks JSON frame, as a string.
+    pub data: String,
+}
+
+/// Borrowed version of [`WsCfBenchmarksValue5Hz`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsCfBenchmarksValue5HzRef<'a> {
+    #[serde(borrow)]
+    pub index_id: Cow<'a, str>,
+    #[serde(borrow)]
+    pub value_usd: Cow<'a, str>,
+    pub source_ts_ms: i64,
+    pub received_at: i64,
+    #[serde(borrow)]
+    pub data: Cow<'a, str>,
+}
+
+impl<'a> WsCfBenchmarksValue5HzRef<'a> {
+    pub fn into_owned(self) -> WsCfBenchmarksValue5Hz {
+        WsCfBenchmarksValue5Hz {
+            index_id: self.index_id.into_owned(),
+            value_usd: self.value_usd.into_owned(),
+            source_ts_ms: self.source_ts_ms,
+            received_at: self.received_at,
+            data: self.data.into_owned(),
+        }
+    }
+}
+
+/// Response to the `indexlist` action on a `cfbenchmarks_value_5hz`
+/// subscription. Added 2026-09-03.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsCfBenchmarksIndexList5Hz {
+    pub index_ids: Vec<String>,
+}
+
+/// Borrowed version of [`WsCfBenchmarksIndexList5Hz`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsCfBenchmarksIndexList5HzRef<'a> {
+    #[serde(borrow)]
+    pub index_ids: Vec<Cow<'a, str>>,
+}
+
+impl<'a> WsCfBenchmarksIndexList5HzRef<'a> {
+    pub fn into_owned(self) -> WsCfBenchmarksIndexList5Hz {
+        WsCfBenchmarksIndexList5Hz {
+            index_ids: self.index_ids.into_iter().map(Cow::into_owned).collect(),
+        }
+    }
+}

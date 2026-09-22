@@ -126,6 +126,11 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
+    /// Deprecated 2026-07-28, removed 2026-08-06. The exchange no longer
+    /// populates this field on any error response; always `None` today.
+    /// Kept as a lenient `Option` (rather than removed) since it costs
+    /// nothing to parse and any tooling still matching on it degrades
+    /// gracefully. Branch on `code` instead. See `docs/spec-parity.md`.
     #[serde(default)]
     pub service: Option<String>,
 }
@@ -137,6 +142,10 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    /// Combo (multivariate/RFQ) maker-fee structure: same as
+    /// `quadratic_with_maker_fees` but with a 0.5 maker multiplier instead of
+    /// 0.25. Added to the OpenAPI spec 2026 (combo RFQ fee assignment).
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
