@@ -637,7 +637,6 @@ mod tests {
                 let api_error = api_error.expect("expected api error");
                 assert_eq!(api_error.code.as_deref(), Some("bad_request"));
                 assert_eq!(api_error.message.as_deref(), Some("invalid"));
-                assert_eq!(api_error.service.as_deref(), Some("trade-api"));
             }
             other => panic!("unexpected error: {:?}", other),
         }

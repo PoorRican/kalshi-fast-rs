@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
     client
         .update_order_group_limit(
             &order_group.order_group_id,
+            SubaccountQueryParams::default(),
             UpdateOrderGroupLimitRequest {
                 contracts_limit_fp: Some("50.00".to_string()),
                 ..Default::default()
@@ -47,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
             replace_existing: None,
             subtrader_id: None,
             subaccount: None,
+            target_cost_excludes_fees: None,
         })
         .await?;
     println!("created rfq_id={}", rfq.id);

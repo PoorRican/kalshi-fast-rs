@@ -28,6 +28,11 @@ pub struct WsTrade {
     pub ts_ms: Option<i64>,
     #[serde(default)]
     pub created_time: Option<String>,
+    /// True for block trades matched off-book. Added 2026-08-13. The spec
+    /// marks this required; defaults to `false` to tolerate payloads
+    /// predating the field.
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 /// Trade channel message (type: "trade")
@@ -60,6 +65,8 @@ pub struct WsTradeRef<'a> {
     pub ts_ms: Option<i64>,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 impl<'a> WsTradeRef<'a> {
@@ -76,6 +83,46 @@ impl<'a> WsTradeRef<'a> {
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),
+            is_block_trade: self.is_block_trade,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `is_block_trade` was added 2026-08-13; defaults to `false` for payloads
+    /// predating the field so historical/cached messages keep parsing.
+    #[test]
+    fn is_block_trade_defaults_false_when_absent() {
+        let json = r#"{
+            "trade_id": "t-1",
+            "market_ticker": "MKT-1",
+            "count_fp": "1.00",
+            "yes_price_dollars": "0.5000",
+            "no_price_dollars": "0.5000",
+            "ts": 1700000000
+        }"#;
+        let trade: WsTrade = serde_json::from_str(json).unwrap();
+        assert!(!trade.is_block_trade);
+
+        let borrowed: WsTradeRef = serde_json::from_str(json).unwrap();
+        assert!(!borrowed.into_owned().is_block_trade);
+    }
+
+    #[test]
+    fn is_block_trade_parses_true() {
+        let json = r#"{
+            "trade_id": "t-1",
+            "market_ticker": "MKT-1",
+            "count_fp": "1.00",
+            "yes_price_dollars": "0.5000",
+            "no_price_dollars": "0.5000",
+            "ts": 1700000000,
+            "is_block_trade": true
+        }"#;
+        let trade: WsTrade = serde_json::from_str(json).unwrap();
+        assert!(trade.is_block_trade);
     }
 }

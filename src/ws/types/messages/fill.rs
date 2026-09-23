@@ -36,6 +36,9 @@ pub struct WsFill {
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
+    /// Exchange shard where the fill occurred. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 /// Fill channel message (type: "fill")
@@ -77,6 +80,8 @@ pub struct WsFillRef<'a> {
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
 }
 
 impl<'a> WsFillRef<'a> {
@@ -100,6 +105,7 @@ impl<'a> WsFillRef<'a> {
             purchased_side: self.purchased_side,
             created_time: self.created_time.map(Cow::into_owned),
             subaccount: self.subaccount,
+            exchange_index: self.exchange_index,
         }
     }
 }
@@ -152,5 +158,32 @@ mod tests {
         assert!(matches!(fill.book_side, Some(BookSide::Bid)));
         assert!(fill.side.is_none());
         assert!(fill.action.is_none());
+    }
+
+    /// `exchange_index` was added 2026-08-20; optional since it's absent for
+    /// older/non-sharded fills.
+    #[test]
+    fn ws_fill_exchange_index_parses() {
+        let json = r#"{
+            "trade_id":"t",
+            "order_id":"o",
+            "market_ticker":"T",
+            "outcome_side":"yes",
+            "book_side":"bid",
+            "count_fp":"1",
+            "yes_price_dollars":"0.01",
+            "is_taker":true,
+            "fee_cost":"0.00",
+            "ts":0,
+            "ts_ms":0,
+            "post_position_fp":"1.00",
+            "purchased_side":"yes",
+            "exchange_index":2
+        }"#;
+        let fill: WsFill = serde_json::from_str(json).unwrap();
+        assert_eq!(fill.exchange_index, Some(2));
+
+        let borrowed: WsFillRef = serde_json::from_str(json).unwrap();
+        assert_eq!(borrowed.into_owned().exchange_index, Some(2));
     }
 }

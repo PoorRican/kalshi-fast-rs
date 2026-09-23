@@ -2,9 +2,7 @@
 
 mod common;
 
-use kalshi_fast::{
-    CreateOrderGroupRequest, KalshiRestClient, SubaccountQueryParams, UpdateOrderGroupLimitRequest,
-};
+use kalshi_fast::{CreateOrderGroupRequest, SubaccountQueryParams, UpdateOrderGroupLimitRequest};
 use std::time::Duration;
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -48,6 +46,7 @@ async fn test_order_group_lifecycle() {
         client
             .update_order_group_limit(
                 &group_id,
+                SubaccountQueryParams::default(),
                 UpdateOrderGroupLimitRequest {
                     contracts_limit: Some(200),
                     ..Default::default()

@@ -9,7 +9,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
     BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    deserialize_null_as_empty_vec, deserialize_string_or_number, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -54,6 +54,10 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Filter by exchange shard. Omit to return results from all shards. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 impl GetPositionsParams {
@@ -86,12 +90,13 @@ impl GetPositionsParams {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
     pub ticker: String,
+    /// Exchange shard the market is traded on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
 }
@@ -134,6 +139,9 @@ impl From<GetPositionsResponse> for PositionsPage {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
     pub ticker: String,
+    /// Exchange shard the market was traded on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     pub event_ticker: String,
     pub market_result: String,
     pub yes_count_fp: FixedPointCount,
@@ -180,6 +188,9 @@ pub struct Fill {
     pub trade_id: String,
     pub ticker: String,
     pub market_ticker: String,
+    /// Exchange shard where the fill occurred. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i64>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
     #[serde(default)]
     pub side: Option<YesNo>,
@@ -223,6 +234,9 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter by exchange shard. Omit to return results from all shards. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -233,9 +247,20 @@ pub struct GetFillsResponse {
     pub cursor: Option<String>,
 }
 
+/// A balance scoped to one exchange index. Added 2026-08-20.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: i64,
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub balance: FixedPointDollars,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total resting-order value broken down by exchange index. Added 2026-08-20.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub resting_order_value_breakdown: Vec<IndexedBalance>,
 }
 
 impl KalshiRestClient {

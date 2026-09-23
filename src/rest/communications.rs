@@ -53,6 +53,9 @@ pub struct Quote {
     pub rfq_creator_user_id: Option<String>,
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
+    /// True when the RFQ's target cost is principal-only. Added 2026-09-10.
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
     #[serde(default)]
     pub rfq_creator_order_id: Option<String>,
     #[serde(default)]
@@ -73,6 +76,9 @@ pub struct RFQ {
     pub contracts_fp: FixedPointCount,
     #[serde(default)]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    /// True when the target cost is principal-only. Added 2026-09-10.
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
     pub status: String,
     pub created_ts: String,
     #[serde(default)]
@@ -97,16 +103,21 @@ pub struct RFQ {
 pub struct GetQuotesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restrict to quotes last updated after this Unix timestamp. Added 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_ticker: Option<String>,
+    pub min_ts: Option<i64>,
+    /// Restrict to quotes last updated before this Unix timestamp. Added 2026-06-18.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub market_ticker: Option<String>,
+    pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote_creator_user_id: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_creator_user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -201,6 +212,12 @@ pub struct CreateRFQRequest {
     pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Size quotes against the target cost as principal only (contracts = target
+    /// cost / price), with taker fees charged on top. By default (`false` or
+    /// omitted) the target cost caps principal plus fees. Requires a target cost.
+    /// Added 2026-09-10.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
