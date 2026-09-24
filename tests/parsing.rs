@@ -1390,7 +1390,7 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
@@ -1877,7 +1877,8 @@ fn fills_deserialize_current_schema() {
             "no_price_dollars": "0.4500",
             "is_taker": true,
             "fee_cost": "0.0100",
-            "ts": 1771113600
+            "ts": 1771113600,
+            "exchange_index": 0
         }]
     }"#;
     let current: kalshi_fast::GetFillsResponse = serde_json::from_str(json).unwrap();
@@ -1900,7 +1901,8 @@ fn settlements_deserialize_current_schema() {
             "revenue": 100,
             "settled_time": "2026-04-02T00:00:00Z",
             "fee_cost": "0.0100",
-            "value": 99
+            "value": 99,
+            "exchange_index": 0
         }]
     }"#;
     let current: kalshi_fast::GetSettlementsResponse = serde_json::from_str(json).unwrap();
