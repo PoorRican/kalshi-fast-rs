@@ -195,3 +195,71 @@ impl KalshiRestClient {
         .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multivariate_event_collection_deserializes_exchange_index() {
+        let json = r#"{
+            "collection_ticker": "COL-1",
+            "series_ticker": "SER-1",
+            "exchange_index": 2,
+            "title": "Collection",
+            "description": "Desc",
+            "open_date": "2023-11-07T05:31:56Z",
+            "close_date": "2023-11-07T05:31:56Z",
+            "associated_events": [],
+            "associated_event_tickers": [],
+            "is_ordered": false,
+            "is_single_market_per_event": true,
+            "is_all_yes": false,
+            "size_min": 1,
+            "size_max": 2,
+            "functional_description": "f(x)"
+        }"#;
+        let collection: MultivariateEventCollection = serde_json::from_str(json).unwrap();
+        assert_eq!(collection.exchange_index, Some(2));
+    }
+
+    #[test]
+    fn multivariate_event_collection_defaults_exchange_index_when_absent() {
+        let json = r#"{
+            "collection_ticker": "COL-1",
+            "series_ticker": "SER-1",
+            "title": "Collection",
+            "description": "Desc",
+            "open_date": "2023-11-07T05:31:56Z",
+            "close_date": "2023-11-07T05:31:56Z",
+            "associated_events": [],
+            "associated_event_tickers": [],
+            "is_ordered": false,
+            "is_single_market_per_event": true,
+            "is_all_yes": false,
+            "size_min": 1,
+            "size_max": 2,
+            "functional_description": "f(x)"
+        }"#;
+        let collection: MultivariateEventCollection = serde_json::from_str(json).unwrap();
+        assert_eq!(collection.exchange_index, None);
+    }
+
+    #[test]
+    fn ticker_pair_is_still_used_by_create_market_request() {
+        // Regression guard: TickerPair must survive the removal of the
+        // lookup-only types/methods since create-market still depends on it.
+        let req = CreateMarketInMultivariateEventCollectionRequest {
+            selected_markets: vec![TickerPair {
+                market_ticker: "MKT-1".to_string(),
+                event_ticker: "EVT-1".to_string(),
+                side: YesNo::Yes,
+                extra: Map::new(),
+            }],
+            with_market_payload: Some(true),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["selected_markets"][0]["market_ticker"], "MKT-1");
+        assert_eq!(json["selected_markets"][0]["side"], "yes");
+    }
+}

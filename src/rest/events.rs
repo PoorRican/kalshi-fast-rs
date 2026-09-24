@@ -501,7 +501,10 @@ mod tests {
         let json = r#"{"event_ticker": "EVT-1", "available_on_brokers": true}"#;
         let event: EventData = serde_json::from_str(json).unwrap();
         assert_eq!(
-            event.extra.get("available_on_brokers").and_then(|v| v.as_bool()),
+            event
+                .extra
+                .get("available_on_brokers")
+                .and_then(|v| v.as_bool()),
             Some(true)
         );
     }

@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    FixedPointCount, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -309,6 +309,146 @@ pub struct GetSubaccountNettingResponse {
     pub netting_configs: Vec<SubaccountNettingConfig>,
 }
 
+/// Which exchange instance (lane) an intra-exchange transfer moves funds
+/// to/from. This crate does not otherwise model the margin exchange; this
+/// enum exists solely to describe transfer endpoints.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+    #[serde(other)]
+    Unknown,
+}
+
+impl ExchangeInstance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExchangeInstance::EventContract => "event_contract",
+            ExchangeInstance::Margined => "margined",
+            ExchangeInstance::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for ExchangeInstance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for ExchangeInstance {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+/// Status of an intra-exchange instance transfer.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntraExchangeInstanceTransferStatus {
+    Pending,
+    Complete,
+    #[serde(other)]
+    Unknown,
+}
+
+impl IntraExchangeInstanceTransferStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IntraExchangeInstanceTransferStatus::Pending => "pending",
+            IntraExchangeInstanceTransferStatus::Complete => "complete",
+            IntraExchangeInstanceTransferStatus::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for IntraExchangeInstanceTransferStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for IntraExchangeInstanceTransferStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+/// Request body for `POST /portfolio/intra_exchange_instance_transfer`.
+///
+/// NOTE: per the OpenAPI spec, `amount` here is a plain integer number of
+/// *centicents* (not a [`FixedPointDollars`] string as used by
+/// [`IntraExchangeInstanceTransfer::amount`] in list/get responses).
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    /// The source exchange instance.
+    pub source: ExchangeInstance,
+    /// The destination exchange instance.
+    pub destination: ExchangeInstance,
+    /// The amount to transfer, in centicents.
+    pub amount: i64,
+    /// Source exchange shard index. Defaults to 0 server-side when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<u32>,
+    /// Destination exchange shard index. Defaults to 0 server-side when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<u32>,
+    /// Source subaccount number. Defaults to 0 (primary account) server-side
+    /// when omitted. Only supported for event-contract to event-contract
+    /// transfers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    /// Destination subaccount number. Defaults to 0 (primary account)
+    /// server-side when omitted. Only supported for event-contract to
+    /// event-contract transfers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+/// Response for `POST /portfolio/intra_exchange_instance_transfer`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    /// The ID of the transfer that was created.
+    pub transfer_id: String,
+}
+
+/// A single intra-exchange instance transfer, as returned by the list/get endpoints.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    pub source_exchange_shard: u32,
+    pub destination_exchange_shard: u32,
+    /// Transfer amount in dollars.
+    pub amount: FixedPointDollars,
+    pub status: IntraExchangeInstanceTransferStatus,
+    pub created_ts: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+/// Response for `GET /portfolio/intra_exchange_instance_transfers`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+/// Response for `GET /portfolio/intra_exchange_instance_transfers/{transfer_id}`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
+}
+
 impl KalshiRestClient {
     /// Get API rate-limit and position limits for the account.
     ///
@@ -338,6 +478,41 @@ impl KalshiRestClient {
             Option::<&()>::None,
             Option::<&()>::None,
             false,
+        )
+        .await
+    }
+
+    /// Get the account's latest cron-computed trading volume progress toward
+    /// volume-based API usage tiers for the predictions (event_contract) lane.
+    ///
+    /// **Requires auth.**
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Upgrade the account to a permanent Advanced API usage-level grant for
+    /// the predictions (event_contract) exchange instance. Requires that at
+    /// least 1 of the user's last 100 Predictions orders was created via API.
+    ///
+    /// **Requires auth.**
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
         )
         .await
     }
@@ -514,5 +689,519 @@ impl KalshiRestClient {
             }
         })
         .await
+    }
+
+    /// Transfer funds between exchange instances (and/or subaccounts) within
+    /// the same account. The transfer is processed asynchronously.
+    ///
+    /// **Requires auth.**
+    pub async fn create_intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List intra-exchange instance transfers. Supports cursor pagination.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get a single intra-exchange instance transfer by id.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Create a pager for iterating over intra-exchange instance transfers page by page.
+    ///
+    /// **Requires auth.** See [`CursorPager`].
+    pub fn intra_exchange_instance_transfers_pager(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> CursorPager<IntraExchangeInstanceTransfer> {
+        let client = self.clone();
+        let base_params = params.clone();
+        CursorPager::new(params.cursor.clone(), move |cursor| {
+            let client = client.clone();
+            let mut page_params = base_params.clone();
+            page_params.cursor = cursor;
+            Box::pin(async move {
+                let resp = client
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
+            })
+        })
+    }
+
+    /// Stream intra-exchange instance transfers one by one.
+    ///
+    /// **Requires auth.**
+    pub fn stream_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+        max_items: Option<usize>,
+    ) -> impl Stream<Item = Result<IntraExchangeInstanceTransfer, KalshiError>> + Send {
+        stream_items(
+            self.intra_exchange_instance_transfers_pager(params),
+            max_items,
+        )
+    }
+
+    /// Fetch all pages for intra-exchange instance transfers using cursor pagination.
+    pub async fn get_intra_exchange_instance_transfers_all(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<Vec<IntraExchangeInstanceTransfer>, KalshiError> {
+        self.paginate_cursor(params.cursor.clone(), |cursor| {
+            let mut page_params = params.clone();
+            page_params.cursor = cursor;
+            async move {
+                let resp = self
+                    .get_intra_exchange_instance_transfers(page_params)
+                    .await?;
+                Ok((resp.transfers, resp.cursor))
+            }
+        })
+        .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Serde round-trip / shape tests for the types added or changed in this
+    //! file. `src/rest/account.rs` has no paired `tests/rest_account.rs` and
+    //! no pre-existing `#[cfg(test)]` module of its own (unlike
+    //! `src/rest/client.rs`, which drives a real mock TCP server), so these
+    //! are plain unit tests mirroring the style of `tests/parsing.rs`.
+
+    use super::*;
+
+    // ------------------------------------------------------------------
+    // API usage-level volume progress
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn get_account_api_usage_level_volume_progress_response_deserializes() {
+        let json = r#"{
+            "volume_progress": [{
+                "computed_ts": 1700000000,
+                "trailing_30d_volume_fp": "1234.56",
+                "goals": [
+                    {"level": "expert", "earn_volume_goal_fp": "1000.00", "keep_volume_goal_fp": "500.00"},
+                    {"level": "premier", "earn_volume_goal_fp": "5000.00", "keep_volume_goal_fp": "2500.00"}
+                ]
+            }]
+        }"#;
+
+        let resp: GetAccountApiUsageLevelVolumeProgressResponse =
+            serde_json::from_str(json).unwrap();
+        assert_eq!(resp.volume_progress.len(), 1);
+        assert_eq!(resp.volume_progress[0].computed_ts, 1700000000);
+        assert_eq!(resp.volume_progress[0].trailing_30d_volume_fp, "1234.56");
+        assert_eq!(resp.volume_progress[0].goals.len(), 2);
+        assert_eq!(resp.volume_progress[0].goals[0].level, "expert");
+        assert_eq!(
+            resp.volume_progress[0].goals[1].earn_volume_goal_fp,
+            "5000.00"
+        );
+    }
+
+    #[test]
+    fn get_account_api_usage_level_volume_progress_response_round_trips() {
+        let original = GetAccountApiUsageLevelVolumeProgressResponse {
+            volume_progress: vec![AccountApiUsageLevelVolumeProgress {
+                computed_ts: 42,
+                trailing_30d_volume_fp: "10.00".to_string(),
+                goals: vec![AccountApiUsageLevelVolumeGoal {
+                    level: "expert".to_string(),
+                    earn_volume_goal_fp: "1.00".to_string(),
+                    keep_volume_goal_fp: "0.50".to_string(),
+                }],
+            }],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let round_tripped: GetAccountApiUsageLevelVolumeProgressResponse =
+            serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            round_tripped.volume_progress[0].computed_ts,
+            original.volume_progress[0].computed_ts
+        );
+        assert_eq!(
+            round_tripped.volume_progress[0].goals[0].level,
+            original.volume_progress[0].goals[0].level
+        );
+    }
+
+    #[test]
+    fn upgrade_account_api_usage_level_response_deserializes_empty_body() {
+        // The server responds 201 with no body; `send()` substitutes `{}`.
+        let resp: EmptyResponse = serde_json::from_str("{}").unwrap();
+        let _ = resp;
+    }
+
+    // ------------------------------------------------------------------
+    // ApiKeyType
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn api_key_type_serializes_correctly() {
+        assert_eq!(serde_json::to_string(&ApiKeyType::Rsa).unwrap(), "\"rsa\"");
+        assert_eq!(
+            serde_json::to_string(&ApiKeyType::Ed25519).unwrap(),
+            "\"ed25519\""
+        );
+    }
+
+    #[test]
+    fn api_key_type_deserializes_correctly() {
+        assert!(matches!(
+            serde_json::from_str::<ApiKeyType>("\"rsa\"").unwrap(),
+            ApiKeyType::Rsa
+        ));
+        assert!(matches!(
+            serde_json::from_str::<ApiKeyType>("\"ed25519\"").unwrap(),
+            ApiKeyType::Ed25519
+        ));
+        // Forward-compat catch-all.
+        assert!(matches!(
+            serde_json::from_str::<ApiKeyType>("\"some_future_type\"").unwrap(),
+            ApiKeyType::Unknown
+        ));
+    }
+
+    // ------------------------------------------------------------------
+    // API key request/response fields: key_type, subaccount,
+    // api_key_region_expiration_ts
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn generate_api_key_request_serializes_key_type_and_subaccount() {
+        let req = GenerateApiKeyRequest {
+            name: "my-key".to_string(),
+            key_type: Some(ApiKeyType::Ed25519),
+            scopes: vec![],
+            subaccount: Some(5),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["name"], "my-key");
+        assert_eq!(json["key_type"], "ed25519");
+        assert_eq!(json["subaccount"], 5);
+        assert!(json.get("scopes").is_none());
+    }
+
+    #[test]
+    fn generate_api_key_request_omits_none_fields() {
+        let req = GenerateApiKeyRequest {
+            name: "my-key".to_string(),
+            key_type: None,
+            scopes: vec![],
+            subaccount: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("key_type").is_none());
+        assert!(json.get("subaccount").is_none());
+    }
+
+    #[test]
+    fn generate_api_key_response_deserializes_key_type() {
+        let json = r#"{
+            "api_key_id": "key-1",
+            "key_type": "ed25519",
+            "private_key": "-----BEGIN PRIVATE KEY-----..."
+        }"#;
+        let resp: GenerateApiKeyResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.api_key_id, "key-1");
+        assert!(matches!(resp.key_type, Some(ApiKeyType::Ed25519)));
+        assert_eq!(resp.private_key, "-----BEGIN PRIVATE KEY-----...");
+    }
+
+    #[test]
+    fn generate_api_key_response_tolerates_missing_key_type() {
+        let json = r#"{"api_key_id": "key-1", "private_key": "pk"}"#;
+        let resp: GenerateApiKeyResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.key_type.is_none());
+    }
+
+    #[test]
+    fn create_api_key_request_serializes_subaccount() {
+        let req = CreateApiKeyRequest {
+            name: "my-key".to_string(),
+            public_key: "-----BEGIN PUBLIC KEY-----...".to_string(),
+            scopes: vec![],
+            subaccount: Some(3),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["subaccount"], 3);
+    }
+
+    #[test]
+    fn create_api_key_request_omits_none_subaccount() {
+        let req = CreateApiKeyRequest {
+            name: "my-key".to_string(),
+            public_key: "pk".to_string(),
+            scopes: vec![],
+            subaccount: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("subaccount").is_none());
+    }
+
+    #[test]
+    fn api_key_deserializes_with_subaccount() {
+        let json = r#"{
+            "api_key_id": "key-1",
+            "name": "my key",
+            "scopes": ["read", "write"],
+            "subaccount": 7
+        }"#;
+        let key: ApiKey = serde_json::from_str(json).unwrap();
+        assert_eq!(key.subaccount, Some(7));
+    }
+
+    #[test]
+    fn api_key_tolerates_missing_subaccount() {
+        let json = r#"{"api_key_id": "key-1", "name": "my key", "scopes": []}"#;
+        let key: ApiKey = serde_json::from_str(json).unwrap();
+        assert!(key.subaccount.is_none());
+    }
+
+    #[test]
+    fn get_api_keys_response_deserializes_region_expiration_ts() {
+        let json = r#"{
+            "api_keys": [{"api_key_id": "key-1", "name": "k", "scopes": []}],
+            "api_key_region_expiration_ts": 1700000000
+        }"#;
+        let resp: GetApiKeysResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.api_key_region_expiration_ts, Some(1700000000));
+    }
+
+    #[test]
+    fn get_api_keys_response_tolerates_missing_region_expiration_ts() {
+        let json = r#"{"api_keys": []}"#;
+        let resp: GetApiKeysResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.api_key_region_expiration_ts.is_none());
+    }
+
+    // ------------------------------------------------------------------
+    // SubaccountBalance.exchange_index
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn subaccount_balance_deserializes_exchange_index() {
+        let json = r#"{
+            "subaccount_number": 1,
+            "exchange_index": 2,
+            "balance": 100,
+            "updated_ts": 1700000000
+        }"#;
+        let balance: SubaccountBalance = serde_json::from_str(json).unwrap();
+        assert_eq!(balance.subaccount_number, 1);
+        assert_eq!(balance.exchange_index, 2);
+        assert_eq!(balance.balance, "100");
+    }
+
+    // ------------------------------------------------------------------
+    // Intra-exchange instance transfer
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn exchange_instance_serializes_and_deserializes() {
+        assert_eq!(
+            serde_json::to_string(&ExchangeInstance::EventContract).unwrap(),
+            "\"event_contract\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ExchangeInstance::Margined).unwrap(),
+            "\"margined\""
+        );
+        assert!(matches!(
+            serde_json::from_str::<ExchangeInstance>("\"event_contract\"").unwrap(),
+            ExchangeInstance::EventContract
+        ));
+        assert!(matches!(
+            serde_json::from_str::<ExchangeInstance>("\"some_future_lane\"").unwrap(),
+            ExchangeInstance::Unknown
+        ));
+    }
+
+    #[test]
+    fn intra_exchange_instance_transfer_status_serializes_and_deserializes() {
+        assert_eq!(
+            serde_json::to_string(&IntraExchangeInstanceTransferStatus::Pending).unwrap(),
+            "\"pending\""
+        );
+        assert_eq!(
+            serde_json::to_string(&IntraExchangeInstanceTransferStatus::Complete).unwrap(),
+            "\"complete\""
+        );
+        assert!(matches!(
+            serde_json::from_str::<IntraExchangeInstanceTransferStatus>("\"pending\"").unwrap(),
+            IntraExchangeInstanceTransferStatus::Pending
+        ));
+    }
+
+    #[test]
+    fn intra_exchange_instance_transfer_request_serializes_all_fields() {
+        let req = IntraExchangeInstanceTransferRequest {
+            source: ExchangeInstance::EventContract,
+            destination: ExchangeInstance::Margined,
+            amount: 12345,
+            source_exchange_shard: Some(1),
+            destination_exchange_shard: Some(2),
+            source_subaccount: Some(3),
+            destination_subaccount: Some(4),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["source"], "event_contract");
+        assert_eq!(json["destination"], "margined");
+        // Amount is a plain integer (centicents) per the spec, not a
+        // FixedPointDollars string.
+        assert_eq!(json["amount"], 12345);
+        assert_eq!(json["source_exchange_shard"], 1);
+        assert_eq!(json["destination_exchange_shard"], 2);
+        assert_eq!(json["source_subaccount"], 3);
+        assert_eq!(json["destination_subaccount"], 4);
+    }
+
+    #[test]
+    fn intra_exchange_instance_transfer_request_omits_none_optional_fields() {
+        let req = IntraExchangeInstanceTransferRequest {
+            source: ExchangeInstance::EventContract,
+            destination: ExchangeInstance::EventContract,
+            amount: 100,
+            source_exchange_shard: None,
+            destination_exchange_shard: None,
+            source_subaccount: None,
+            destination_subaccount: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("source_exchange_shard").is_none());
+        assert!(json.get("destination_exchange_shard").is_none());
+        assert!(json.get("source_subaccount").is_none());
+        assert!(json.get("destination_subaccount").is_none());
+    }
+
+    #[test]
+    fn intra_exchange_instance_transfer_response_deserializes() {
+        let json = r#"{"transfer_id": "xfer-1"}"#;
+        let resp: IntraExchangeInstanceTransferResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.transfer_id, "xfer-1");
+    }
+
+    #[test]
+    fn intra_exchange_instance_transfer_deserializes() {
+        let json = r#"{
+            "transfer_id": "xfer-1",
+            "source": "event_contract",
+            "destination": "margined",
+            "source_exchange_shard": 0,
+            "destination_exchange_shard": 1,
+            "amount": "12.3400",
+            "status": "pending",
+            "created_ts": 1700000000
+        }"#;
+        let transfer: IntraExchangeInstanceTransfer = serde_json::from_str(json).unwrap();
+        assert_eq!(transfer.transfer_id, "xfer-1");
+        assert!(matches!(transfer.source, ExchangeInstance::EventContract));
+        assert!(matches!(transfer.destination, ExchangeInstance::Margined));
+        assert_eq!(transfer.destination_exchange_shard, 1);
+        // Amount here IS a FixedPointDollars string, unlike the request's
+        // plain-integer `amount` field.
+        assert_eq!(transfer.amount, "12.3400");
+        assert!(matches!(
+            transfer.status,
+            IntraExchangeInstanceTransferStatus::Pending
+        ));
+        assert_eq!(transfer.created_ts, 1700000000);
+    }
+
+    #[test]
+    fn get_intra_exchange_instance_transfers_response_deserializes() {
+        let json = r#"{
+            "transfers": [{
+                "transfer_id": "xfer-1",
+                "source": "event_contract",
+                "destination": "event_contract",
+                "source_exchange_shard": 0,
+                "destination_exchange_shard": 0,
+                "amount": "1.0000",
+                "status": "complete",
+                "created_ts": 1700000000
+            }],
+            "cursor": "next-cursor"
+        }"#;
+        let resp: GetIntraExchangeInstanceTransfersResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.transfers.len(), 1);
+        assert_eq!(resp.cursor, Some("next-cursor".to_string()));
+    }
+
+    #[test]
+    fn get_intra_exchange_instance_transfers_response_tolerates_missing_cursor() {
+        let json = r#"{"transfers": []}"#;
+        let resp: GetIntraExchangeInstanceTransfersResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.transfers.is_empty());
+        assert!(resp.cursor.is_none());
+    }
+
+    #[test]
+    fn get_intra_exchange_instance_transfer_response_deserializes() {
+        let json = r#"{
+            "transfer": {
+                "transfer_id": "xfer-1",
+                "source": "event_contract",
+                "destination": "margined",
+                "source_exchange_shard": 0,
+                "destination_exchange_shard": 0,
+                "amount": "1.0000",
+                "status": "pending",
+                "created_ts": 1700000000
+            }
+        }"#;
+        let resp: GetIntraExchangeInstanceTransferResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.transfer.transfer_id, "xfer-1");
+    }
+
+    #[test]
+    fn get_intra_exchange_instance_transfers_params_serializes_correctly() {
+        let params = GetIntraExchangeInstanceTransfersParams {
+            cursor: Some("c1".to_string()),
+            limit: Some(50),
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["cursor"], "c1");
+        assert_eq!(json["limit"], 50);
+    }
+
+    #[test]
+    fn get_intra_exchange_instance_transfers_params_omits_none_fields() {
+        let params = GetIntraExchangeInstanceTransfersParams::default();
+        let json = serde_json::to_value(&params).unwrap();
+        assert!(json.get("cursor").is_none());
+        assert!(json.get("limit").is_none());
     }
 }
