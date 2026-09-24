@@ -299,11 +299,13 @@ fn get_positions_params_serializes_count_filter_csv() {
             PositionCountFilter::Position,
             PositionCountFilter::TotalTraded,
         ]),
+        exchange_index: Some(1),
         ..Default::default()
     };
 
     let json = serde_json::to_value(&params).unwrap();
     assert_eq!(json["count_filter"], "position,total_traded");
+    assert_eq!(json["exchange_index"], 1);
 }
 
 #[test]
@@ -358,6 +360,7 @@ fn get_fills_params_serializes_correctly() {
         limit: Some(10),
         ticker: Some("MKT-1".into()),
         subaccount: Some(1),
+        exchange_index: Some(2),
         ..Default::default()
     };
 
@@ -365,6 +368,7 @@ fn get_fills_params_serializes_correctly() {
     assert_eq!(json["limit"], 10);
     assert_eq!(json["ticker"], "MKT-1");
     assert_eq!(json["subaccount"], 1);
+    assert_eq!(json["exchange_index"], 2);
 }
 
 #[test]
@@ -525,7 +529,46 @@ fn get_balance_response_deserializes() {
     assert_eq!(resp.balance, 100000);
     assert_eq!(resp.portfolio_value, 50000);
     assert_eq!(resp.updated_ts, 1700000000);
+    assert!(resp.balance_breakdown.is_none());
 }
+
+#[test]
+fn get_balance_response_deserializes_with_breakdown() {
+    let json = r#"{
+        "balance": 100000,
+        "balance_dollars": "1000.0000",
+        "portfolio_value": 50000,
+        "updated_ts": 1700000000,
+        "balance_breakdown": [
+            {"exchange_index": 0, "balance": "600.0000"},
+            {"exchange_index": 1, "balance": "400.0000"}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.balance_dollars.as_deref(), Some("1000.0000"));
+    let breakdown = resp.balance_breakdown.expect("balance breakdown");
+    assert_eq!(breakdown.len(), 2);
+    assert_eq!(breakdown[0].exchange_index, 0);
+    assert_eq!(breakdown[0].balance, "600.0000");
+    assert_eq!(breakdown[1].exchange_index, 1);
+}
+
+#[test]
+fn indexed_balance_round_trips() {
+    let value = kalshi_fast::IndexedBalance {
+        exchange_index: 3,
+        balance: "12.3400".to_string(),
+    };
+    let json = serde_json::to_value(&value).unwrap();
+    assert_eq!(json["exchange_index"], 3);
+    assert_eq!(json["balance"], "12.3400");
+
+    let round_tripped: kalshi_fast::IndexedBalance = serde_json::from_value(json).unwrap();
+    assert_eq!(round_tripped.exchange_index, 3);
+    assert_eq!(round_tripped.balance, "12.3400");
+}
+
 
 #[test]
 fn get_markets_response_deserializes() {
