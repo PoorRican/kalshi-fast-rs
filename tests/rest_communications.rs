@@ -34,9 +34,7 @@
 
 mod common;
 
-use kalshi_fast::{
-    CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, KalshiRestClient, MarketStatusQuery,
-};
+use kalshi_fast::{CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, MarketStatusQuery};
 use std::time::Duration;
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);

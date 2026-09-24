@@ -95,7 +95,26 @@ impl SubscriptionTracker {
                             *target = None;
                         }
                     }
-                    WsUpdateAction::GetSnapshot | WsUpdateAction::Indexlist => {}
+                    WsUpdateAction::SubscribeUnderlyings => {
+                        let values = target.get_or_insert_with(Vec::new);
+                        for value in incoming {
+                            if !values.iter().any(|v| v == &value) {
+                                values.push(value);
+                            }
+                        }
+                    }
+                    WsUpdateAction::UnsubscribeUnderlyings => {
+                        let Some(values) = target.as_mut() else {
+                            return;
+                        };
+                        values.retain(|current| !incoming.iter().any(|value| value == current));
+                        if values.is_empty() {
+                            *target = None;
+                        }
+                    }
+                    WsUpdateAction::GetSnapshot
+                    | WsUpdateAction::Indexlist
+                    | WsUpdateAction::UnderlyingList => {}
                 }
             };
 
@@ -104,6 +123,15 @@ impl SubscriptionTracker {
             // that a reconnect resubscribes with the correct indices.
             let incoming_indices = update.index_ids.clone().unwrap_or_default();
             apply_vec(&mut params.index_ids, incoming_indices, update.action);
+        } else if update.action.is_underlying_action() {
+            // Pyth underlying actions only mutate the tracked underlying-ticker
+            // set so that a reconnect resubscribes with the correct tickers.
+            let incoming_underlyings = update.underlying_tickers.clone().unwrap_or_default();
+            apply_vec(
+                &mut params.underlying_tickers,
+                incoming_underlyings,
+                update.action,
+            );
         } else {
             apply_vec(&mut params.market_tickers, incoming_tickers, update.action);
             apply_vec(&mut params.market_ids, incoming_ids, update.action);
@@ -191,6 +219,7 @@ mod tests {
             send_initial_snapshot: Some(true),
             skip_ticker_ack: Some(true),
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -237,6 +266,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -265,6 +295,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -293,6 +324,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["ETHUSD_RR".to_string()]),
+            underlying_tickers: None,
         };
         tracker.apply_update(&add);
         let updated = tracker.active.get(&7).unwrap();
@@ -311,6 +343,7 @@ mod tests {
             send_initial_snapshot: None,
             skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         tracker.apply_update(&remove);
         let updated = tracker.active.get(&7).unwrap();

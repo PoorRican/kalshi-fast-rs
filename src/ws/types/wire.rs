@@ -812,17 +812,16 @@ mod tests {
 
     #[test]
     fn wire_pyth_underlying_list_ref_parses() {
-        let wire: WsWireMessageRef<'_> =
-            serde_json::from_str(PYTH_UNDERLYING_LIST_JSON).unwrap();
+        let wire: WsWireMessageRef<'_> = serde_json::from_str(PYTH_UNDERLYING_LIST_JSON).unwrap();
         match wire.into_message() {
             WsMessageRef::Data(WsDataMessageRef::PythValueUnderlyingList { msg, .. }) => {
                 assert_eq!(msg.underlying_tickers.len(), 4);
                 let owned = msg.into_owned();
                 assert_eq!(owned.underlying_tickers[0], "Commodities.Index.NATGAS/USD");
             }
-            other => panic!(
-                "expected borrowed pyth_value_underlying_list data message, got {other:?}"
-            ),
+            other => {
+                panic!("expected borrowed pyth_value_underlying_list data message, got {other:?}")
+            }
         }
     }
 
@@ -845,8 +844,7 @@ mod tests {
 
     #[test]
     fn wire_cfbenchmarks_value_5hz_ref_parses_and_round_trips_owned() {
-        let wire: WsWireMessageRef<'_> =
-            serde_json::from_str(CFBENCHMARKS_VALUE_5HZ_JSON).unwrap();
+        let wire: WsWireMessageRef<'_> = serde_json::from_str(CFBENCHMARKS_VALUE_5HZ_JSON).unwrap();
         match wire.into_message() {
             WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValue5Hz { msg, .. }) => {
                 assert_eq!(msg.index_id, "BRTI");
@@ -854,9 +852,7 @@ mod tests {
                 assert_eq!(owned.index_id, "BRTI");
                 assert_eq!(owned.value_usd, "68000.12000000");
             }
-            other => panic!(
-                "expected borrowed cfbenchmarks_value_5hz data message, got {other:?}"
-            ),
+            other => panic!("expected borrowed cfbenchmarks_value_5hz data message, got {other:?}"),
         }
     }
 
@@ -865,11 +861,7 @@ mod tests {
         let wire: WsWireMessage =
             serde_json::from_str(CFBENCHMARKS_VALUE_5HZ_INDEXLIST_JSON).unwrap();
         match wire.into_message() {
-            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5HzIndexlist {
-                sid,
-                seq,
-                msg,
-            }) => {
+            WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5HzIndexlist { sid, seq, msg }) => {
                 assert_eq!(sid, Some(1));
                 assert_eq!(seq, Some(1));
                 assert_eq!(
@@ -877,9 +869,9 @@ mod tests {
                     vec!["BRTI".to_string(), "ETHUSD_RTI".to_string()]
                 );
             }
-            other => panic!(
-                "expected cfbenchmarks_value_5hz_indexlist data message, got {other:?}"
-            ),
+            other => {
+                panic!("expected cfbenchmarks_value_5hz_indexlist data message, got {other:?}")
+            }
         }
     }
 
