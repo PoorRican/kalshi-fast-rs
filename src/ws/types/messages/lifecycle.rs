@@ -1,3 +1,4 @@
+use crate::rest::markets::PriceRange;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -9,6 +10,10 @@ pub struct WsMarketLifecycleV2 {
     pub market_ticker: String,
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
+    /// Identifier for the exchange shard the market lives on. Per the
+    /// AsyncAPI this key exists **only** on `created` events.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub open_ts: Option<i64>,
     #[serde(default)]
@@ -36,6 +41,24 @@ pub struct WsMarketLifecycleV2 {
     /// on `metadata_updated` events.
     #[serde(default)]
     pub yes_sub_title: Option<String>,
+    /// Top-level updated strike type. Per the AsyncAPI this key exists **only**
+    /// on `metadata_updated` events.
+    #[serde(default)]
+    pub strike_type: Option<String>,
+    /// Top-level updated cap strike. Per the AsyncAPI this key exists **only**
+    /// on `metadata_updated` events.
+    #[serde(default)]
+    pub cap_strike: Option<f64>,
+    /// Top-level updated custom strike. Per the AsyncAPI this key exists
+    /// **only** on `metadata_updated` events with a custom/structured strike
+    /// type.
+    #[serde(default)]
+    pub custom_strike: Option<BTreeMap<String, String>>,
+    /// Valid price bands for the market, in fixed-point dollars. Per the
+    /// AsyncAPI this is emitted alongside `price_level_structure` on
+    /// `created` / `price_level_structure_updated` events.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     #[serde(default)]
     pub additional_metadata: Option<WsMarketLifecycleAdditionalMetadata>,
     /// Catches any other top-level keys the exchange attaches to a lifecycle

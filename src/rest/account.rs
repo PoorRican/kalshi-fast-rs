@@ -12,8 +12,9 @@ use crate::types::{
 };
 use futures::stream::Stream;
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
+use std::fmt;
 
 /// Token-bucket rate-limit configuration for one endpoint group.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -49,6 +50,37 @@ pub struct GetAccountApiLimitsResponse {
     pub grants: Vec<ApiUsageLevelGrant>,
 }
 
+/// One volume-based API usage-level goal for the predictions (event_contract) lane.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this goal corresponds to (e.g. `"expert"`).
+    pub level: String,
+    /// Trailing-30d volume required to *earn* this level.
+    pub earn_volume_goal_fp: FixedPointCount,
+    /// Trailing-30d volume required to *keep* this level once earned.
+    pub keep_volume_goal_fp: FixedPointCount,
+}
+
+/// Latest cron-computed trading volume progress toward volume-based API usage tiers.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed; `trailing_30d_volume_fp`
+    /// covers the trailing 30 days ending at this time.
+    pub computed_ts: i64,
+    /// Trailing 30-day trading volume (fixed-point contract count).
+    pub trailing_30d_volume_fp: FixedPointCount,
+    /// Volume goals for each volume-based usage level.
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// Response for `GET /account/api_usage_level/volume_progress`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    /// Volume progress entries toward volume-based API usage tiers for the
+    /// predictions (event_contract) lane.
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 /// Token cost for one API v2 endpoint whose cost differs from the default.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EndpointTokenCost {
@@ -79,6 +111,8 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index the balance is held on. Required by the spec.
+    pub exchange_index: u32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -140,12 +174,57 @@ pub struct GenericObject {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EmptyResponse {}
 
+/// Signature algorithm of an API key pair.
+///
+/// `Rsa` - 2048-bit RSA; requests are signed with RSA-PSS SHA-256.
+/// `Ed25519` - Ed25519 (RFC 8032) signatures over the same pre-sign text, with
+/// lower client-side signing cost. Defaults to `rsa` when omitted from a
+/// generate request, for compatibility with existing clients.
+///
+/// Note: this crate's `auth.rs` only implements RSA-PSS SHA-256 signing today.
+/// Modeling `ed25519` here only exposes the REST-surface field; actually
+/// signing requests with an Ed25519 key is not yet supported.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyType {
+    Rsa,
+    Ed25519,
+    #[serde(other)]
+    Unknown,
+}
+
+impl ApiKeyType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ApiKeyType::Rsa => "rsa",
+            ApiKeyType::Ed25519 => "ed25519",
+            ApiKeyType::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for ApiKeyType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for ApiKeyType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ApiKey {
     pub api_key_id: String,
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// If set, this API key is restricted to a single sub-account (0-63).
+    /// `None` means the key is unrestricted.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -154,6 +233,11 @@ pub struct ApiKey {
 pub struct GetApiKeysResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub api_keys: Vec<ApiKey>,
+    /// Unix timestamp (seconds) when the account's location attestation for
+    /// API key requests expires; a past value means the attestation has
+    /// lapsed. `None` when the account has never attested.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +246,10 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the new key to a single sub-account (0-63) that you own.
+    /// Omit to leave the key unrestricted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -174,13 +262,24 @@ pub struct CreateApiKeyResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
+    /// Signature algorithm for the generated key pair. Defaults to `rsa` on
+    /// the server when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the new key to a single sub-account (0-63) that you own.
+    /// Omit to leave the key unrestricted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateApiKeyResponse {
     pub api_key_id: String,
+    /// Signature algorithm of the generated key pair.
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
     pub private_key: String,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,

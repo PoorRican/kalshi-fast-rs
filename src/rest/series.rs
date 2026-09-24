@@ -46,6 +46,8 @@ pub struct EventMetadata {
     pub competition: Option<String>,
     #[serde(default)]
     pub competition_scope: Option<String>,
+    #[serde(default)]
+    pub cadence: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -59,6 +61,8 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
     #[serde(default)]
     pub subcategory: Option<String>,
     #[serde(default)]
@@ -91,6 +95,8 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -146,5 +152,68 @@ impl KalshiRestClient {
             false,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn series_deserializes_categories_distinct_from_category() {
+        let json = r#"{
+            "ticker": "SER-1",
+            "category": "Politics",
+            "categories": ["Politics", "Elections"]
+        }"#;
+        let series: Series = serde_json::from_str(json).unwrap();
+        assert_eq!(series.category.as_deref(), Some("Politics"));
+        assert_eq!(series.categories, vec!["Politics", "Elections"]);
+    }
+
+    #[test]
+    fn series_defaults_categories_to_empty_when_absent_or_null() {
+        let json = r#"{"ticker": "SER-1"}"#;
+        let series: Series = serde_json::from_str(json).unwrap();
+        assert!(series.categories.is_empty());
+
+        let json_null = r#"{"ticker": "SER-1", "categories": null}"#;
+        let series: Series = serde_json::from_str(json_null).unwrap();
+        assert!(series.categories.is_empty());
+    }
+
+    #[test]
+    fn series_keeps_unknown_fields_in_extra_catch_all() {
+        let json = r#"{
+            "ticker": "SER-1",
+            "categories": [],
+            "new_field_from_changelog": "kept"
+        }"#;
+        let series: Series = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            series
+                .extra
+                .get("new_field_from_changelog")
+                .and_then(|v| v.as_str()),
+            Some("kept")
+        );
+
+        // The catch-all round-trips back out on serialize.
+        let value = serde_json::to_value(&series).unwrap();
+        assert_eq!(value["new_field_from_changelog"], "kept");
+    }
+
+    #[test]
+    fn event_metadata_deserializes_cadence() {
+        let json = r#"{"cadence": "weekly"}"#;
+        let meta: EventMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.cadence.as_deref(), Some("weekly"));
+    }
+
+    #[test]
+    fn event_metadata_defaults_cadence_when_absent() {
+        let json = r#"{}"#;
+        let meta: EventMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.cadence, None);
     }
 }

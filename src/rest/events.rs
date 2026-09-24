@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, SettlementSource};
+use crate::types::{EventStatus, deserialize_null_as_empty_vec, serialize_csv_opt};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,13 @@ pub struct GetEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+
+    /// Event tickers comma-separated.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub tickers: Option<Vec<String>>,
 }
 
 impl GetEventsParams {
@@ -103,8 +110,6 @@ pub struct EventData {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub available_on_brokers: Option<bool>,
-    #[serde(default)]
     pub strike_date: Option<String>,
     #[serde(default)]
     pub strike_period: Option<String>,
@@ -146,6 +151,10 @@ pub struct EventData {
     pub custom_strike: Option<Map<String, Value>>,
     #[serde(default)]
     pub product_metadata: Option<EventMetadata>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub settlement_sources: Vec<SettlementSource>,
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -433,5 +442,67 @@ impl KalshiRestClient {
             }
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_events_params_serializes_tickers_as_csv() {
+        let params = GetEventsParams {
+            tickers: Some(vec!["EVT-1".to_string(), "EVT-2".to_string()]),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["tickers"], "EVT-1,EVT-2");
+    }
+
+    #[test]
+    fn get_events_params_omits_tickers_when_absent() {
+        let params = GetEventsParams::default();
+        let json = serde_json::to_value(&params).unwrap();
+        assert!(json.get("tickers").is_none());
+    }
+
+    #[test]
+    fn event_data_deserializes_settlement_sources_and_exchange_index() {
+        let json = r#"{
+            "event_ticker": "EVT-1",
+            "settlement_sources": [{"name": "Reuters", "url": "https://example.com"}],
+            "exchange_index": 3
+        }"#;
+        let event: EventData = serde_json::from_str(json).unwrap();
+        assert_eq!(event.settlement_sources.len(), 1);
+        assert_eq!(event.settlement_sources[0].name.as_deref(), Some("Reuters"));
+        assert_eq!(event.exchange_index, Some(3));
+    }
+
+    #[test]
+    fn event_data_defaults_settlement_sources_and_exchange_index_when_absent() {
+        let json = r#"{"event_ticker": "EVT-1"}"#;
+        let event: EventData = serde_json::from_str(json).unwrap();
+        assert!(event.settlement_sources.is_empty());
+        assert_eq!(event.exchange_index, None);
+    }
+
+    #[test]
+    fn event_data_tolerates_null_settlement_sources() {
+        let json = r#"{"event_ticker": "EVT-1", "settlement_sources": null}"#;
+        let event: EventData = serde_json::from_str(json).unwrap();
+        assert!(event.settlement_sources.is_empty());
+    }
+
+    #[test]
+    fn event_data_no_longer_has_available_on_brokers_field() {
+        // The field was removed from the live schema; unknown input is now
+        // captured only by the `extra` catch-all instead of a typed field.
+        let json = r#"{"event_ticker": "EVT-1", "available_on_brokers": true}"#;
+        let event: EventData = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            event.extra.get("available_on_brokers").and_then(|v| v.as_bool()),
+            Some(true)
+        );
     }
 }
