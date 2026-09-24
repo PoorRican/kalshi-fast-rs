@@ -9,6 +9,11 @@ pub struct WsUserOrder {
     pub order_id: String,
     pub user_id: String,
     pub ticker: String,
+    /// Identifier for the exchange shard where the order resides. The
+    /// AsyncAPI marks this `required`, but it is modeled as `Option` for
+    /// defensive forward/backward tolerance (see `docs/spec-parity.md`).
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub status: Option<OrderStatus>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
@@ -58,4 +63,37 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ws_user_order_exchange_index_parses() {
+        let json = r#"{
+            "order_id": "o",
+            "user_id": "u",
+            "ticker": "T",
+            "exchange_index": 5,
+            "status": "resting",
+            "outcome_side": "yes",
+            "book_side": "bid"
+        }"#;
+
+        let order: WsUserOrder = serde_json::from_str(json).unwrap();
+        assert_eq!(order.exchange_index, Some(5));
+    }
+
+    #[test]
+    fn ws_user_order_exchange_index_absent_defaults_to_none() {
+        let json = r#"{
+            "order_id": "o",
+            "user_id": "u",
+            "ticker": "T"
+        }"#;
+
+        let order: WsUserOrder = serde_json::from_str(json).unwrap();
+        assert_eq!(order.exchange_index, None);
+    }
 }

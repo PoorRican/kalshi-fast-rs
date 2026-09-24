@@ -444,27 +444,59 @@ fn historical_params_serialize_correctly() {
 
     let fills = kalshi_fast::GetHistoricalFillsParams {
         ticker: Some("MKT-1".into()),
+        min_ts: Some(1699999000),
         max_ts: Some(1700000000),
         limit: Some(25),
         cursor: Some("c3".into()),
+        subaccount: Some(2),
     };
     let fills_json = serde_json::to_value(&fills).unwrap();
     assert_eq!(fills_json["ticker"], "MKT-1");
+    assert_eq!(fills_json["min_ts"], 1699999000);
     assert_eq!(fills_json["max_ts"], 1700000000);
     assert_eq!(fills_json["limit"], 25);
     assert_eq!(fills_json["cursor"], "c3");
+    assert_eq!(fills_json["subaccount"], 2);
 
     let orders = kalshi_fast::GetHistoricalOrdersParams {
         ticker: Some("MKT-1".into()),
+        min_ts: Some(1700000050),
         max_ts: Some(1700000100),
         limit: Some(15),
         cursor: Some("c4".into()),
+        subaccount: Some(3),
     };
     let orders_json = serde_json::to_value(&orders).unwrap();
     assert_eq!(orders_json["ticker"], "MKT-1");
+    assert_eq!(orders_json["min_ts"], 1700000050);
     assert_eq!(orders_json["max_ts"], 1700000100);
     assert_eq!(orders_json["limit"], 15);
     assert_eq!(orders_json["cursor"], "c4");
+    assert_eq!(orders_json["subaccount"], 3);
+
+    // min_ts/subaccount are optional and omitted when unset.
+    let fills_default = kalshi_fast::GetHistoricalFillsParams::default();
+    let fills_default_json = serde_json::to_value(&fills_default).unwrap();
+    assert!(fills_default_json.get("min_ts").is_none());
+    assert!(fills_default_json.get("subaccount").is_none());
+
+    let positions = kalshi_fast::GetHistoricalPositionsParams {
+        ticker: Some("MKT-1".into()),
+        event_ticker: Some("EVT-1".into()),
+        subaccount: Some(1),
+        limit: Some(50),
+        cursor: Some("c5".into()),
+    };
+    let positions_json = serde_json::to_value(&positions).unwrap();
+    assert_eq!(positions_json["ticker"], "MKT-1");
+    assert_eq!(positions_json["event_ticker"], "EVT-1");
+    assert_eq!(positions_json["subaccount"], 1);
+    assert_eq!(positions_json["limit"], 50);
+    assert_eq!(positions_json["cursor"], "c5");
+
+    let positions_default = kalshi_fast::GetHistoricalPositionsParams::default();
+    let positions_default_json = serde_json::to_value(&positions_default).unwrap();
+    assert_eq!(positions_default_json, serde_json::json!({}));
 
     let candlesticks = kalshi_fast::GetMarketCandlesticksHistoricalParams {
         start_ts: 1700000000,
@@ -852,6 +884,24 @@ fn get_historical_cutoff_response_deserializes() {
     assert_eq!(resp.market_settled_ts, "2025-01-01T00:00:00Z");
     assert_eq!(resp.trades_created_ts, "2025-01-02T00:00:00Z");
     assert_eq!(resp.orders_updated_ts, "2025-01-03T00:00:00Z");
+    // Absent on payloads that predate this field.
+    assert_eq!(resp.market_positions_last_updated_ts, None);
+}
+
+#[test]
+fn get_historical_cutoff_response_deserializes_with_market_positions_last_updated_ts() {
+    let json = r#"{
+        "market_settled_ts": "2025-01-01T00:00:00Z",
+        "trades_created_ts": "2025-01-02T00:00:00Z",
+        "orders_updated_ts": "2025-01-03T00:00:00Z",
+        "market_positions_last_updated_ts": "2025-01-04T00:00:00Z"
+    }"#;
+
+    let resp: kalshi_fast::GetHistoricalCutoffResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        resp.market_positions_last_updated_ts,
+        Some("2025-01-04T00:00:00Z".into())
+    );
 }
 
 #[test]
@@ -2026,4 +2076,239 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+// ============================================================================
+// Event Live Data (GET /live_data/events/{event_ticker})
+// ============================================================================
+
+#[test]
+fn get_event_live_data_params_serializes_correctly() {
+    let with_range = kalshi_fast::GetEventLiveDataParams {
+        range: Some("1h".into()),
+    };
+    let json = serde_json::to_value(&with_range).unwrap();
+    assert_eq!(json["range"], "1h");
+
+    let without_range = kalshi_fast::GetEventLiveDataParams::default();
+    let json = serde_json::to_value(&without_range).unwrap();
+    assert_eq!(json, serde_json::json!({}));
+}
+
+#[test]
+fn get_event_live_data_response_deserializes() {
+    let json = r#"{
+        "live_data": {
+            "type": "crypto_price_chart",
+            "details": {"price": 65000.5},
+            "is_historical": false,
+            "default_range": "1h",
+            "range_options": ["15min", "1h", "1d"]
+        }
+    }"#;
+
+    let resp: kalshi_fast::GetEventLiveDataResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.live_data.live_data_type, "crypto_price_chart");
+    assert_eq!(
+        resp.live_data.details.get("price"),
+        Some(&serde_json::json!(65000.5))
+    );
+    assert_eq!(resp.live_data.is_historical, Some(false));
+    assert_eq!(resp.live_data.default_range.as_deref(), Some("1h"));
+    assert_eq!(
+        resp.live_data.range_options,
+        Some(vec!["15min".to_string(), "1h".to_string(), "1d".to_string()])
+    );
+}
+
+#[test]
+fn get_event_live_data_response_deserializes_minimal() {
+    // Only `type` and `details` are required; everything else is omittable.
+    let json = r#"{
+        "live_data": {
+            "type": "weather",
+            "details": {}
+        }
+    }"#;
+
+    let resp: kalshi_fast::GetEventLiveDataResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.live_data.live_data_type, "weather");
+    assert!(resp.live_data.details.is_empty());
+    assert_eq!(resp.live_data.is_historical, None);
+    assert_eq!(resp.live_data.default_range, None);
+    assert_eq!(resp.live_data.range_options, None);
+}
+
+// ============================================================================
+// Kalshi Weather Index (GET /live_data/weather/{city}, .../calibrations)
+// ============================================================================
+
+#[test]
+fn get_weather_index_params_serializes_correctly() {
+    let params = kalshi_fast::GetWeatherIndexParams {
+        from: Some(1_700_000_000_000),
+        to: Some(1_700_086_400_000),
+        last_sec: None,
+        detailed: Some(true),
+    };
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["from"], 1_700_000_000_000i64);
+    assert_eq!(json["to"], 1_700_086_400_000i64);
+    assert!(json.get("last_sec").is_none());
+    assert_eq!(json["detailed"], true);
+
+    let default_params = kalshi_fast::GetWeatherIndexParams::default();
+    let default_json = serde_json::to_value(&default_params).unwrap();
+    assert_eq!(default_json, serde_json::json!({}));
+}
+
+#[test]
+fn get_weather_index_response_deserializes() {
+    let json = r#"{
+        "city": "miami",
+        "config_version": "miami-temperature-v1.0",
+        "units": "fahrenheit",
+        "timeseries": [
+            {
+                "t": 1700000000000,
+                "v": 88.42,
+                "status": "normal",
+                "contributors": 5
+            },
+            {
+                "t": 1700000060000,
+                "status": "incomplete",
+                "stations": [
+                    {
+                        "station_id": "KMIA1M",
+                        "code": "pending",
+                        "source": "hf_asos",
+                        "temp_f": 88.1,
+                        "received_at_ms": 1700000058000
+                    },
+                    {
+                        "station_id": "KMIA2M",
+                        "code": "missing"
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetWeatherIndexResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.city, "miami");
+    assert_eq!(
+        resp.config_version.as_deref(),
+        Some("miami-temperature-v1.0")
+    );
+    assert_eq!(resp.units, "fahrenheit");
+    assert_eq!(resp.timeseries.len(), 2);
+
+    let normal_point = &resp.timeseries[0];
+    assert_eq!(normal_point.t, 1700000000000);
+    assert_eq!(normal_point.v, Some(88.42));
+    assert_eq!(normal_point.status, "normal");
+    assert_eq!(normal_point.contributors, Some(5));
+    assert_eq!(normal_point.receipt_basis, None);
+    assert_eq!(normal_point.stations, None);
+
+    let incomplete_point = &resp.timeseries[1];
+    assert_eq!(incomplete_point.v, None);
+    assert_eq!(incomplete_point.status, "incomplete");
+    assert_eq!(incomplete_point.contributors, None);
+    let stations = incomplete_point.stations.as_ref().unwrap();
+    assert_eq!(stations.len(), 2);
+    assert_eq!(stations[0].station_id, "KMIA1M");
+    assert_eq!(stations[0].code, "pending");
+    assert_eq!(stations[0].source.as_deref(), Some("hf_asos"));
+    assert_eq!(stations[0].temp_f, Some(88.1));
+    assert_eq!(stations[0].received_at_ms, Some(1700000058000));
+    assert_eq!(stations[1].station_id, "KMIA2M");
+    assert_eq!(stations[1].code, "missing");
+    assert_eq!(stations[1].temp_f, None);
+}
+
+#[test]
+fn get_weather_index_response_deserializes_empty_window() {
+    // `config_version` is empty (not absent) when no points matched the window,
+    // per the spec description, but the type must still tolerate the field
+    // being fully absent from older/partial payloads.
+    let json = r#"{
+        "city": "miami",
+        "units": "fahrenheit",
+        "timeseries": []
+    }"#;
+
+    let resp: kalshi_fast::GetWeatherIndexResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.config_version, None);
+    assert!(resp.timeseries.is_empty());
+}
+
+#[test]
+fn get_weather_index_calibrations_response_deserializes() {
+    let json = r#"{
+        "city": "miami",
+        "units": "celsius",
+        "calibrations": [
+            {
+                "config_version": "miami-temperature-v1.0",
+                "published_at_ms": 1690000000000,
+                "effective_at_ms": 1690000000000,
+                "change_reason": "launch",
+                "city_reference_c": 30.5,
+                "stations": [
+                    {
+                        "station_id": "KMIA1M",
+                        "weight": 0.6,
+                        "offset_c": 0.2
+                    },
+                    {
+                        "station_id": "KMIA2M",
+                        "weight": 0.4,
+                        "offset_c": -0.1,
+                        "update_note": "updated: residuals=12 target=0.0 applied=-0.05"
+                    }
+                ]
+            },
+            {
+                "config_version": "miami-temperature-v1.0-cal-20260831",
+                "effective_at_ms": 1693526400000,
+                "calibration_window_start_ms": 1692921600000,
+                "calibration_window_end_ms": 1693526400000,
+                "city_reference_c": 30.7,
+                "stations": []
+            }
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetWeatherIndexCalibrationsResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.city, "miami");
+    assert_eq!(resp.units, "celsius");
+    assert_eq!(resp.calibrations.len(), 2);
+
+    let launch = &resp.calibrations[0];
+    assert_eq!(launch.config_version, "miami-temperature-v1.0");
+    assert_eq!(launch.published_at_ms, Some(1690000000000));
+    assert_eq!(launch.change_reason.as_deref(), Some("launch"));
+    assert_eq!(launch.calibration_window_start_ms, None);
+    assert_eq!(launch.city_reference_c, 30.5);
+    assert_eq!(launch.stations.len(), 2);
+    assert_eq!(launch.stations[0].station_id, "KMIA1M");
+    assert_eq!(launch.stations[0].weight, 0.6);
+    assert_eq!(launch.stations[0].offset_c, 0.2);
+    assert_eq!(launch.stations[0].update_note, None);
+    assert_eq!(
+        launch.stations[1].update_note.as_deref(),
+        Some("updated: residuals=12 target=0.0 applied=-0.05")
+    );
+
+    let weekly = &resp.calibrations[1];
+    assert_eq!(weekly.published_at_ms, None);
+    assert_eq!(
+        weekly.calibration_window_start_ms,
+        Some(1692921600000)
+    );
+    assert_eq!(weekly.calibration_window_end_ms, Some(1693526400000));
+    assert!(weekly.stations.is_empty());
 }

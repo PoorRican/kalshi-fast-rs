@@ -64,6 +64,11 @@ pub struct WsQuoteCreated {
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
     pub created_ts: String,
+    /// Present only when your side of this quote used a subaccount. Contains
+    /// your own subaccount number; the counterparty's subaccount is never
+    /// shared.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -86,6 +91,11 @@ pub struct WsQuoteAccepted {
     pub no_contracts_offered_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
+    /// Present only when your side of this quote used a subaccount. Contains
+    /// your own subaccount number; the counterparty's subaccount is never
+    /// shared.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
