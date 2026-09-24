@@ -5,7 +5,7 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse,
     GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
     GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
     GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
@@ -909,11 +909,11 @@ fn get_positions_response_deserializes() {
     let json = r#"{
         "market_positions": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "total_traded_dollars": "12.3400",
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -931,6 +931,7 @@ fn get_positions_response_deserializes() {
     let resp: kalshi_fast::GetPositionsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.market_positions.len(), 1);
     assert_eq!(resp.market_positions[0].position_fp, "5.00");
+    assert_eq!(resp.market_positions[0].exchange_index, 0);
     assert_eq!(resp.event_positions.len(), 1);
     assert_eq!(resp.cursor, Some("abc123".into()));
 }
@@ -940,11 +941,11 @@ fn positions_page_from_response() {
     let json = r#"{
         "market_positions": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "total_traded_dollars": "12.3400",
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -1117,19 +1118,42 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
+    assert!(resp.intra_exchange_transfers_active.is_none());
+    assert!(resp.exchange_index_statuses.is_none());
 }
 
 #[test]
-fn get_exchange_announcements_response_deserializes() {
+fn get_exchange_status_response_deserializes_shard_breakdown() {
     let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
+        "exchange_active": true,
+        "trading_active": true,
+        "intra_exchange_transfers_active": true,
+        "exchange_index_statuses": [
+            {
+                "exchange_index": 0,
+                "description": "primary",
+                "exchange_active": true,
+                "trading_active": true,
+                "intra_exchange_transfers_active": true
+            },
+            {
+                "exchange_index": 1,
+                "description": "secondary",
+                "exchange_active": true,
+                "trading_active": false,
+                "intra_exchange_transfers_active": false
+            }
         ]
     }"#;
 
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
+    let resp: GetExchangeStatusResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.intra_exchange_transfers_active, Some(true));
+    let statuses = resp.exchange_index_statuses.expect("shard breakdown");
+    assert_eq!(statuses.len(), 2);
+    assert_eq!(statuses[0].exchange_index, 0);
+    assert_eq!(statuses[0].description, "primary");
+    assert!(statuses[0].exchange_active);
+    assert!(!statuses[1].trading_active);
 }
 
 #[test]
@@ -2117,7 +2141,11 @@ fn get_event_live_data_response_deserializes() {
     assert_eq!(resp.live_data.default_range.as_deref(), Some("1h"));
     assert_eq!(
         resp.live_data.range_options,
-        Some(vec!["15min".to_string(), "1h".to_string(), "1d".to_string()])
+        Some(vec![
+            "15min".to_string(),
+            "1h".to_string(),
+            "1d".to_string()
+        ])
     );
 }
 
@@ -2305,10 +2333,7 @@ fn get_weather_index_calibrations_response_deserializes() {
 
     let weekly = &resp.calibrations[1];
     assert_eq!(weekly.published_at_ms, None);
-    assert_eq!(
-        weekly.calibration_window_start_ms,
-        Some(1692921600000)
-    );
+    assert_eq!(weekly.calibration_window_start_ms, Some(1692921600000));
     assert_eq!(weekly.calibration_window_end_ms, Some(1693526400000));
     assert!(weekly.stations.is_empty());
 }

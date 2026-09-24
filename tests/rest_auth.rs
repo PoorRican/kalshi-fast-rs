@@ -6,7 +6,7 @@ use kalshi_fast::{
     EventStatus, GetEventForecastPercentileHistoryParams, GetEventsParams, GetFillsParams,
     GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetQuotesParams,
     GetRFQsParams, GetSettlementsParams, GetSubaccountTransfersParams, KalshiError, OrderStatus,
-    SubaccountQueryParams,
+    SetTargetBalanceAllocationRequest, SubaccountQueryParams,
 };
 use reqwest::StatusCode;
 
@@ -16,15 +16,22 @@ async fn test_get_balance() {
     let auth = common::load_auth();
     let client = common::demo_auth_client(auth);
 
-    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async { client.get_balance().await })
-        .await
-        .expect("timeout")
-        .expect("request failed");
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_balance(None, None).await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
 
     // Balance fields should exist (may be 0)
     assert!(resp.balance >= 0);
     assert!(resp.portfolio_value >= 0);
     assert!(resp.updated_ts > 0);
+    if let Some(breakdown) = resp.balance_breakdown.as_ref() {
+        for entry in breakdown {
+            assert!(!entry.balance.is_empty());
+        }
+    }
 }
 
 #[tokio::test]
@@ -173,8 +180,10 @@ async fn test_get_subaccount_transfers() {
 async fn test_auth_required_without_auth() {
     let client = common::demo_client();
 
-    let result =
-        tokio::time::timeout(common::TEST_TIMEOUT, async { client.get_balance().await }).await;
+    let result = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_balance(None, None).await
+    })
+    .await;
 
     match result {
         Ok(Err(KalshiError::AuthRequired(_))) => {
@@ -199,7 +208,10 @@ async fn test_get_portfolio_total_resting_order_value() {
     .expect("timeout");
 
     match resp {
-        Ok(resp) => assert!(resp.total_resting_order_value >= 0),
+        Ok(resp) => {
+            assert!(resp.total_resting_order_value >= 0);
+            let _ = resp.resting_order_value_breakdown;
+        }
         Err(KalshiError::Http {
             status, api_error, ..
         }) => {
@@ -211,6 +223,52 @@ async fn test_get_portfolio_total_resting_order_value() {
         }
         Err(err) => panic!("unexpected error: {err:?}"),
     }
+}
+
+#[tokio::test]
+async fn test_get_target_balance_allocation() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = common::demo_auth_client(auth);
+
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_target_balance_allocation().await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    // Allocations may be empty (rebalancing disabled), but should parse.
+    for allocation in &resp.allocations {
+        assert!(allocation.percent <= 100);
+    }
+}
+
+#[tokio::test]
+async fn test_set_target_balance_allocation() {
+    common::load_env();
+    let auth = common::load_auth();
+    let client = common::demo_auth_client(auth);
+
+    // Round-trip: read the current allocation, then write it back unchanged.
+    let current = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_target_balance_allocation().await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .set_target_balance_allocation(SetTargetBalanceAllocationRequest {
+                allocations: current.allocations,
+                resting_margin_reservation: Some(current.resting_margin_reservation),
+            })
+            .await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
 }
 
 #[tokio::test]

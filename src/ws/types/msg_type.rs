@@ -19,8 +19,6 @@ pub enum WsMsgType {
     MultivariateMarketLifecycle,
     EventLifecycle,
     EventFeeUpdate,
-    Multivariate,
-    MultivariateLookup,
     Communications,
     RfqCreated,
     RfqDeleted,
@@ -31,6 +29,14 @@ pub enum WsMsgType {
     UserOrder,
     CfbenchmarksValue,
     CfbenchmarksValueIndexlist,
+    /// `cfbenchmarks_value_5hz` — sibling of [`WsMsgType::CfbenchmarksValue`] at up
+    /// to 5 updates/sec.
+    CfbenchmarksValue5Hz,
+    CfbenchmarksValue5HzIndexlist,
+    /// `pyth_value` — Pyth reference price update.
+    PythValue,
+    /// `pyth_value_underlying_list` — recently streamed Pyth underlying tickers.
+    PythValueUnderlyingList,
     Unknown(String),
 }
 
@@ -52,8 +58,6 @@ impl WsMsgType {
             WsMsgType::MultivariateMarketLifecycle => "multivariate_market_lifecycle",
             WsMsgType::EventLifecycle => "event_lifecycle",
             WsMsgType::EventFeeUpdate => "event_fee_update",
-            WsMsgType::Multivariate => "multivariate",
-            WsMsgType::MultivariateLookup => "multivariate_lookup",
             WsMsgType::Communications => "communications",
             WsMsgType::RfqCreated => "rfq_created",
             WsMsgType::RfqDeleted => "rfq_deleted",
@@ -64,6 +68,10 @@ impl WsMsgType {
             WsMsgType::UserOrder => "user_order",
             WsMsgType::CfbenchmarksValue => "cfbenchmarks_value",
             WsMsgType::CfbenchmarksValueIndexlist => "cfbenchmarks_value_indexlist",
+            WsMsgType::CfbenchmarksValue5Hz => "cfbenchmarks_value_5hz",
+            WsMsgType::CfbenchmarksValue5HzIndexlist => "cfbenchmarks_value_5hz_indexlist",
+            WsMsgType::PythValue => "pyth_value",
+            WsMsgType::PythValueUnderlyingList => "pyth_value_underlying_list",
             WsMsgType::Unknown(value) => value.as_str(),
         }
     }
@@ -85,8 +93,6 @@ impl WsMsgType {
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
             "event_fee_update" => WsMsgType::EventFeeUpdate,
-            "multivariate" => WsMsgType::Multivariate,
-            "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
             "rfq_created" => WsMsgType::RfqCreated,
             "rfq_deleted" => WsMsgType::RfqDeleted,
@@ -97,6 +103,10 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "cfbenchmarks_value_5hz" => WsMsgType::CfbenchmarksValue5Hz,
+            "cfbenchmarks_value_5hz_indexlist" => WsMsgType::CfbenchmarksValue5HzIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
             _ => return None,
         })
     }
@@ -118,8 +128,6 @@ impl WsMsgType {
             "multivariate_market_lifecycle" => WsMsgType::MultivariateMarketLifecycle,
             "event_lifecycle" | "event_lifecycle_v2" => WsMsgType::EventLifecycle,
             "event_fee_update" => WsMsgType::EventFeeUpdate,
-            "multivariate" => WsMsgType::Multivariate,
-            "multivariate_lookup" => WsMsgType::MultivariateLookup,
             "communications" => WsMsgType::Communications,
             "rfq_created" => WsMsgType::RfqCreated,
             "rfq_deleted" => WsMsgType::RfqDeleted,
@@ -130,6 +138,10 @@ impl WsMsgType {
             "user_order" => WsMsgType::UserOrder,
             "cfbenchmarks_value" => WsMsgType::CfbenchmarksValue,
             "cfbenchmarks_value_indexlist" => WsMsgType::CfbenchmarksValueIndexlist,
+            "cfbenchmarks_value_5hz" => WsMsgType::CfbenchmarksValue5Hz,
+            "cfbenchmarks_value_5hz_indexlist" => WsMsgType::CfbenchmarksValue5HzIndexlist,
+            "pyth_value" => WsMsgType::PythValue,
+            "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
             _ => WsMsgType::Unknown(value),
         }
     }

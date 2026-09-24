@@ -490,3 +490,363 @@ impl KalshiRestClient {
         .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::tests::load_test_auth;
+    use crate::env::KalshiEnvironment;
+    use reqwest::StatusCode;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use url::Url;
+
+    // ---- serde round-trips for the fields added/removed in this reconciliation ----
+
+    #[test]
+    fn get_quotes_params_serializes_min_ts_and_max_ts() {
+        let params = GetQuotesParams {
+            min_ts: Some(1_700_000_000),
+            max_ts: Some(1_800_000_000),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["min_ts"], 1_700_000_000);
+        assert_eq!(json["max_ts"], 1_800_000_000);
+    }
+
+    #[test]
+    fn get_quotes_params_omits_min_ts_and_max_ts_when_absent() {
+        let json = serde_json::to_value(&GetQuotesParams::default()).unwrap();
+        assert!(json.get("min_ts").is_none());
+        assert!(json.get("max_ts").is_none());
+    }
+
+    #[test]
+    fn get_quotes_params_has_no_market_or_event_ticker_fields() {
+        // `market_ticker`/`event_ticker` were removed from `GetQuotesParams`
+        // entirely (the server now rejects them for this endpoint). Building
+        // one from every remaining field and checking the serialized keys is
+        // as close as a runtime assertion gets; the real enforcement is that
+        // this file no longer compiles if either field is referenced.
+        let params = GetQuotesParams {
+            cursor: Some("c1".to_string()),
+            min_ts: Some(1),
+            max_ts: Some(2),
+            limit: Some(10),
+            status: Some("open".to_string()),
+            quote_creator_user_id: Some("u1".to_string()),
+            rfq_creator_user_id: Some("u2".to_string()),
+            rfq_creator_subtrader_id: Some("s1".to_string()),
+            rfq_id: Some("rfq1".to_string()),
+            rfq_user_filter: Some("self".to_string()),
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert!(json.get("market_ticker").is_none());
+        assert!(json.get("event_ticker").is_none());
+    }
+
+    #[test]
+    fn create_rfq_request_serializes_target_cost_excludes_fees_when_set() {
+        let req = CreateRFQRequest {
+            market_ticker: "TICK".to_string(),
+            contracts: Some(1),
+            contracts_fp: None,
+            target_cost_centi_cents: None,
+            target_cost_dollars: None,
+            target_cost_excludes_fees: Some(true),
+            rest_remainder: false,
+            replace_existing: None,
+            subtrader_id: None,
+            subaccount: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["target_cost_excludes_fees"], true);
+    }
+
+    #[test]
+    fn create_rfq_request_omits_target_cost_excludes_fees_when_absent() {
+        let req = CreateRFQRequest {
+            market_ticker: "TICK".to_string(),
+            contracts: None,
+            contracts_fp: None,
+            target_cost_centi_cents: None,
+            target_cost_dollars: None,
+            target_cost_excludes_fees: None,
+            rest_remainder: false,
+            replace_existing: None,
+            subtrader_id: None,
+            subaccount: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("target_cost_excludes_fees").is_none());
+    }
+
+    #[test]
+    fn rfq_deserializes_target_cost_excludes_fees() {
+        let json = r#"{
+            "id": "rfq1",
+            "creator_id": "creator1",
+            "market_ticker": "TICK",
+            "contracts_fp": "1",
+            "status": "open",
+            "created_ts": "2026-01-01T00:00:00Z",
+            "target_cost_excludes_fees": true
+        }"#;
+        let rfq: RFQ = serde_json::from_str(json).unwrap();
+        assert_eq!(rfq.target_cost_excludes_fees, Some(true));
+    }
+
+    #[test]
+    fn rfq_defaults_target_cost_excludes_fees_when_absent() {
+        let json = r#"{
+            "id": "rfq1",
+            "creator_id": "creator1",
+            "market_ticker": "TICK",
+            "contracts_fp": "1",
+            "status": "open",
+            "created_ts": "2026-01-01T00:00:00Z"
+        }"#;
+        let rfq: RFQ = serde_json::from_str(json).unwrap();
+        assert_eq!(rfq.target_cost_excludes_fees, None);
+    }
+
+    #[test]
+    fn create_quote_request_serializes_post_only_when_set() {
+        let req = CreateQuoteRequest {
+            rfq_id: "rfq1".to_string(),
+            yes_bid: "0.50".to_string(),
+            no_bid: "0.50".to_string(),
+            rest_remainder: false,
+            post_only: Some(true),
+            subaccount: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["post_only"], true);
+    }
+
+    #[test]
+    fn create_quote_request_omits_post_only_when_absent() {
+        let req = CreateQuoteRequest {
+            rfq_id: "rfq1".to_string(),
+            yes_bid: "0.50".to_string(),
+            no_bid: "0.50".to_string(),
+            rest_remainder: false,
+            post_only: None,
+            subaccount: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("post_only").is_none());
+    }
+
+    #[test]
+    fn quote_deserializes_post_only() {
+        let quote: Quote = serde_json::from_str(&quote_json_with(r#""post_only": true"#)).unwrap();
+        assert_eq!(quote.post_only, Some(true));
+    }
+
+    #[test]
+    fn quote_defaults_post_only_when_absent() {
+        let quote: Quote = serde_json::from_str(&quote_json_with("")).unwrap();
+        assert_eq!(quote.post_only, None);
+    }
+
+    fn quote_json_with(extra_field: &str) -> String {
+        let extra = if extra_field.is_empty() {
+            String::new()
+        } else {
+            format!(",{extra_field}")
+        };
+        format!(
+            r#"{{
+                "id": "q1",
+                "rfq_id": "rfq1",
+                "creator_id": "creator1",
+                "rfq_creator_id": "rfqcreator1",
+                "market_ticker": "TICK",
+                "contracts_fp": "1",
+                "yes_bid_dollars": "0.50",
+                "no_bid_dollars": "0.50",
+                "created_ts": "2026-01-01T00:00:00Z",
+                "updated_ts": "2026-01-01T00:00:00Z",
+                "status": "open"{extra}
+            }}"#
+        )
+    }
+
+    // ---- request-URL/body-shape assertions for the new RFQ-scoped methods ----
+    //
+    // This crate uses no HTTP-mocking library anywhere (no wiremock/mockito in
+    // Cargo.toml); `rest::client`'s own test module instead hand-rolls a tiny
+    // one-shot TCP server to capture what reqwest actually sent. That harness
+    // is private to that module, so it's reproduced here in miniature rather
+    // than introducing a new dependency.
+
+    struct CapturedRequest {
+        method: String,
+        path: String,
+        body: String,
+    }
+
+    fn header_end(buf: &[u8]) -> Option<usize> {
+        buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4)
+    }
+
+    async fn spawn_capturing_server(
+        status: StatusCode,
+        response_body: String,
+    ) -> (Url, tokio::task::JoinHandle<CapturedRequest>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+
+        let task = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+
+            let mut buffer = Vec::new();
+            let mut chunk = [0u8; 4096];
+            let mut header_len: Option<usize> = None;
+            let mut required_body_len = 0usize;
+
+            loop {
+                let n = stream.read(&mut chunk).await.expect("read");
+                if n == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..n]);
+
+                if header_len.is_none()
+                    && let Some(end) = header_end(&buffer)
+                {
+                    header_len = Some(end);
+                    let headers = String::from_utf8_lossy(&buffer[..end]).to_ascii_lowercase();
+                    required_body_len = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                }
+
+                if let Some(header_len) = header_len
+                    && buffer.len() - header_len >= required_body_len
+                {
+                    break;
+                }
+            }
+
+            let header_len = header_len.unwrap_or(buffer.len());
+            let head = String::from_utf8_lossy(&buffer[..header_len]).into_owned();
+            let body = String::from_utf8_lossy(&buffer[header_len..]).into_owned();
+
+            let mut parts = head.lines().next().unwrap_or_default().split_whitespace();
+            let method = parts.next().unwrap_or_default().to_string();
+            let path = parts.next().unwrap_or_default().to_string();
+
+            let reason = status.canonical_reason().unwrap_or("Unknown");
+            let mut reply = format!(
+                "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                status.as_u16(),
+                reason,
+                response_body.len()
+            );
+            reply.push_str(&response_body);
+            stream.write_all(reply.as_bytes()).await.expect("write");
+            stream.flush().await.expect("flush");
+
+            CapturedRequest { method, path, body }
+        });
+
+        (Url::parse(&format!("http://{addr}")).expect("url"), task)
+    }
+
+    fn test_client(rest_origin: Url) -> KalshiRestClient {
+        KalshiRestClient::builder(KalshiEnvironment {
+            rest_origin,
+            ws_url: "ws://127.0.0.1/".to_string(),
+        })
+        .with_auth(load_test_auth())
+        .build()
+        .expect("build test client")
+    }
+
+    #[tokio::test]
+    async fn get_rfq_quote_hits_rfq_scoped_path() {
+        let body = format!(r#"{{"quote":{}}}"#, quote_json_with(""));
+        let (origin, server) = spawn_capturing_server(StatusCode::OK, body).await;
+        let client = test_client(origin);
+
+        let resp = client
+            .get_rfq_quote("rfq1", "quote1")
+            .await
+            .expect("get_rfq_quote should succeed");
+        assert_eq!(resp.quote.id, "q1");
+
+        let captured = server.await.expect("server task");
+        assert_eq!(captured.method, "GET");
+        assert_eq!(
+            captured.path,
+            "/trade-api/v2/communications/rfqs/rfq1/quotes/quote1"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_rfq_quote_hits_rfq_scoped_path() {
+        let (origin, server) = spawn_capturing_server(StatusCode::NO_CONTENT, String::new()).await;
+        let client = test_client(origin);
+
+        client
+            .delete_rfq_quote("rfq1", "quote1")
+            .await
+            .expect("delete_rfq_quote should succeed");
+
+        let captured = server.await.expect("server task");
+        assert_eq!(captured.method, "DELETE");
+        assert_eq!(
+            captured.path,
+            "/trade-api/v2/communications/rfqs/rfq1/quotes/quote1"
+        );
+    }
+
+    #[tokio::test]
+    async fn accept_rfq_quote_hits_rfq_scoped_path_with_accepted_side_body() {
+        let (origin, server) = spawn_capturing_server(StatusCode::NO_CONTENT, String::new()).await;
+        let client = test_client(origin);
+
+        client
+            .accept_rfq_quote(
+                "rfq1",
+                "quote1",
+                AcceptQuoteRequest {
+                    accepted_side: YesNo::Yes,
+                },
+            )
+            .await
+            .expect("accept_rfq_quote should succeed");
+
+        let captured = server.await.expect("server task");
+        assert_eq!(captured.method, "PUT");
+        assert_eq!(
+            captured.path,
+            "/trade-api/v2/communications/rfqs/rfq1/quotes/quote1/accept"
+        );
+        let sent: Value = serde_json::from_str(&captured.body).expect("valid JSON body");
+        assert_eq!(sent, serde_json::json!({ "accepted_side": "yes" }));
+    }
+
+    #[tokio::test]
+    async fn confirm_rfq_quote_hits_rfq_scoped_path() {
+        let (origin, server) = spawn_capturing_server(StatusCode::NO_CONTENT, String::new()).await;
+        let client = test_client(origin);
+
+        client
+            .confirm_rfq_quote("rfq1", "quote1")
+            .await
+            .expect("confirm_rfq_quote should succeed");
+
+        let captured = server.await.expect("server task");
+        assert_eq!(captured.method, "PUT");
+        assert_eq!(
+            captured.path,
+            "/trade-api/v2/communications/rfqs/rfq1/quotes/quote1/confirm"
+        );
+    }
+}

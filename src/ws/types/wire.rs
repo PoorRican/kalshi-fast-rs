@@ -112,18 +112,6 @@ pub(super) enum WsWireMessage {
         seq: Option<u64>,
         msg: WsEventFeeUpdate,
     },
-    #[serde(rename = "multivariate")]
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariate,
-    },
-    #[serde(rename = "multivariate_lookup")]
-    MultivariateLookup {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariate,
-    },
     #[serde(rename = "rfq_created")]
     RfqCreated {
         sid: Option<u64>,
@@ -177,6 +165,30 @@ pub(super) enum WsWireMessage {
         sid: Option<u64>,
         seq: Option<u64>,
         msg: WsCfBenchmarksIndexList,
+    },
+    #[serde(rename = "cfbenchmarks_value_5hz")]
+    CfbenchmarksValue5Hz {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarksValue5Hz,
+    },
+    #[serde(rename = "cfbenchmarks_value_5hz_indexlist")]
+    CfbenchmarksValue5HzIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsCfBenchmarks5HzIndexList,
+    },
+    #[serde(rename = "pyth_value")]
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythValue,
+    },
+    #[serde(rename = "pyth_value_underlying_list")]
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsPythUnderlyingList,
     },
 }
 
@@ -267,10 +279,6 @@ impl WsWireMessage {
             }
             WsWireMessage::EventFeeUpdate { sid, seq, msg } => {
                 WsMessageV2::Data(WsDataMessageV2::EventFeeUpdate { sid, seq, msg })
-            }
-            WsWireMessage::Multivariate { sid, seq, msg }
-            | WsWireMessage::MultivariateLookup { sid, seq, msg } => {
-                WsMessageV2::Data(WsDataMessageV2::Multivariate { sid, seq, msg })
             }
             WsWireMessage::RfqCreated { sid, seq, msg } => {
                 WsMessageV2::Data(WsDataMessageV2::Communications {
