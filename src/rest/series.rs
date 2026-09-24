@@ -95,6 +95,10 @@ pub struct Series {
     pub last_updated_ts: Option<String>,
     #[serde(default)]
     pub inactive: Option<bool>,
+    /// Exchange shard this series is routed to. `None` when the exchange
+    /// omits the field.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -180,6 +184,17 @@ mod tests {
         let json_null = r#"{"ticker": "SER-1", "categories": null}"#;
         let series: Series = serde_json::from_str(json_null).unwrap();
         assert!(series.categories.is_empty());
+    }
+
+    #[test]
+    fn series_deserializes_exchange_index() {
+        let json = r#"{"ticker": "SER-1", "exchange_index": 1}"#;
+        let series: Series = serde_json::from_str(json).unwrap();
+        assert_eq!(series.exchange_index, Some(1));
+
+        let json_absent = r#"{"ticker": "SER-1"}"#;
+        let series: Series = serde_json::from_str(json_absent).unwrap();
+        assert_eq!(series.exchange_index, None);
     }
 
     #[test]

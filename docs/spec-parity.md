@@ -91,6 +91,55 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `exchange_index` (an integer exchange-shard identifier) was added by Kalshi across most
+  REST and WebSocket surfaces during 2026-07 through 2026-09 as part of exchange sharding.
+  It is modeled as `Option<u32>` everywhere except where the OpenAPI/AsyncAPI schema's
+  `required` list makes it unconditional (`Fill`, `Settlement`, `MarketPosition`,
+  `SubaccountBalance` are non-optional `u32`); this keeps the crate tolerant of shards
+  that predate the field. `Series` previously had no `extra` catch-all field at all (unlike
+  every sibling response struct), so unrecognized fields — including `exchange_index` before
+  it was promoted to a typed field — were being silently dropped by serde; a flatten `extra`
+  map was added for consistency with the rest of the crate.
+
+- `WsEventLifecycle.exchange_index` and `WsTrade.is_block_trade` were parsing correctness bugs,
+  not new-field additions: both fields are spec-required on their respective messages, but
+  neither struct had a flatten `extra` catch-all, so the values were being silently dropped
+  rather than merely left untyped. Both are now typed fields, covered by regression tests
+  that fail on the pre-fix code.
+
+- `cfbenchmarks_value` (the original 1Hz CF Benchmarks channel) is a public market-data feed;
+  `cfbenchmarks_value_5hz` and `pyth_value` are paid/authenticated add-on feeds per their
+  AsyncAPI channel descriptions. `WsChannelV2::is_private()` reflects this: the two paid
+  channels return `true` (client-side guard requiring configured auth before subscribing),
+  while `cfbenchmarks_value` returns `false`, consistent with other public market-data
+  channels (`ticker`, `trade`, `market_lifecycle_v2`). This is unrelated to the WebSocket
+  connection-level handshake, which always requires authentication regardless of channel
+  (see `GOTCHAS.md`).
+
+- The legacy (non-V2) order-mutation REST endpoints (`create_order`, `cancel_order`,
+  `amend_order`, `decrease_order`, `batch_create_orders`, `batch_cancel_orders`), the
+  multivariate-event-collection lookup endpoints (REST and the WebSocket `multivariate`/
+  `multivariate_lookup` channel), and `GET /exchange/announcements` were all confirmed
+  fully absent from the current OpenAPI/AsyncAPI specs (not merely flagged deprecated) and
+  were removed from the crate rather than kept as dead code that would 404/never-match at
+  runtime. The `_v2` order methods and `multivariate_market_lifecycle` remain fully supported.
+
+- **Known gap — Ed25519 API keys (added to the exchange 2026-09-24):** the REST surface
+  (`ApiKeyType`, `key_type` on `GenerateApiKeyRequest`/`GenerateApiKeyResponse`) is modeled,
+  but request *signing* with an Ed25519 key is not implemented. `src/auth.rs` remains
+  RSA-PSS/SHA256-only end to end (REST headers and the WebSocket handshake pre-sign text).
+  Adding Ed25519 support requires a second signing backend (e.g. `ed25519-dalek`) selected
+  by key type, touching `auth.rs`, the WS handshake, and (out of scope for this crate) FIX
+  `RawData` signing. Tracked as a follow-up rather than attempted piecemeal.
+
+- **Known gap:** `CreateApiKeyRequest`/`GenerateApiKeyRequest` also carry an `fcm_subtrader_id`
+  field, and `CreateApiKeyResponse`/`GenerateApiKeyResponse` carry a `warning` field, per the
+  live OpenAPI schema. Neither is modeled yet.
+
+- **Known gap:** the AsyncAPI spec marks `rfq_creator_id` required on both `quoteCreatedPayload.msg`
+  and `quoteAcceptedPayload.msg`, but only `WsQuoteExecuted` has it modeled today. Pre-existing
+  gap, not introduced by the 2026-09 refresh.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
