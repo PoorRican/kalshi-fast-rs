@@ -5,12 +5,12 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -568,7 +568,6 @@ fn indexed_balance_round_trips() {
     assert_eq!(round_tripped.exchange_index, 3);
     assert_eq!(round_tripped.balance, "12.3400");
 }
-
 
 #[test]
 fn get_markets_response_deserializes() {
@@ -1247,6 +1246,7 @@ fn get_fills_response_deserializes() {
     let json = r#"{
         "fills": [{
             "fill_id": "f1",
+            "exchange_index": 0,
             "order_id": "o1",
             "trade_id": "t1",
             "ticker": "MKT-1",
@@ -1264,6 +1264,7 @@ fn get_fills_response_deserializes() {
 
     let resp: GetFillsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.fills.len(), 1);
+    assert_eq!(resp.fills[0].exchange_index, 0);
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
@@ -1272,6 +1273,7 @@ fn get_settlements_response_deserializes() {
     let json = r#"{
         "settlements": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "event_ticker": "EVT-1",
             "market_result": "yes",
             "yes_count_fp": "1.00",
@@ -1287,7 +1289,133 @@ fn get_settlements_response_deserializes() {
 
     let resp: GetSettlementsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.settlements.len(), 1);
+    assert_eq!(resp.settlements[0].exchange_index, 0);
     assert!(resp.cursor.is_none());
+}
+
+#[test]
+fn get_portfolio_resting_order_total_value_response_deserializes() {
+    let json = r#"{
+        "total_resting_order_value": 500,
+        "resting_order_value_breakdown": [
+            {"exchange_index": 0, "balance": "5.0000"}
+        ]
+    }"#;
+
+    let resp: kalshi_fast::GetPortfolioRestingOrderTotalValueResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(resp.total_resting_order_value, 500);
+    assert_eq!(resp.resting_order_value_breakdown.len(), 1);
+    assert_eq!(resp.resting_order_value_breakdown[0].exchange_index, 0);
+}
+
+#[test]
+fn get_portfolio_resting_order_total_value_response_tolerates_missing_breakdown() {
+    let json = r#"{"total_resting_order_value": 0}"#;
+
+    let resp: kalshi_fast::GetPortfolioRestingOrderTotalValueResponse =
+        serde_json::from_str(json).unwrap();
+    assert!(resp.resting_order_value_breakdown.is_empty());
+}
+
+#[test]
+fn resting_margin_reservation_serializes_all_variants() {
+    assert_eq!(
+        serde_json::to_string(&kalshi_fast::RestingMarginReservation::None).unwrap(),
+        "\"none\""
+    );
+    assert_eq!(
+        serde_json::to_string(&kalshi_fast::RestingMarginReservation::Max).unwrap(),
+        "\"max\""
+    );
+    assert_eq!(
+        serde_json::to_string(&kalshi_fast::RestingMarginReservation::Sum).unwrap(),
+        "\"sum\""
+    );
+}
+
+#[test]
+fn resting_margin_reservation_deserializes_all_variants() {
+    assert!(matches!(
+        serde_json::from_str::<kalshi_fast::RestingMarginReservation>("\"none\"").unwrap(),
+        kalshi_fast::RestingMarginReservation::None
+    ));
+    assert!(matches!(
+        serde_json::from_str::<kalshi_fast::RestingMarginReservation>("\"max\"").unwrap(),
+        kalshi_fast::RestingMarginReservation::Max
+    ));
+    assert!(matches!(
+        serde_json::from_str::<kalshi_fast::RestingMarginReservation>("\"sum\"").unwrap(),
+        kalshi_fast::RestingMarginReservation::Sum
+    ));
+    // Forward-compat: unknown values fall back rather than erroring.
+    assert!(matches!(
+        serde_json::from_str::<kalshi_fast::RestingMarginReservation>("\"future_value\"").unwrap(),
+        kalshi_fast::RestingMarginReservation::Unknown
+    ));
+}
+
+#[test]
+fn target_balance_allocation_input_round_trips() {
+    let input = kalshi_fast::TargetBalanceAllocationInput {
+        exchange_index: 1,
+        percent: 60,
+    };
+    let json = serde_json::to_value(&input).unwrap();
+    assert_eq!(json["exchange_index"], 1);
+    assert_eq!(json["percent"], 60);
+
+    let round_tripped: kalshi_fast::TargetBalanceAllocationInput =
+        serde_json::from_value(json).unwrap();
+    assert_eq!(round_tripped.exchange_index, 1);
+    assert_eq!(round_tripped.percent, 60);
+}
+
+#[test]
+fn get_target_balance_allocation_response_deserializes() {
+    let json = r#"{
+        "allocations": [
+            {"exchange_index": 0, "percent": 40},
+            {"exchange_index": 1, "percent": 60}
+        ],
+        "resting_margin_reservation": "max"
+    }"#;
+
+    let resp: kalshi_fast::GetTargetBalanceAllocationResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.allocations.len(), 2);
+    assert_eq!(resp.allocations[1].percent, 60);
+    assert!(matches!(
+        resp.resting_margin_reservation,
+        kalshi_fast::RestingMarginReservation::Max
+    ));
+}
+
+#[test]
+fn set_target_balance_allocation_request_serializes_correctly() {
+    let req = kalshi_fast::SetTargetBalanceAllocationRequest {
+        allocations: vec![kalshi_fast::TargetBalanceAllocationInput {
+            exchange_index: 0,
+            percent: 100,
+        }],
+        resting_margin_reservation: Some(kalshi_fast::RestingMarginReservation::None),
+    };
+
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["allocations"][0]["exchange_index"], 0);
+    assert_eq!(json["allocations"][0]["percent"], 100);
+    assert_eq!(json["resting_margin_reservation"], "none");
+}
+
+#[test]
+fn set_target_balance_allocation_request_omits_reservation_when_none() {
+    let req = kalshi_fast::SetTargetBalanceAllocationRequest {
+        allocations: vec![],
+        resting_margin_reservation: None,
+    };
+
+    let json = serde_json::to_value(&req).unwrap();
+    assert!(json.get("resting_margin_reservation").is_none());
+    assert!(json["allocations"].as_array().unwrap().is_empty());
 }
 
 #[test]
