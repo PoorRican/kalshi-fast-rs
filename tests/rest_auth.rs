@@ -16,10 +16,12 @@ async fn test_get_balance() {
     let auth = common::load_auth();
     let client = common::demo_auth_client(auth);
 
-    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async { client.get_balance().await })
-        .await
-        .expect("timeout")
-        .expect("request failed");
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_balance(Default::default()).await
+    })
+    .await
+    .expect("timeout")
+    .expect("request failed");
 
     // Balance fields should exist (may be 0)
     assert!(resp.balance >= 0);
@@ -126,8 +128,8 @@ async fn test_get_account_api_limits() {
     .expect("timeout")
     .expect("request failed");
 
-    assert!(resp.read_limit >= 0);
-    assert!(resp.write_limit >= 0);
+    assert!(resp.read.refill_rate >= 0);
+    assert!(resp.write.refill_rate >= 0);
 }
 
 #[tokio::test]
@@ -173,8 +175,10 @@ async fn test_get_subaccount_transfers() {
 async fn test_auth_required_without_auth() {
     let client = common::demo_client();
 
-    let result =
-        tokio::time::timeout(common::TEST_TIMEOUT, async { client.get_balance().await }).await;
+    let result = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client.get_balance(Default::default()).await
+    })
+    .await;
 
     match result {
         Ok(Err(KalshiError::AuthRequired(_))) => {

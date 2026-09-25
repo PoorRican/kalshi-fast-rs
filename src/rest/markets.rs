@@ -305,8 +305,6 @@ pub struct Market {
     #[serde(default)]
     pub liquidity_fp: Option<String>,
     #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]
     pub occurrence_datetime: Option<String>,

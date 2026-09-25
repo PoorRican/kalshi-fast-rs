@@ -128,7 +128,55 @@ pub struct GetMilestoneResponse {
     pub milestone: Milestone,
 }
 
+/// GET /live_data/events/{event_ticker} query params
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetEventLiveDataParams {
+    /// Optional chart range hint (e.g. `15min`, `1h`, `1d`). Only honored
+    /// when the underlying live-data type supports it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<String>,
+}
+
+/// Event-keyed live data (crypto price charts, commodity timeseries, weather
+/// observations, etc). `details`'s shape depends on `type`, so it is kept as
+/// a loose JSON object per this crate's schema-decoupling convention.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EventLiveData {
+    /// Names the schema of `details`.
+    #[serde(rename = "type")]
+    pub r#type: String,
+    #[serde(default)]
+    pub details: Map<String, Value>,
+    #[serde(default)]
+    pub is_historical: Option<bool>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetEventLiveDataResponse {
+    pub live_data: EventLiveData,
+}
+
 impl KalshiRestClient {
+    /// Get event-keyed live data (crypto price charts, commodity price
+    /// timeseries, weather observations). Added 2026-07-30.
+    pub async fn get_event_live_data(
+        &self,
+        event_ticker: &str,
+        params: GetEventLiveDataParams,
+    ) -> Result<GetEventLiveDataResponse, KalshiError> {
+        let path = Self::full_path(&format!("/live_data/events/{event_ticker}"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
     pub async fn get_incentive_programs(
         &self,
         params: GetIncentiveProgramsParams,

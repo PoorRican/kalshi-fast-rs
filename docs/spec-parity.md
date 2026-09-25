@@ -91,6 +91,62 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Exchange sharding (2026-06 through 2026-09 changelog entries) introduced an `exchange_index`
+  identifier across most REST and WebSocket surfaces. This refresh added `exchange_index` to
+  `Series`, `SubaccountBalance`, `WsEventLifecycle`, `WsMarketLifecycleV2`, `WsFill`, `WsUserOrder`,
+  plus `exchange_index` query filters on `GetOrdersParams`/`GetPositionsParams`/`GetFillsParams`/
+  `GetBalanceParams`, and per-index breakdown structs (`ExchangeIndexStatus`, `IndexedBalance`).
+  A handful of exchange-sharding endpoints are **not yet implemented** (tracked below under
+  "Known Gaps") because they introduce a new domain concept (cross-shard transfers, target balance
+  allocation) rather than a field addition to an existing type.
+- `GetQuotesParams::market_ticker` / `event_ticker` are `#[deprecated]`: Kalshi removed both filters
+  from `GET /communications/quotes` on 2026-06-20 and the server now silently ignores them if sent.
+  They are kept (rather than removed) because they are harmless no-ops, not a parsing hazard.
+- `get_quote` / `delete_quote` / `accept_quote` / `confirm_quote` (quote-ID-only) are `#[deprecated]`
+  in favor of the RFQ-scoped `get_rfq_quote` / `delete_rfq_quote` / `accept_rfq_quote` /
+  `confirm_rfq_quote`, which the live docs now prefer (2026-06-25 / 2026-07-09) and which carry
+  better rate limits for `confirm`. The quote-ID-only endpoints still function upstream.
+- The `multivariate` WebSocket channel and its `multivariate_lookup` message type, and the REST
+  `.../multivariate_event_collections/{collection_ticker}/lookup` endpoint (both GET history and PUT
+  ticker-pair lookup), were removed upstream on 2026-08-06. The corresponding crate surface
+  (`WsChannelV2::Multivariate`, `WsMsgType::Multivariate`/`MultivariateLookup`,
+  `WsDataMessageV2::Multivariate`, `WsMultivariate`/`WsMultivariateRef`,
+  `lookup_tickers_for_market_in_multivariate_event_collection`,
+  `get_multivariate_event_collection_lookup_history`) was removed rather than kept as dead code.
+  The `multivariate_market_lifecycle` channel and the base
+  `POST /multivariate_event_collections/{collection_ticker}` endpoint are unaffected and remain
+  fully supported.
+
+## Known Gaps (Deferred)
+
+The following upstream additions since the 2026-06-08 watermark are **not yet implemented**. Each
+introduces a new domain concept rather than a field/param addition to an existing type, so they are
+tracked here explicitly rather than rushed:
+
+- **Ed25519 API keys** (2026-09-24). `src/auth.rs` currently hardcodes RSA-PSS/SHA-256 signing
+  (`KalshiAuth` holds an `RsaPrivateKey`). Supporting Ed25519 requires a key-type-aware signer
+  (`ed25519-dalek` or similar), a `key_type` field on `GenerateApiKeyRequest`, and careful signing
+  correctness testing. Deferred to a dedicated follow-up given the security sensitivity of auth code.
+- **Target balance allocation** (2026-08-20 / 2026-09-17 / 2026-09-24). `GET`/`POST
+  /portfolio/target_balance_allocation`, including the `RestingMarginReservation` policy
+  (`none`/`max`/`sum`) and the "rebalance without resting-order reservation" behavior. Not
+  implemented at all; needs new request/response types.
+- **Cross-shard subaccount transfers** (2026-08-20) and **intra-account transfer history**
+  (2026-08-13). `POST /portfolio/intra_exchange_instance_transfer` and `GET
+  /portfolio/intra_exchange_instance_transfers[/{id}]`. Not implemented; distinct from the existing
+  same-shard `apply_subaccount_transfer`.
+- **Kalshi Weather Index endpoints** (2026-08-20, calibration history 2026-08-31, `receipt_basis`
+  2026-09-10). `GET /live_data/weather/{city}` and `.../calibrations`. Not implemented; a new
+  endpoint family distinct from `get_event_live_data`.
+- **`pyth_value` WebSocket channel** (2026-07-23) and **`cfbenchmarks_value_5hz` WebSocket channel**
+  (2026-09-03). Both are new channels not yet wired into `WsChannelV2`/`WsMsgType`/the envelope
+  parse paths. `cfbenchmarks_value` (non-5Hz) is already fully supported as a template to follow.
+- **WebSocket `user_filter`** on the `communications` channel subscription (2026-10-01), to receive
+  only RFQs/quotes created by the authenticated user. Not yet added to `WsSubscriptionParamsV2`.
+- **Optional WebSocket permessage-deflate compression** (2026-09-24). `tokio-tungstenite` 0.24 (this
+  crate's pinned version) has no built-in extension negotiation support, so this is blocked on a
+  dependency upgrade or a custom extension-negotiation layer, not just a field addition.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

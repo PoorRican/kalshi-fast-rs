@@ -4,8 +4,8 @@ mod common;
 
 use kalshi_fast::{
     AmendOrderRequest, BatchCancelOrdersRequest, BatchCreateOrdersRequest, BuySell,
-    CancelOrderParams, CreateOrderRequest, GetMarketsParams, GetOrdersParams, KalshiRestClient,
-    MarketStatusQuery, OrderType, YesNo,
+    CancelOrderParams, CreateOrderRequest, GetMarketsParams, GetOrdersParams, MarketStatusQuery,
+    OrderType, YesNo,
 };
 use std::time::Duration;
 
