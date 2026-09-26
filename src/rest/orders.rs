@@ -46,6 +46,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict results to one exchange index. Omitted values return all
+    /// exchange indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +124,9 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Exchange shard hosting this order. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -507,6 +515,15 @@ pub type GetFcmPositionsResponse = GetPositionsResponse;
 // V2 event-order endpoints  (/portfolio/events/orders/*)
 // ---------------------------------------------------------------------------
 
+/// DELETE /portfolio/events/orders query params. Added 2026-08-27.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CancelAllOrdersParams {
+    /// Restrict cancellation to one subaccount. Omitted values cancel
+    /// matching resting orders across every subaccount.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
 /// Create Order (V2) body. Uses `BookSide` + single fixed-point price.
 ///
 /// Required: `ticker`, `side`, `count`, `price`, `time_in_force`, `self_trade_prevention_type`.
@@ -691,7 +708,18 @@ pub struct BatchCancelOrdersV2Response {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
-    pub subtrader_id: String,
+    /// Required unless `client_order_ids` is supplied. For a subtrader-bound
+    /// API key, defaults to the bound subtrader when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
+    /// Comma-separated client order IDs (max 100). Required unless
+    /// `subtrader_id` is supplied. Only orders created within the last 24
+    /// hours are searched. Added 2026-09-03.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub client_order_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -942,6 +970,27 @@ impl KalshiRestClient {
         let path = Self::full_path("/portfolio/events/orders");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
+    }
+
+    /// Cancel every resting event-market order across every exchange shard.
+    /// Omit `params.subaccount` to match orders from any subaccount, or set
+    /// it to restrict cancellation to one. Orders placed during the minute
+    /// after this request may also be cancelled.
+    ///
+    /// **Requires auth.** Added 2026-08-27.
+    pub async fn cancel_all_orders(
+        &self,
+        params: CancelAllOrdersParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/events/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
     }
 
     /// Cancel an order via the V2 event-order endpoint.

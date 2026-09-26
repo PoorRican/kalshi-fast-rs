@@ -49,6 +49,33 @@ pub struct GetAccountApiLimitsResponse {
     pub grants: Vec<ApiUsageLevelGrant>,
 }
 
+/// A trading-volume goal for one API usage level. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeGoal {
+    /// API usage level this volume goal applies to (e.g. `"expert"`).
+    pub level: String,
+    pub earn_volume_goal_fp: String,
+    pub keep_volume_goal_fp: String,
+}
+
+/// Trailing-30-day volume progress toward volume-based API usage tiers.
+/// Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountApiUsageLevelVolumeProgress {
+    /// Unix timestamp (seconds) when this progress was computed.
+    pub computed_ts: i64,
+    pub trailing_30d_volume_fp: String,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub goals: Vec<AccountApiUsageLevelVolumeGoal>,
+}
+
+/// GET /account/api_usage_level/volume_progress response. Added 2026-06-11.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetAccountApiUsageLevelVolumeProgressResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub volume_progress: Vec<AccountApiUsageLevelVolumeProgress>,
+}
+
 /// Token cost for one API v2 endpoint whose cost differs from the default.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EndpointTokenCost {
@@ -79,6 +106,9 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange index this balance is held on. Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index: i32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -96,6 +126,9 @@ pub struct ApplySubaccountTransferRequest {
     pub from_subaccount: u32,
     pub to_subaccount: u32,
     pub amount_cents: i64,
+    /// Exchange shard to apply the transfer on. Defaults to 0 if unspecified.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
@@ -108,6 +141,9 @@ pub struct SubaccountTransfer {
     pub to_subaccount: u32,
     pub amount_cents: i64,
     pub created_ts: i64,
+    /// Exchange index the transfer was applied on. Added 2026-07-02.
+    #[serde(default)]
+    pub exchange_index: i32,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -131,6 +167,68 @@ pub struct GetSubaccountTransfersResponse {
     pub cursor: Option<String>,
 }
 
+/// POST /portfolio/intra_exchange_instance_transfer request. Added 2026-08-20.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    /// Source exchange instance (`"event_contract"` or `"margined"`).
+    pub source: String,
+    /// Destination exchange instance (`"event_contract"` or `"margined"`).
+    pub destination: String,
+    /// Amount to transfer in centi-cents.
+    pub amount: i64,
+    /// Source exchange shard index. Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<i32>,
+    /// Destination exchange shard index. Defaults to 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<i32>,
+    /// Source subaccount number (default 0). Event-contract-to-event-contract only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    /// Destination subaccount number (default 0). Event-contract-to-event-contract only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    pub source: String,
+    pub destination: String,
+    pub source_exchange_shard: i32,
+    pub destination_exchange_shard: i32,
+    pub amount: FixedPointDollars,
+    /// `"pending"` or `"complete"`.
+    pub status: String,
+    pub created_ts: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GenericObject {
     #[serde(flatten)]
@@ -146,6 +244,13 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// Sub-account this key is restricted to (0-63). `None` means unrestricted.
+    /// Added 2026-07-02.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
+    /// FCM subtrader this key is bound to, if any. Added 2026-06-25.
+    #[serde(default)]
+    pub fcm_subtrader_id: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -154,6 +259,11 @@ pub struct ApiKey {
 pub struct GetApiKeysResponse {
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub api_keys: Vec<ApiKey>,
+    /// Unix timestamp (seconds) when the account's location attestation for
+    /// API key requests expires; a past value means it has lapsed. Absent
+    /// when the account has never attested. Added 2026-08-16.
+    #[serde(default)]
+    pub api_key_region_expiration_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,11 +272,23 @@ pub struct CreateApiKeyRequest {
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict this key to a single sub-account (0-63). Mutually exclusive
+    /// with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Bind this key to a single FCM subtrader. Mutually exclusive with
+    /// `subaccount`. Added 2026-06-25.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateApiKeyResponse {
     pub api_key_id: String,
+    /// Present only when the minted key is bound to an FCM subtrader missing
+    /// a required risk control. Added 2026-06-25.
+    #[serde(default)]
+    pub warning: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -174,14 +296,28 @@ pub struct CreateApiKeyResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
+    /// `"rsa"` (default) or `"ed25519"`. Added 2026-09-24.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict this key to a single sub-account (0-63). Mutually exclusive
+    /// with `fcm_subtrader_id`. Added 2026-07-02.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Bind this key to a single FCM subtrader. Mutually exclusive with
+    /// `subaccount`. Added 2026-06-25.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateApiKeyResponse {
     pub api_key_id: String,
     pub private_key: String,
+    /// `"rsa"` or `"ed25519"`. Added 2026-09-24.
+    #[serde(default)]
+    pub key_type: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -218,6 +354,40 @@ impl KalshiRestClient {
         let path = Self::full_path("/account/limits");
         self.send(
             Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get trailing-30-day trading volume progress toward volume-based API
+    /// usage tiers for the predictions (event_contract) lane.
+    ///
+    /// **Requires auth.** Added 2026-06-11.
+    pub async fn get_account_api_usage_level_volume_progress(
+        &self,
+    ) -> Result<GetAccountApiUsageLevelVolumeProgressResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/volume_progress");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Self-promote to the Advanced API usage tier. Requires at least one of
+    /// the caller's last 100 Predictions orders to have been created via API.
+    ///
+    /// **Requires auth.** Added 2026-06-11.
+    pub async fn upgrade_account_api_usage_level(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/account/api_usage_level/upgrade");
+        self.send(
+            Method::POST,
             &path,
             Option::<&()>::None,
             Option::<&()>::None,
@@ -297,6 +467,53 @@ impl KalshiRestClient {
         let path = Self::full_path("/portfolio/subaccounts/transfers");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await
+    }
+
+    /// Transfer funds between exchange instances (e.g. event-contract and
+    /// margin), optionally crossing exchange shards or subaccounts. The
+    /// transfer is processed asynchronously; poll it with
+    /// [`Self::get_intra_exchange_instance_transfer`].
+    ///
+    /// **Requires auth.** Added 2026-08-20.
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// List intra-exchange-instance transfer history. Supports cursor pagination.
+    ///
+    /// **Requires auth.** Added 2026-08-06.
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get a single intra-exchange-instance transfer by id.
+    ///
+    /// **Requires auth.** Added 2026-08-06.
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
     }
 
     /// Get subaccount netting configuration.

@@ -5,12 +5,12 @@ use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
-    GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
-    GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
+    GetExchangeScheduleResponse, GetExchangeStatusResponse, GetFillsParams, GetFillsResponse,
+    GetMarketOrderbookResponse, GetMarketsParams, GetOrderQueuePositionsParams, GetOrdersParams,
+    GetPositionsParams, GetSeriesFeeChangesParams, GetSeriesFeeChangesResponse,
+    GetSettlementsParams, GetSettlementsResponse, GetSubaccountBalancesResponse,
+    GetSubaccountTransfersParams, GetSubaccountTransfersResponse, GetTradesParams,
+    GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
     PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
@@ -386,7 +386,7 @@ fn get_settlements_params_serializes_correctly() {
 
 #[test]
 fn error_response_deserializes_details_string() {
-    let json = r#"{"code":"bad","message":"oops","details":"extra info","service":"svc"}"#;
+    let json = r#"{"code":"bad","message":"oops","details":"extra info"}"#;
     let err: ErrorResponse = serde_json::from_str(json).unwrap();
     assert_eq!(err.code.as_deref(), Some("bad"));
     assert_eq!(err.details.as_deref(), Some("extra info"));
@@ -447,6 +447,7 @@ fn historical_params_serialize_correctly() {
         max_ts: Some(1700000000),
         limit: Some(25),
         cursor: Some("c3".into()),
+        ..Default::default()
     };
     let fills_json = serde_json::to_value(&fills).unwrap();
     assert_eq!(fills_json["ticker"], "MKT-1");
@@ -459,6 +460,7 @@ fn historical_params_serialize_correctly() {
         max_ts: Some(1700000100),
         limit: Some(15),
         cursor: Some("c4".into()),
+        ..Default::default()
     };
     let orders_json = serde_json::to_value(&orders).unwrap();
     assert_eq!(orders_json["ticker"], "MKT-1");
@@ -606,7 +608,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "collateral_return_type": "binary",
             "mutually_exclusive": true,
             "category": "Politics",
-            "available_on_brokers": true,
             "product_metadata": {},
             "strike_date": "2023-11-07T05:31:56Z",
             "strike_period": "day",
@@ -620,7 +621,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "yes_bid_size_fp": "10.00",
             "yes_ask_size_fp": "11.00",
             "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
             "notional_value": 100,
             "notional_value_dollars": "1.0000",
             "previous_yes_bid": 50,
@@ -630,7 +630,6 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "previous_price": 52,
             "previous_price_dollars": "0.5200",
             "liquidity": 1000,
-            "liquidity_dollars": "10.0000",
             "expiration_value": "123.4",
             "occurrence_datetime": "2026-04-16T18:30:00Z",
             "tick_size": 1,
@@ -657,10 +656,7 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.event.mutually_exclusive, Some(true));
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
-    assert_eq!(
-        resp.markets[0].liquidity_dollars.as_deref(),
-        Some("10.0000")
-    );
+    assert_eq!(resp.markets[0].liquidity, Some(1000));
     assert_eq!(
         resp.markets[0].occurrence_datetime.as_deref(),
         Some("2026-04-16T18:30:00Z")
@@ -863,7 +859,6 @@ fn get_positions_response_deserializes() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -894,7 +889,6 @@ fn positions_page_from_response() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -1067,19 +1061,6 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
-}
-
-#[test]
-fn get_exchange_announcements_response_deserializes() {
-    let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
-        ]
-    }"#;
-
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
 }
 
 #[test]
@@ -1723,7 +1704,6 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
                 "volume_fp": "10.00",
                 "open_interest_fp": "10.00",
                 "notional_value_dollars": "1.0000",
-                "liquidity_dollars": "20.0000",
                 "price_level_structure": "linear_cent",
                 "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
             }]
@@ -1737,7 +1717,6 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
     assert_eq!(market.yes_ask, None);
     assert_eq!(market.notional_value, None);
     assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
-    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
 }
 
 #[test]

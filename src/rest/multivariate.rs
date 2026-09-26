@@ -59,6 +59,9 @@ pub struct AssociatedEvent {
 pub struct MultivariateEventCollection {
     pub collection_ticker: String,
     pub series_ticker: String,
+    /// Exchange index inherited from the collection's series. Added 2026-08-06.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     pub title: String,
     pub description: String,
     pub open_date: String,

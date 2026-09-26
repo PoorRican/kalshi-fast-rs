@@ -91,6 +91,35 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **`openapi.yaml` is a partial, hand-curated spec, not the full REST contract.** Its own title says
+  "Manually defined OpenAPI spec for endpoints being migrated to spec-first approach". As of the
+  2026-09-26 refresh it declares only ~52 properties on `Market` (mostly `*_dollars`/`*_fp` fields)
+  and omits long-standing, still-live fields such as `yes_bid`, `no_bid`, `volume`, `open_interest`,
+  `price`, `tick_size`, `can_trade`, `can_settle`, and the legacy `*_ts` timestamp variants — none of
+  which the changelog documents as removed. Refresh automation must not treat "absent from
+  `openapi.yaml`" as "removed upstream": only remove a field when a changelog entry explicitly says
+  so (and, ideally, the field is also absent from the spec). Field *additions* driven by a changelog
+  entry should still be verified against the spec's `required` list where the field is present there.
+- The exchange-sharding rollout (2026-07 through 2026-09) added an `exchange_index` field to most
+  REST and WebSocket payload types (`Order`, `Fill`, `Settlement`, `MarketPosition`, `Series`,
+  `EventData`, `WsFill`, `WsUserOrder`, `WsMarketLifecycleV2`, `WsEventLifecycle`, etc.) and
+  `exchange_index` filters to several list endpoints. Where the live spec marks the field required,
+  it is modeled as a plain `i32` with `#[serde(default)]` (defaulting to `0`, the only exchange index
+  live in production today) rather than `Option<i32>`, matching the existing `is_block_trade: bool`
+  convention for newly-required-but-rolling-out fields. Where the spec marks it optional (e.g.
+  `MultivariateEventCollection.exchange_index`, inherited from the collection's series), it is
+  `Option<i32>`.
+- Ed25519 API key support (added 2026-09-24) is only partially modeled: `GenerateApiKeyRequest`/
+  `GenerateApiKeyResponse.key_type` round-trip the value as a raw `Option<String>` so callers can
+  request or observe `"ed25519"`, but `auth.rs` only implements RSA-PSS SHA256 request signing.
+  Signing with an Ed25519 private key is not yet implemented; it would need a new signing backend
+  alongside `KalshiAuth`'s existing RSA path.
+- The `multivariate` WebSocket channel (message type `multivariate_lookup`) was removed upstream on
+  2026-08-06 — subscribing to it now returns an unknown-channel error — so `WsChannelV2::Multivariate`
+  and the `WsMultivariate*` types were removed from the crate rather than kept as dead API surface.
+  Use `WsChannelV2::MultivariateMarketLifecycle` (`multivariate_market_lifecycle`) for multivariate
+  market state changes.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

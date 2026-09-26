@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::orders::GetOrdersResponse;
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::portfolio::GetFillsResponse;
+use crate::rest::portfolio::{GetFillsResponse, GetPositionsResponse};
 use crate::types::{
     BookSide, FixedPointCount, FixedPointDollars, MveFilter, TradeTakerSide,
     deserialize_null_as_empty_vec,
@@ -91,20 +91,49 @@ pub struct GetHistoricalMarketsParams {
 pub struct GetHistoricalFillsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    /// Restrict to fills at or after this Unix timestamp. Added 2026-09-17.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restrict to one subaccount. Required for subaccount-restricted API
+    /// keys targeting a different subaccount. Added 2026-09-24.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetHistoricalOrdersParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    /// Restrict to orders at or after this Unix timestamp. Added 2026-09-17.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    /// Restrict to one subaccount. Required for subaccount-restricted API
+    /// keys targeting a different subaccount. Added 2026-09-24.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+}
+
+/// GET /historical/positions query params. Added 2026-07-23.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -161,6 +190,19 @@ impl KalshiRestClient {
         params: GetHistoricalOrdersParams,
     ) -> Result<GetOrdersResponse, KalshiError> {
         let path = Self::full_path("/historical/orders");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database. Positions
+    /// are archived per whole event, so a position for a still-unsettled
+    /// event is only available via [`Self::get_positions`]. Requires auth.
+    /// Added 2026-07-23.
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await
     }

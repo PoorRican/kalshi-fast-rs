@@ -9,6 +9,9 @@ pub struct WsUserOrder {
     pub order_id: String,
     pub user_id: String,
     pub ticker: String,
+    /// Exchange shard hosting this order. Added 2026-08-27.
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default)]
     pub status: Option<OrderStatus>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
@@ -58,4 +61,8 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+    /// Reason for the most recent update (e.g. `"Amend"`, `"Trade"`,
+    /// `"ReduceOnlyCancel"`), if applicable. Added 2026-10-01.
+    #[serde(default)]
+    pub last_update_reason: Option<String>,
 }
