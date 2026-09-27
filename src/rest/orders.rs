@@ -9,8 +9,9 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::portfolio::GetPositionsResponse;
 use crate::types::{
-    BookSide, BuySell, ErrorResponse, FixedPointCount, FixedPointDollars, OrderStatus, OrderType,
-    SelfTradePreventionType, TimeInForce, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, ErrorResponse, ExchangeIndex, FixedPointCount, FixedPointDollars,
+    OrderStatus, OrderType, SelfTradePreventionType, TimeInForce, YesNo,
+    deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -46,6 +47,11 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restricts results to one exchange index. Omit for all exchange
+    /// indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 impl GetOrdersParams {
@@ -119,6 +125,10 @@ pub struct Order {
     pub self_trade_prevention_type: Option<SelfTradePreventionType>,
     #[serde(default, rename = "subaccount_number")]
     pub subaccount_number: Option<u32>,
+    /// Exchange shard this order resides on. Added as part of the 2026
+    /// exchange-sharding rollout.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -441,6 +451,9 @@ pub struct UpdateOrderGroupLimitRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<FixedPointCount>,
+    /// Added 2026-08-06.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -691,7 +704,17 @@ pub struct BatchCancelOrdersV2Response {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetFcmOrdersParams {
-    pub subtrader_id: String,
+    /// At least one of `subtrader_id` / `client_order_ids` is required (2026-09-03).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
+    /// Comma-separated list of up to 100 client order IDs. Added 2026-09-03. A
+    /// lookup by client order ID only searches orders created within the last
+    /// 24 hours (and raises an earlier `min_ts` to 24 hours ago).
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub client_order_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -706,6 +729,25 @@ pub struct GetFcmOrdersParams {
     pub status: Option<OrderStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+}
+
+impl GetFcmOrdersParams {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        if self.subtrader_id.is_none() && self.client_order_ids.is_none() {
+            return Err(KalshiError::InvalidParams(
+                "GET /fcm/orders: at least one of subtrader_id or client_order_ids is required"
+                    .to_string(),
+            ));
+        }
+        if let Some(ids) = &self.client_order_ids
+            && ids.len() > 100
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /fcm/orders: client_order_ids supports up to 100 ids".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1027,6 +1069,7 @@ impl KalshiRestClient {
         &self,
         params: GetFcmOrdersParams,
     ) -> Result<GetFcmOrdersResponse, KalshiError> {
+        params.validate()?;
         let path = Self::full_path("/fcm/orders");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await

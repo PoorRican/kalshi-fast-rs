@@ -1,4 +1,4 @@
-use crate::types::{BookSide, BuySell, YesNo};
+use crate::types::{BookSide, BuySell, ExchangeIndex, YesNo};
 use serde::Deserialize;
 use std::borrow::Cow;
 
@@ -30,12 +30,18 @@ pub struct WsFill {
     pub ts: i64,
     pub ts_ms: i64,
     pub post_position_fp: String,
-    pub purchased_side: YesNo,
+    /// Deprecated by the exchange in favor of `outcome_side`/`book_side`,
+    /// though the AsyncAPI still marks it required; kept `Option` for safety.
+    #[serde(default)]
+    pub purchased_side: Option<YesNo>,
     #[serde(default)]
     pub created_time: Option<String>,
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
+    /// Exchange shard this fill occurred on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 /// Fill channel message (type: "fill")
@@ -71,12 +77,18 @@ pub struct WsFillRef<'a> {
     pub ts_ms: i64,
     #[serde(borrow)]
     pub post_position_fp: Cow<'a, str>,
-    pub purchased_side: YesNo,
+    /// Deprecated by the exchange in favor of `outcome_side`/`book_side`,
+    /// though the AsyncAPI still marks it required; kept `Option` for safety.
+    #[serde(default)]
+    pub purchased_side: Option<YesNo>,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
+    /// Exchange shard this fill occurred on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 impl<'a> WsFillRef<'a> {
@@ -100,6 +112,7 @@ impl<'a> WsFillRef<'a> {
             purchased_side: self.purchased_side,
             created_time: self.created_time.map(Cow::into_owned),
             subaccount: self.subaccount,
+            exchange_index: self.exchange_index,
         }
     }
 }

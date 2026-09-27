@@ -29,6 +29,12 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `communications` channel only. Pass `"self"` to receive `rfq_created` /
+    /// `rfq_deleted` only for RFQs the authenticated user created. Omit or
+    /// pass `""` to receive RFQs from all users (default). Quote
+    /// notifications are unaffected. Added 2026-10-01.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -387,6 +393,17 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subscription_params_serializes_communications_user_filter() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Communications],
+            user_filter: Some("self".to_string()),
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&params).unwrap();
+        assert_eq!(value["user_filter"], "self");
+    }
 
     #[test]
     fn validate_subscription_requires_market_tickers_for_orderbook_delta() {

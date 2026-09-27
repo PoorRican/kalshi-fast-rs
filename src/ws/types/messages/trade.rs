@@ -28,6 +28,9 @@ pub struct WsTrade {
     pub ts_ms: Option<i64>,
     #[serde(default)]
     pub created_time: Option<String>,
+    /// True for block trades matched off-book (e.g. via RFQ). Added 2026-08-13.
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 /// Trade channel message (type: "trade")
@@ -60,6 +63,9 @@ pub struct WsTradeRef<'a> {
     pub ts_ms: Option<i64>,
     #[serde(default, borrow)]
     pub created_time: Option<Cow<'a, str>>,
+    /// True for block trades matched off-book (e.g. via RFQ). Added 2026-08-13.
+    #[serde(default)]
+    pub is_block_trade: bool,
 }
 
 impl<'a> WsTradeRef<'a> {
@@ -76,6 +82,36 @@ impl<'a> WsTradeRef<'a> {
             ts: self.ts,
             ts_ms: self.ts_ms,
             created_time: self.created_time.map(Cow::into_owned),
+            is_block_trade: self.is_block_trade,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ws_trade_is_block_trade_defaults_false_when_absent() {
+        let json = r#"{
+            "trade_id":"t","ticker":"T","count_fp":"1",
+            "yes_price_dollars":"0.5000","no_price_dollars":"0.5000","ts":0
+        }"#;
+        let trade: WsTrade = serde_json::from_str(json).unwrap();
+        assert!(!trade.is_block_trade);
+    }
+
+    #[test]
+    fn ws_trade_is_block_trade_parses_true() {
+        let json = r#"{
+            "trade_id":"t","ticker":"T","count_fp":"1",
+            "yes_price_dollars":"0.5000","no_price_dollars":"0.5000","ts":0,
+            "is_block_trade":true
+        }"#;
+        let trade: WsTrade = serde_json::from_str(json).unwrap();
+        assert!(trade.is_block_trade);
+
+        let borrowed: WsTradeRef = serde_json::from_str(json).unwrap();
+        assert!(borrowed.into_owned().is_block_trade);
     }
 }

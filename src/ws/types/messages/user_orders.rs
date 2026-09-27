@@ -1,5 +1,6 @@
 use crate::types::{
-    BookSide, FixedPointCount, FixedPointDollars, OrderStatus, SelfTradePreventionType, YesNo,
+    BookSide, ExchangeIndex, FixedPointCount, FixedPointDollars, OrderStatus,
+    SelfTradePreventionType, YesNo,
 };
 use serde::Deserialize;
 
@@ -58,4 +59,40 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+    /// Exchange shard this order resides on. Added 2026-08-27.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
+    /// Reason for the most recent update to this order (e.g.
+    /// `"ReduceOnlyCancel"` for a reduce-only order canceled for lack of a
+    /// position to reduce). Added 2026-10-01.
+    #[serde(default)]
+    pub last_update_reason: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ws_user_order_parses_exchange_index_and_last_update_reason() {
+        let json = r#"{
+            "order_id":"o1","user_id":"u1","ticker":"T",
+            "exchange_index":0,
+            "last_update_reason":"ReduceOnlyCancel"
+        }"#;
+        let order: WsUserOrder = serde_json::from_str(json).unwrap();
+        assert_eq!(order.exchange_index, Some(0));
+        assert_eq!(
+            order.last_update_reason.as_deref(),
+            Some("ReduceOnlyCancel")
+        );
+    }
+
+    #[test]
+    fn ws_user_order_tolerates_missing_new_fields() {
+        let json = r#"{"order_id":"o1","user_id":"u1","ticker":"T"}"#;
+        let order: WsUserOrder = serde_json::from_str(json).unwrap();
+        assert!(order.exchange_index.is_none());
+        assert!(order.last_update_reason.is_none());
+    }
 }

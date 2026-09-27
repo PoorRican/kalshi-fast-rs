@@ -8,21 +8,46 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, ExchangeIndex, FixedPointCount, FixedPointDollars, PositionCountFilter,
+    YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+
+/// Per-exchange-index balance entry, part of `GetBalanceResponse.balance_breakdown`.
+/// Added alongside multi-exchange-index balance scoping (2026-08).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: ExchangeIndex,
+    pub balance: FixedPointDollars,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetBalanceParams {
+    /// 0 = primary account, 1-63 = subaccount. Omit for the primary account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// Scopes `balance` and `portfolio_value` to one exchange index. If omitted,
+    /// both cover all exchange indexes. Added 2026-08-13/2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetBalanceResponse {
     pub balance: i64,
     pub portfolio_value: i64,
     pub updated_ts: i64,
-    /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
+    /// Centi-cent precision dollar balance. Became a required response field
+    /// 2026-08 (previously direct-members-only); kept `Option` here for
+    /// tolerance of older/edge-case payloads.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// Balance broken down per exchange instance. Omitted only when using a
+    /// subaccount-restricted API key. Added 2026-08.
+    #[serde(default)]
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
 }
 
 /// GET /portfolio/positions query params
@@ -54,6 +79,11 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restricts results to one exchange index. Omit for all exchange
+    /// indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 impl GetPositionsParams {
@@ -86,12 +116,15 @@ impl GetPositionsParams {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
     pub ticker: String,
+    /// Exchange shard this position lives on. Spec-required as of the 2026
+    /// exchange-sharding rollout; kept `Option` to tolerate any payload from
+    /// before the field was populated.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
     pub market_exposure_dollars: FixedPointDollars,
     pub realized_pnl_dollars: FixedPointDollars,
-    #[serde(default)]
-    pub resting_orders_count: Option<i32>,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
 }
@@ -134,6 +167,10 @@ impl From<GetPositionsResponse> for PositionsPage {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
     pub ticker: String,
+    /// Exchange shard this settlement occurred on. Spec-required as of the
+    /// 2026 exchange-sharding rollout; kept `Option` for tolerance.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
     pub event_ticker: String,
     pub market_result: String,
     pub yes_count_fp: FixedPointCount,
@@ -203,6 +240,9 @@ pub struct Fill {
     pub subaccount_number: Option<u32>,
     #[serde(default)]
     pub ts: Option<i64>,
+    /// Exchange shard this fill occurred on. Added 2026-08-20.
+    #[serde(default)]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -223,6 +263,10 @@ pub struct GetFillsParams {
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Restricts results to one exchange index. Omit for all exchange
+    /// indexes. Added 2026-08-20.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<ExchangeIndex>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -236,22 +280,55 @@ pub struct GetFillsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetPortfolioRestingOrderTotalValueResponse {
     pub total_resting_order_value: i64,
+    /// Total resting-order value broken down by exchange index. Added 2026-08-20.
+    #[serde(default)]
+    pub resting_order_value_breakdown: Vec<IndexedBalance>,
+}
+
+/// GET /historical/positions query params. Added 2026-07-23; `subaccount` added 2026-09-03.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetHistoricalPositionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl KalshiRestClient {
     /// Get the account balance.
     ///
+    /// Both `balance` and `portfolio_value` cover all exchange indexes unless
+    /// `params.exchange_index` is set. Pass `params.subaccount` to read a
+    /// subaccount's balance instead of the primary account.
+    ///
     /// **Requires auth.**
-    pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {
+    pub async fn get_balance(
+        &self,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResponse, KalshiError> {
         let path = Self::full_path("/portfolio/balance");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            true,
-        )
-        .await
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// List settled positions archived to the historical database. Positions are
+    /// archived per whole event, so a settled event's positions are either
+    /// entirely here or entirely in [`Self::get_positions`], never split.
+    ///
+    /// **Requires auth.**
+    pub async fn get_historical_positions(
+        &self,
+        params: GetHistoricalPositionsParams,
+    ) -> Result<GetPositionsResponse, KalshiError> {
+        let path = Self::full_path("/historical/positions");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
     }
 
     /// List open positions. Supports cursor pagination.

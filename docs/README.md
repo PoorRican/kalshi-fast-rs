@@ -3,6 +3,9 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
+## Exchange Sharding
+Kalshi is progressively sharding Predictions markets across multiple exchange indexes (e.g. crypto, tennis, baseball on dedicated shards). Most response objects (markets, events, series, orders, fills, positions) now carry an `exchange_index` field, and several endpoints (`get_balance`, `get_orders`, `get_positions`, `get_fills`) accept an optional `exchange_index` filter. See `docs/spec-parity.md` for the full list of affected types.
+
 ## WebSocket Auth
 Kalshi WebSocket connections require authentication, even when subscribing to public channels. Use `KalshiWsClient::connect_authenticated` and provide `KALSHI_KEY_ID` and `KALSHI_PRIVATE_KEY_PATH`.
 

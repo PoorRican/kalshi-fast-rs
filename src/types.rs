@@ -90,6 +90,14 @@ pub type FixedPointDollars = String;
 /// Fixed-point contract count string (e.g. "10.00").
 pub type FixedPointCount = String;
 
+/// Identifier for an exchange shard (`exchange_index` in the OpenAPI/AsyncAPI
+/// specs). Exchange sharding was rolled out across Predictions starting
+/// 2026-07 (e.g. `GET /exchange/status`, market/event/series objects, fills,
+/// positions, and order/lifecycle WebSocket messages). Kept as a plain
+/// integer alias (rather than an enum) since the set of valid shard indexes
+/// grows over time as new categories are sharded.
+pub type ExchangeIndex = i64;
+
 /// Typed wrapper for arbitrary JSON payloads.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AnyJson(pub Value);
@@ -126,8 +134,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---
@@ -137,6 +143,10 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    /// Combo-market maker-fee structure: the same maker-fee treatment as
+    /// `quadratic_with_maker_fees` but with a 0.5 maker multiplier instead of
+    /// 0.25. Added to the OpenAPI spec in 2026.
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
