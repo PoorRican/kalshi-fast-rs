@@ -52,6 +52,11 @@ pub struct WsUserOrder {
     pub last_update_time: Option<String>,
     #[serde(default)]
     pub last_updated_ts_ms: Option<i64>,
+    /// Reason for the most recent update (e.g. `Decrease`, `Amend`, `Trade`,
+    /// `ReduceOnlyCancel`). Kept as a raw string so future reason values
+    /// round-trip losslessly. Added 2026-10-01.
+    #[serde(default)]
+    pub last_update_reason: Option<String>,
     #[serde(default)]
     pub expiration_time: Option<String>,
     #[serde(default)]

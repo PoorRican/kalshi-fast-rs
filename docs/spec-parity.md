@@ -91,6 +91,72 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **`openapi.yaml` is a partial spec, not the full legacy surface.** Its `info.title` is
+  "Kalshi Trade API Manual Endpoints" and its description states it covers "endpoints being
+  migrated to spec-first approach." A field's *absence* from this document is therefore not on
+  its own proof that the exchange stopped sending it — only the changelog (or a live response)
+  confirms an actual removal. `docs/spec-parity.md` and `CHANGELOG.md` only record a field/endpoint
+  as removed when the changelog explicitly says so; `asyncapi.yaml` carries no such caveat and is
+  treated as the complete, authoritative WebSocket contract.
+- Legacy `/portfolio/orders` order-mutation endpoints (`POST` create, `DELETE` cancel, `POST`
+  `.../amend`, `.../decrease`, `.../batched`) were removed from `openapi.yaml` between the 2026-06-08
+  and 2026-09-28 docs snapshots, consistent with the 2026-06-18 changelog entry announcing their
+  deprecation ("calls to these endpoints will return `Please switch to the V2 endpoints`"). Only
+  `GET /portfolio/orders` and `GET /portfolio/orders/{order_id}` remain. The crate now only exposes
+  order mutation through the V2 event-order endpoints (`create_order_v2`, `cancel_order_v2`,
+  `amend_order_v2`, `decrease_order_v2`, `batch_create_orders_v2`, `batch_cancel_orders_v2`);
+  `CreateOrderRequest`/`CancelOrderParams`/`AmendOrderRequest`/`DecreaseOrderRequest`/
+  `BatchCreateOrdersRequest`/`BatchCancelOrdersRequest` and their responses were removed along with
+  the corresponding legacy client methods. `GetOrderResponse`, `GetOrdersParams`, and `get_orders`/
+  `get_order` (read-only) are unaffected.
+- `Market.response_price_units`, `Market.fractional_trading_enabled`, and
+  `MarketPosition.resting_orders_count` were removed per the 2026-07-09 changelog entry
+  ("Deprecated Predictions REST schema fields removed"). `Market.liquidity_dollars` was removed per
+  the 2026-10-01 entry (deprecated 2026-02, "always returned `\"0.0000\"`" since then; use
+  `yes_bid_size_fp` / `yes_ask_size_fp` for top-of-book size instead). `Event.available_on_brokers`
+  was deprecated 2026-08-27 and removed 2026-09-10 ("always returns `false`"). All four fields are
+  removed from the crate's structs. `Market.liquidity` / `liquidity_fp` (the non-`_dollars`
+  siblings) are **not** removed — the changelog only named `liquidity_dollars`, and per the caveat
+  above their absence from the partial `openapi.yaml` document is not itself evidence of removal.
+- The WebSocket `multivariate` channel and its `multivariate_lookup` message were fully removed
+  (2026-08-06 changelog: "Subscriptions to it now return an unknown-channel error"). `WsChannelV2`
+  no longer has a `Multivariate` variant, `WsMsgType` no longer has `Multivariate` /
+  `MultivariateLookup`, and `WsMultivariate` / `WsMultivariateRef` were deleted. The
+  `multivariate_market_lifecycle` channel is unrelated and unaffected — it reuses
+  `WsMarketLifecycleV2`, same as `market_lifecycle_v2`. The matching REST surface
+  (`PUT`/`GET /multivariate_event_collections/{collection_ticker}/lookup`) is also gone from
+  `openapi.yaml` (2026-07-02 changelog: "fully deprecated"); `get_multivariate_event_collection_lookup_history`,
+  `lookup_tickers_for_market_in_multivariate_event_collection`, and their request/response types
+  were removed. `POST /multivariate_event_collections/{collection_ticker}` (create/resolve a combo
+  market) and the communications (RFQ) endpoints are unaffected.
+- `market_lifecycle_v2` (and, since they share a struct, `multivariate_market_lifecycle`)
+  `metadata_updated` events now surface top-level `strike_type`, `cap_strike`, and `custom_strike`
+  alongside the existing top-level `floor_strike` / `yes_sub_title` (2026-06-18). `created` and
+  `price_level_structure_updated` events carry a top-level `price_ranges` array (2026-07-02), and
+  `created` events carry `exchange_index` (2026-07-30, exchange-sharding rollout); `WsEventLifecycle`
+  gained the same `exchange_index` field. `fractional_trading_enabled` and the
+  `FractionalTradingUpdated` event-type variant were removed from `market_lifecycle_v2` — the
+  AsyncAPI `event_type` enum for this payload no longer lists it.
+- `WsTrade.is_block_trade` (2026-08-13) and `WsUserOrder.last_update_reason` (2026-10-01,
+  `Option<String>` to tolerate future reason values losslessly) were added to match current
+  AsyncAPI-required fields.
+- `ErrorResponse.service` was removed (deprecated 2026-07-28, removed 2026-08-06: "no longer
+  returned by any REST endpoint... Branch on `code` instead"). `build_http_error`'s emptiness check
+  no longer references it.
+- The exchange-sharding rollout (2026-07 through 2026-09) adds `exchange_index` to many REST
+  objects. This pass added it to `Market`, `Order`, `MarketPosition`, `Fill`, and `Settlement` only
+  (the objects most central to placing and tracking trades). It was **not** added to `Series`,
+  `MultivariateEventCollection`, the `exchange_index` query filters on `GET /portfolio/{orders,
+  positions,fills}`, or the various new sharding/transfer/rebalancing endpoints
+  (`target_balance_allocation`, `intra_exchange_instance_transfer`, cancel-all-orders,
+  `api_usage_level/*`, the Kalshi Weather Index and CF Benchmarks 5Hz/Pyth-value channels) — these
+  remain tracked as follow-up work, not modeled by this crate yet.
+- Two dead public types, `MarketPositionRef` / `EventPositionRef` (in `src/ws/types/mod.rs`), were
+  removed. They duplicated the REST `MarketPosition`/`EventPosition` shape but were never wired into
+  any WebSocket message dispatch — the real `market_positions` channel payload is `WsMarketPosition`
+  (`src/ws/types/messages/positions.rs`), which has an unrelated, already-correct shape
+  (`user_id`, `market_ticker`, `position_fp`, `position_cost_dollars`, ...).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
