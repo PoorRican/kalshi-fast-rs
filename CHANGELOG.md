@@ -8,7 +8,7 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
-## [0.7.1] - 2026-08-26
+## [0.7.1] - 2026-09-29
 
 ### Compatibility
 
@@ -22,6 +22,11 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 - [Rust API] Added the opt-in `timed-reader` feature for pre-handoff WebSocket event timing. The
   feature is disabled by default.
 
+
+### Tests
+
+- [Tests] Fixed the `ListSubscriptions` test patterns to account for the `sid` and `seq` fields
+  added to the public message variants.
 
 ## [0.7.0] - 2026-08-12
 

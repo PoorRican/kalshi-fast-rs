@@ -329,6 +329,17 @@ mod tests {
     use tokio::time::{Duration, timeout};
     use tokio_tungstenite::accept_async;
     use tokio_tungstenite::tungstenite::Message;
+
+    fn item_event(item: ReaderItem) -> WsEvent {
+        #[cfg(feature = "timed-reader")]
+        {
+            item.event
+        }
+        #[cfg(not(feature = "timed-reader"))]
+        {
+            item
+        }
+    }
     use url::Url;
 
     fn ticker_frame(market_ticker: &str, market_id: &str, sid: u64, seq: u64) -> String {
@@ -599,7 +610,7 @@ mod tests {
             .await
             .expect("timeout first")
             .expect("first event");
-        assert!(matches!(first, WsEvent::Message(_)));
+        assert!(matches!(item_event(first), WsEvent::Message(_)));
         drop(event_rx);
 
         timeout(Duration::from_secs(2), reader)
