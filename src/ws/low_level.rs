@@ -71,6 +71,9 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
             _protocol: PhantomData,
         })
     }
+    pub fn next_cmd_id(&self) -> u64 {
+        self.next_id
+    }
 
     pub async fn send_raw(&mut self, msg: Message) -> Result<(), KalshiError> {
         self.write

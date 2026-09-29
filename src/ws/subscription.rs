@@ -1,17 +1,54 @@
-use crate::ws::protocol::ControlAction;
-use crate::ws::types::{WsSubscriptionParamsV2, WsUpdateSubscriptionParamsV2};
+use crate::ws::protocol::{ControlAction, EventContractProtocol, WsProtocol};
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-#[derive(Default)]
-pub(crate) struct SubscriptionTracker<P: Clone = WsSubscriptionParamsV2> {
-    pending: HashMap<u64, P>,
-    active: HashMap<u64, P>,
+pub(crate) struct SubscriptionTracker<P: WsProtocol = EventContractProtocol> {
+    pending: HashMap<u64, P::SubscribeParams>,
+    active: HashMap<u64, P::SubscribeParams>,
+    pending_unsubscribes: BTreeMap<u64, Vec<u64>>,
+    pending_updates: BTreeMap<u64, P::UpdateParams>,
 }
 
-impl<P: Clone> SubscriptionTracker<P> {
-    pub(crate) fn record_subscribe_cmd(&mut self, id: u64, params: P) {
+impl<P: WsProtocol> Default for SubscriptionTracker<P> {
+    fn default() -> Self {
+        Self {
+            pending: HashMap::new(),
+            active: HashMap::new(),
+            pending_unsubscribes: BTreeMap::new(),
+            pending_updates: BTreeMap::new(),
+        }
+    }
+}
+
+impl<P: WsProtocol> SubscriptionTracker<P> {
+    pub(crate) fn record_subscribe_cmd(&mut self, id: u64, params: P::SubscribeParams) {
         self.pending.insert(id, params);
+    }
+
+    pub(crate) fn record_unsubscribe_cmd(&mut self, id: u64, sids: Vec<u64>) {
+        self.pending_unsubscribes.insert(id, sids);
+    }
+
+    pub(crate) fn record_update_cmd(&mut self, id: u64, update: P::UpdateParams) {
+        if P::records_update(&update) {
+            self.pending_updates.insert(id, update);
+        }
+    }
+
+    pub(crate) fn drop_pending_subscribe(&mut self, id: u64) {
+        self.pending.remove(&id);
+    }
+
+    pub(crate) fn drop_pending_unsubscribe(&mut self, id: u64) {
+        self.pending_unsubscribes.remove(&id);
+    }
+
+    pub(crate) fn drop_pending_update(&mut self, id: u64) {
+        self.pending_updates.remove(&id);
+    }
+
+    pub(crate) fn apply_update(&mut self, update: &P::UpdateParams) {
+        P::apply_update(&mut self.active, update);
     }
 
     pub(crate) fn handle_control_action(&mut self, action: ControlAction) {
@@ -19,8 +56,16 @@ impl<P: Clone> SubscriptionTracker<P> {
             ControlAction::Subscribed { cmd_id, sid } => {
                 self.handle_subscribed(cmd_id, Some(sid));
             }
-            ControlAction::Unsubscribed { sid } => {
-                self.handle_unsubscribed(Some(sid));
+            ControlAction::Unsubscribed { cmd_id, sid } => {
+                self.handle_unsubscribed(cmd_id, sid);
+            }
+            ControlAction::Ok { cmd_id } => {
+                self.handle_ok(cmd_id);
+            }
+            ControlAction::Error { cmd_id } => {
+                self.drop_pending_subscribe(cmd_id);
+                self.drop_pending_unsubscribe(cmd_id);
+                self.drop_pending_update(cmd_id);
             }
         }
     }
@@ -35,18 +80,61 @@ impl<P: Clone> SubscriptionTracker<P> {
         }
     }
 
-    pub(crate) fn handle_unsubscribed(&mut self, sid: Option<u64>) {
+    pub(crate) fn handle_unsubscribed(&mut self, id: Option<u64>, sid: Option<u64>) {
         if let Some(sid) = sid {
+            self.active.remove(&sid);
+        }
+
+        let Some(id) = id else {
+            return;
+        };
+
+        let Some(pending_sids) = self.pending_unsubscribes.get_mut(&id) else {
+            return;
+        };
+        if let Some(sid) = sid {
+            pending_sids.retain(|pending_sid| *pending_sid != sid);
+            if pending_sids.is_empty() {
+                self.pending_unsubscribes.remove(&id);
+            }
+            return;
+        }
+
+        for sid in self.pending_unsubscribes.remove(&id).unwrap_or_default() {
             self.active.remove(&sid);
         }
     }
 
-    pub(crate) fn drop_active(&mut self, sid: u64) {
-        self.active.remove(&sid);
+    pub(crate) fn handle_ok(&mut self, id: u64) {
+        let Some(update) = self.pending_updates.remove(&id) else {
+            return;
+        };
+        self.apply_update(&update);
     }
 
-    pub(crate) fn prepare_resubscribe(&mut self) -> Vec<P> {
-        let mut params: Vec<P> = self.active.values().cloned().collect();
+    /// Prepare subscription parameters for replay upon reconnect.
+    ///
+    /// A command sent but unacknowledged at disconnect has an unknown venue outcome,
+    /// so replay uses the caller's latest intent. An explicit `error` or a local
+    /// send failure cancels the intent.
+    pub(crate) fn prepare_resubscribe(&mut self) -> Vec<P::SubscribeParams> {
+        for update in self.pending_updates.values().cloned().collect::<Vec<_>>() {
+            self.apply_update(&update);
+        }
+        self.pending_updates.clear();
+
+        for sid in self
+            .pending_unsubscribes
+            .values()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.active.remove(&sid);
+        }
+        self.pending_unsubscribes.clear();
+
+        let mut params: Vec<P::SubscribeParams> = self.active.values().cloned().collect();
         params.extend(self.pending.values().cloned());
         self.active.clear();
         self.pending.clear();
@@ -54,79 +142,15 @@ impl<P: Clone> SubscriptionTracker<P> {
     }
 }
 
-impl SubscriptionTracker<WsSubscriptionParamsV2> {
-    pub(crate) fn apply_update(&mut self, update: &WsUpdateSubscriptionParamsV2) {
-        use crate::ws::types::WsUpdateAction;
-
-        let sid = match update.target_sid() {
-            Some(sid) => sid,
-            None => return,
-        };
-
-        let Some(params) = self.active.get_mut(&sid) else {
-            return;
-        };
-
-        let mut incoming_tickers = update.market_tickers.clone().unwrap_or_default();
-        if let Some(single) = update.market_ticker.clone() {
-            incoming_tickers.push(single);
-        }
-
-        let mut incoming_ids = update.market_ids.clone().unwrap_or_default();
-        if let Some(single) = update.market_id.clone() {
-            incoming_ids.push(single);
-        }
-
-        let apply_vec =
-            |target: &mut Option<Vec<String>>, incoming: Vec<String>, action: WsUpdateAction| {
-                if incoming.is_empty() {
-                    return;
-                }
-
-                match action {
-                    WsUpdateAction::AddMarkets | WsUpdateAction::SubscribeIndices => {
-                        let values = target.get_or_insert_with(Vec::new);
-                        for value in incoming {
-                            if !values.iter().any(|v| v == &value) {
-                                values.push(value);
-                            }
-                        }
-                    }
-                    WsUpdateAction::DeleteMarkets | WsUpdateAction::UnsubscribeIndices => {
-                        let Some(values) = target.as_mut() else {
-                            return;
-                        };
-                        values.retain(|current| !incoming.iter().any(|value| value == current));
-                        if values.is_empty() {
-                            *target = None;
-                        }
-                    }
-                    WsUpdateAction::GetSnapshot | WsUpdateAction::Indexlist => {}
-                }
-            };
-
-        if update.action.is_index_action() {
-            let incoming_indices = update.index_ids.clone().unwrap_or_default();
-            apply_vec(&mut params.index_ids, incoming_indices, update.action);
-        } else {
-            apply_vec(&mut params.market_tickers, incoming_tickers, update.action);
-            apply_vec(&mut params.market_ids, incoming_ids, update.action);
-        }
-
-        if let Some(value) = update.send_initial_snapshot {
-            params.send_initial_snapshot = Some(value);
-        }
-        if let Some(value) = update.skip_ticker_ack {
-            params.skip_ticker_ack = Some(value);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ws::types::{WsChannelV2, WsUpdateAction};
+    use crate::ws::protocol::EventContractProtocol;
+    use crate::ws::types::{
+        WsChannelV2, WsSubscriptionParamsV2, WsUpdateAction, WsUpdateSubscriptionParamsV2,
+    };
 
+    type SubscriptionTracker = super::SubscriptionTracker<EventContractProtocol>;
     #[test]
     fn subscription_tracker_moves_pending_to_active() {
         let mut tracker = SubscriptionTracker::default();
@@ -305,6 +329,210 @@ mod tests {
         let indices = updated.index_ids.as_ref().unwrap();
         assert!(!indices.contains(&"BRTI".to_string()));
         assert!(indices.contains(&"ETHUSD_RR".to_string()));
+    }
+
+    #[test]
+    fn subscription_tracker_applies_update_after_ok_ack() {
+        let mut tracker = SubscriptionTracker::default();
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_tickers: Some(vec!["A".to_string()]),
+            ..Default::default()
+        };
+        tracker.active.insert(10, params);
+
+        let update = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::AddMarkets,
+            sid: Some(10),
+            sids: None,
+            market_ticker: None,
+            market_tickers: Some(vec!["B".to_string()]),
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+        };
+        tracker.record_update_cmd(99, update);
+
+        assert_eq!(
+            tracker.active.get(&10).unwrap().market_tickers,
+            Some(vec!["A".to_string()])
+        );
+
+        tracker.handle_control_action(ControlAction::Ok { cmd_id: 99 });
+
+        assert_eq!(
+            tracker.active.get(&10).unwrap().market_tickers,
+            Some(vec!["A".to_string(), "B".to_string()])
+        );
+        assert!(tracker.pending_updates.is_empty());
+    }
+
+    #[test]
+    fn subscription_tracker_discards_update_after_send_error() {
+        let mut tracker = SubscriptionTracker::default();
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_tickers: Some(vec!["A".to_string()]),
+            ..Default::default()
+        };
+        tracker.active.insert(10, params);
+
+        let update = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::AddMarkets,
+            sid: Some(10),
+            sids: None,
+            market_ticker: None,
+            market_tickers: Some(vec!["B".to_string()]),
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+        };
+        tracker.record_update_cmd(99, update);
+        tracker.drop_pending_update(99);
+
+        tracker.handle_control_action(ControlAction::Ok { cmd_id: 99 });
+
+        assert_eq!(
+            tracker.active.get(&10).unwrap().market_tickers,
+            Some(vec!["A".to_string()])
+        );
+    }
+
+    #[test]
+    fn subscription_tracker_applies_unsubscribe_after_ack() {
+        let mut tracker = SubscriptionTracker::default();
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            ..Default::default()
+        };
+        tracker.active.insert(10, params);
+        tracker.record_unsubscribe_cmd(88, vec![10]);
+
+        assert!(tracker.active.contains_key(&10));
+
+        tracker.handle_control_action(ControlAction::Unsubscribed {
+            cmd_id: Some(88),
+            sid: Some(10),
+        });
+
+        assert!(!tracker.active.contains_key(&10));
+        assert!(tracker.pending_unsubscribes.is_empty());
+    }
+
+    #[test]
+    fn subscription_tracker_prepare_resubscribe_folds_pending_desired_state() {
+        let mut tracker = SubscriptionTracker::default();
+        tracker.active.insert(
+            10,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::OrderbookDelta],
+                market_tickers: Some(vec!["A".to_string()]),
+                ..Default::default()
+            },
+        );
+        tracker.active.insert(
+            20,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::Ticker],
+                market_tickers: Some(vec!["REMOVE".to_string()]),
+                ..Default::default()
+            },
+        );
+        tracker.record_update_cmd(
+            99,
+            WsUpdateSubscriptionParamsV2 {
+                action: WsUpdateAction::AddMarkets,
+                sid: Some(10),
+                sids: None,
+                market_ticker: None,
+                market_tickers: Some(vec!["B".to_string()]),
+                market_id: None,
+                market_ids: None,
+                send_initial_snapshot: None,
+                skip_ticker_ack: None,
+                index_ids: None,
+            },
+        );
+        tracker.record_unsubscribe_cmd(88, vec![20]);
+
+        let params = tracker.prepare_resubscribe();
+
+        assert_eq!(params.len(), 1);
+        assert_eq!(
+            params[0].market_tickers,
+            Some(vec!["A".to_string(), "B".to_string()])
+        );
+        assert!(tracker.pending_updates.is_empty());
+        assert!(tracker.pending_unsubscribes.is_empty());
+    }
+
+    #[test]
+    fn subscription_tracker_error_ack_cancels_pending_update() {
+        let mut tracker = SubscriptionTracker::default();
+        tracker.active.insert(
+            10,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::OrderbookDelta],
+                market_tickers: Some(vec!["A".to_string()]),
+                ..Default::default()
+            },
+        );
+        let update = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::AddMarkets,
+            sid: Some(10),
+            sids: None,
+            market_ticker: None,
+            market_tickers: Some(vec!["B".to_string()]),
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+        };
+        tracker.record_update_cmd(99, update);
+        assert_eq!(tracker.pending_updates.len(), 1);
+
+        tracker.handle_control_action(ControlAction::Error { cmd_id: 99 });
+        assert!(tracker.pending_updates.is_empty());
+
+        let params = tracker.prepare_resubscribe();
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].market_tickers, Some(vec!["A".to_string()]));
+    }
+
+    #[test]
+    fn subscription_tracker_does_not_record_nonmutating_updates() {
+        let mut tracker = SubscriptionTracker::default();
+        tracker.active.insert(
+            10,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::OrderbookDelta],
+                market_tickers: Some(vec!["A".to_string()]),
+                ..Default::default()
+            },
+        );
+        let update = WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::GetSnapshot,
+            sid: Some(10),
+            sids: None,
+            market_ticker: Some("B".to_string()),
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            skip_ticker_ack: None,
+            index_ids: None,
+        };
+        let mut indexlist = update.clone();
+        indexlist.action = WsUpdateAction::Indexlist;
+        indexlist.market_ticker = None;
+        tracker.record_update_cmd(42, update);
+        tracker.record_update_cmd(43, indexlist);
+        assert!(tracker.pending_updates.is_empty());
     }
 
     #[test]
