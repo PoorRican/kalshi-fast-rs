@@ -1,6 +1,7 @@
 use crate::error::KalshiError;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use ed25519_dalek::Signer as _;
 use rand::rngs::OsRng;
 use rsa::pss::SigningKey;
 use rsa::signature::{RandomizedSigner, SignatureEncoding};
@@ -8,10 +9,28 @@ use rsa::{RsaPrivateKey, pkcs1::DecodeRsaPrivateKey, pkcs8::DecodePrivateKey};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Private key material. Kalshi API keys may be RSA or Ed25519.
+#[derive(Clone)]
+enum PrivateKey {
+    /// Pre-built PSS signing key: avoids cloning the RSA key per request.
+    Rsa(SigningKey<Sha256>),
+    Ed25519(ed25519_dalek::SigningKey),
+}
+
+impl std::fmt::Debug for PrivateKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never print key material.
+        f.write_str(match self {
+            Self::Rsa(_) => "PrivateKey::Rsa(..)",
+            Self::Ed25519(_) => "PrivateKey::Ed25519(..)",
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct KalshiAuth {
     pub key_id: String,
-    private_key: RsaPrivateKey,
+    private_key: PrivateKey,
 }
 
 /// Convenience container for the three auth headers.
@@ -32,13 +51,22 @@ impl KalshiAuth {
         Self::from_pem_str(key_id, &pem)
     }
 
-    /// Load from a PEM string (supports PKCS#8 and PKCS#1).
+    /// Load from a PEM string. Supports RSA (PKCS#8 or PKCS#1) and Ed25519
+    /// (PKCS#8) private keys; the algorithm is detected from the key itself.
+    /// Ed25519 requests use the same headers and pre-sign text as RSA, with an
+    /// Ed25519 signature in place of RSA-PSS.
     pub fn from_pem_str(key_id: impl Into<String>, pem: &str) -> Result<Self, KalshiError> {
         let key_id = key_id.into();
 
-        let private_key = RsaPrivateKey::from_pkcs8_pem(pem)
+        let private_key = match RsaPrivateKey::from_pkcs8_pem(pem)
             .or_else(|_| RsaPrivateKey::from_pkcs1_pem(pem))
-            .map_err(|e| KalshiError::Crypto(e.to_string()))?;
+        {
+            Ok(key) => PrivateKey::Rsa(SigningKey::<Sha256>::new(key)),
+            Err(rsa_err) => match ed25519_dalek::SigningKey::from_pkcs8_pem(pem) {
+                Ok(key) => PrivateKey::Ed25519(key),
+                Err(_) => return Err(KalshiError::Crypto(rsa_err.to_string())),
+            },
+        };
 
         Ok(Self {
             key_id,
@@ -57,7 +85,7 @@ impl KalshiAuth {
 
     /// Create signature for a request:
     /// `message = timestamp + METHOD + path_without_query`,
-    /// `signature = RSA-PSS(SHA256)`, base64 encoded.
+    /// `signature = RSA-PSS(SHA256)` (or Ed25519 for Ed25519 keys), base64 encoded.
     pub fn sign(
         &self,
         timestamp_ms: &str,
@@ -67,14 +95,18 @@ impl KalshiAuth {
         let message = Self::signing_message(timestamp_ms, method, path);
         let message_bytes = message.as_bytes();
 
-        // RSA-PSS is randomized; use OS RNG.
-        let mut rng = OsRng;
-
-        // PSS with SHA256 (salt length = digest length) per Kalshi docs.
-        let signing_key = SigningKey::<Sha256>::new(self.private_key.clone());
-        let signature = signing_key.sign_with_rng(&mut rng, message_bytes);
-
-        Ok(STANDARD.encode(signature.to_bytes()))
+        match &self.private_key {
+            // PSS with SHA256 (salt length = digest length) per Kalshi docs.
+            // RSA-PSS is randomized; use OS RNG.
+            PrivateKey::Rsa(signing_key) => {
+                let signature = signing_key.sign_with_rng(&mut OsRng, message_bytes);
+                Ok(STANDARD.encode(signature.to_bytes()))
+            }
+            PrivateKey::Ed25519(signing_key) => {
+                let signature = signing_key.sign(message_bytes);
+                Ok(STANDARD.encode(signature.to_bytes()))
+            }
+        }
     }
 
     /// Build the canonical signing message (timestamp + METHOD + path_without_query).
@@ -107,8 +139,8 @@ pub mod tests {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use rand::rngs::OsRng;
     use rsa::RsaPrivateKey;
-    use rsa::pss::{Signature, VerifyingKey};
-    use rsa::signature::Verifier;
+    use rsa::pss::Signature;
+    use rsa::signature::{Keypair as _, Verifier};
     use sha2::Sha256;
 
     /// Load auth for tests. Optionally loads .env.test, supports both
@@ -131,7 +163,9 @@ pub mod tests {
                 RsaPrivateKey::new(&mut rng, 2048).expect("generate local test private key");
             KalshiAuth {
                 key_id,
-                private_key,
+                private_key: super::PrivateKey::Rsa(rsa::pss::SigningKey::<Sha256>::new(
+                    private_key,
+                )),
             }
         }
     }
@@ -158,9 +192,45 @@ pub mod tests {
             .decode(headers.signature.as_bytes())
             .expect("decode signature");
         let sig = Signature::try_from(sig_bytes.as_slice()).expect("signature");
-        let verifying_key = VerifyingKey::<Sha256>::new(auth.private_key.to_public_key());
+        let super::PrivateKey::Rsa(signing_key) = &auth.private_key else {
+            panic!("expected RSA test key");
+        };
+        let verifying_key = signing_key.verifying_key();
         verifying_key
             .verify(message.as_bytes(), &sig)
             .expect("signature verifies");
+    }
+
+    #[test]
+    fn ed25519_pem_signs_and_verifies() {
+        use ed25519_dalek::pkcs8::EncodePrivateKey;
+        use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
+        use ed25519_dalek::{Signature as EdSignature, Verifier as _};
+
+        let mut seed = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut OsRng, &mut seed);
+        let secret = ed25519_dalek::SigningKey::from_bytes(&seed);
+        let pem = secret.to_pkcs8_pem(LineEnding::LF).expect("encode pem");
+        let auth = KalshiAuth::from_pem_str("ed-key", pem.as_str()).expect("load ed25519 pem");
+
+        let headers = auth
+            .build_headers("GET", "/trade-api/v2/portfolio/balance?x=1")
+            .expect("build headers");
+        let message = KalshiAuth::signing_message(
+            &headers.timestamp_ms,
+            "GET",
+            "/trade-api/v2/portfolio/balance",
+        );
+        let sig_bytes = STANDARD.decode(headers.signature).expect("decode");
+        let sig = EdSignature::from_slice(&sig_bytes).expect("64-byte signature");
+        secret
+            .verifying_key()
+            .verify(message.as_bytes(), &sig)
+            .expect("ed25519 signature verifies");
+    }
+
+    #[test]
+    fn invalid_pem_is_crypto_error() {
+        assert!(KalshiAuth::from_pem_str("k", "not a pem").is_err());
     }
 }

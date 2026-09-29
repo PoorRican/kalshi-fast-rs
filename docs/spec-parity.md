@@ -91,6 +91,50 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market.liquidity_dollars` was removed upstream (2026-09-24; OpenAPI 3.31.0 no longer lists it), so
+  the crate field was removed rather than `#[deprecated]` (0.10.0). `settlement_bounds_type` is
+  `required` in the spec but modeled as `Option<SettlementBoundsType>` (with `#[serde(other)] Unknown`)
+  so partial/older payloads parse; `settlement_floor_dollars` is nullable and only set when the type is
+  `floor`. The `Market` struct intentionally keeps legacy integer/cents fields the spec no longer lists.
+
+- `AmendOrderV2Request.expiration_time`: `None` preserves expiry, `Some(0)` clears it, a future Unix
+  second sets it. The v1 `AmendOrderRequest` has no such field in the spec. Margin amend already had it.
+
+- Ed25519 API keys: `KalshiAuth` detects RSA vs Ed25519 (PKCS#8) from the PEM; the pre-sign text and
+  headers are identical. `CreateApiKeyRequest` has no `key_type` in the spec (inferred from the public
+  key); only `GenerateApiKeyRequest/Response` carry it. Not modeled yet: `subaccount` /
+  `fcm_subtrader_id` on the generate request and `warning` on the responses (Generate response
+  `warning` and `ApiKey` extras land in `extra` where a flatten exists).
+
+- `communications` `user_filter` is `""` or `"self"` (`WsUserFilter`); it is a subscribe-time param only.
+  `obscure_creator_id` RFQs show creator id `"0"` to other users, so treat `creator_id` as opaque.
+
+- `user_orders.last_update_reason` is not in the spec's `required` list, so it is `Option`.
+
+- Not in the crate (pre-existing gaps, not part of this refresh): margin isolated-position exit-trigger
+  endpoints (`/margin/isolated/positions/{ticker}/exit_trigger`; the 2026-09-28 "prices must be positive"
+  rule would apply), `Market.exchange_index`, and FIX-only changes.
+
+## Changelog Reconciliation (validated through 2026-09-29)
+
+| Changelog entry | Disposition |
+| --- | --- |
+| Amend order expiry | `AmendOrderV2Request.expiration_time` (margin already had it); FIX n/a |
+| Exit trigger prices must be positive | No change: exit-trigger endpoints not implemented (see gaps above) |
+| Settlement bounds on markets | `Market.settlement_bounds_type` / `settlement_floor_dollars` |
+| SETTLEMENT_BOUNDS_CANCEL (FIX) | No change: FIX only |
+| Reduce-only orders over FIX | No change: FIX only (REST `reduce_only` already modeled) |
+| RFQ creators may obscure pre-trade id | `CreateRFQRequest.obscure_creator_id` (+ `target_cost_excludes_fees`); ids are plain strings |
+| ClearingBusinessDate on Margin FIX | No change: FIX only |
+| user_orders include last_update_reason | `WsUserOrder.last_update_reason`; margin variant already present |
+| Filter communications RFQs to own user | `WsSubscriptionParamsV2.user_filter` |
+| liquidity_dollars removed | Field removed (breaking) |
+| RFQ/quote creation timestamps over FIX | No change: FIX only |
+| Ticker reference_price for Pyth perps | No change: `reference_price` already `Option<TickerPrice>` on margin ticker |
+| Ed25519 API keys | `KalshiAuth` Ed25519 support, `ApiKeyType`, `key_type` on generate |
+| 20% higher rate limits | No change: docs-only tier values; limits are fetched from `/account/limits` |
+| Optional WebSocket compression | No change: opt-in by the client; the crate does not offer permessage-deflate |
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

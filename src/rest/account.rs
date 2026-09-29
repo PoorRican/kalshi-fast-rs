@@ -171,9 +171,26 @@ pub struct CreateApiKeyResponse {
     pub extra: Map<String, Value>,
 }
 
+/// Signature algorithm of an API key pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyType {
+    /// 2048-bit RSA, signed with RSA-PSS SHA-256 (server default).
+    Rsa,
+    /// Ed25519 (RFC 8032). Load the returned PKCS#8 key with
+    /// [`KalshiAuth::from_pem_str`](crate::KalshiAuth::from_pem_str).
+    Ed25519,
+    /// Unrecognised future value.
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
+    /// Defaults to `rsa` server-side when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
 }
@@ -181,6 +198,9 @@ pub struct GenerateApiKeyRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateApiKeyResponse {
     pub api_key_id: String,
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
+    /// PEM: PKCS#1 for `rsa`, PKCS#8 for `ed25519`.
     pub private_key: String,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,

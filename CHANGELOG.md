@@ -8,6 +8,45 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-09-29
+
+### Compatibility
+
+- Docs snapshot: 2026-09-29
+- OpenAPI: 3.31.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-09-29
+
+### Breaking
+
+- [Upstream] [Rust API] Removed `Market::liquidity_dollars`. Kalshi removed the field from all market
+  responses (deprecated Feb 2026, always `"0.0000"`); use `yes_bid_size_fp` / `yes_ask_size_fp`.
+- [Rust API] New public fields on exhaustively-constructible structs: `AmendOrderV2Request::expiration_time`,
+  `CreateRFQRequest::{target_cost_excludes_fees, obscure_creator_id}`,
+  `GenerateApiKeyRequest::key_type`, `WsSubscriptionParamsV2::user_filter`. Add the new fields
+  (or `..Default::default()` where available) to struct literals.
+
+### Added
+
+- [Upstream] Ed25519 API keys: `KalshiAuth::from_pem_str` / `from_pem_file` now accept PKCS#8 Ed25519
+  keys (auto-detected) and sign REST/WebSocket requests with Ed25519; added `ApiKeyType`,
+  `GenerateApiKeyRequest::key_type`, and `GenerateApiKeyResponse::key_type`.
+- [Upstream] `Market::settlement_bounds_type` (`SettlementBoundsType`) and `settlement_floor_dollars`.
+- [Upstream] `AmendOrderV2Request::expiration_time` (omit = preserve, `0` = clear, future Unix seconds = set).
+- [Upstream] `CreateRFQRequest::obscure_creator_id` (and previously missing `target_cost_excludes_fees`).
+- [Upstream] `communications` WebSocket `user_filter` (`WsUserFilter::{All, SelfOnly}`).
+- [Upstream] `WsUserOrder::last_update_reason` (`WsLastUpdateReason`, incl. `ReduceOnlyCancel`).
+
+### Changed
+
+- [Rust API] RSA signing no longer clones the private key per request (pre-built PSS signing key).
+
+### Tests
+
+- [Tests] Added offline coverage for each of the above, including an Ed25519 sign/verify round trip.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

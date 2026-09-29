@@ -165,6 +165,19 @@ pub struct PriceRange {
     pub step: String,
 }
 
+/// Settlement bounds applied to a market.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    /// No settlement bounds.
+    Default,
+    /// YES side cannot settle below `settlement_floor_dollars`.
+    Floor,
+    /// Unrecognised future value.
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Market {
     pub ticker: String,
@@ -305,8 +318,6 @@ pub struct Market {
     #[serde(default)]
     pub liquidity_fp: Option<String>,
     #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]
     pub occurrence_datetime: Option<String>,
@@ -318,6 +329,14 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// Which settlement bounds apply (`default` = none). Required by the spec;
+    /// `Option` so older or partial payloads still parse. Added 2026-10.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES side can settle at. Only present when
+    /// `settlement_bounds_type` is `floor`; may be `null`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

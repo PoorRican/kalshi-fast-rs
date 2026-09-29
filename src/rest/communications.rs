@@ -197,6 +197,14 @@ pub struct CreateRFQRequest {
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
+    /// Size quotes against the target cost as principal only; taker fees are
+    /// charged on top. Only valid together with a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Hide the RFQ creator ID from other users (they see `"0"`) until
+    /// successful execution. The creator always sees their own ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

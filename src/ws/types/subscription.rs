@@ -29,6 +29,22 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `communications` channel only: [`WsUserFilter::SelfOnly`] restricts
+    /// `rfq_created` / `rfq_deleted` to RFQs you created. Quote notifications
+    /// are unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<WsUserFilter>,
+}
+
+/// `user_filter` values for the `communications` channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsUserFilter {
+    /// Receive RFQs from all users (wire value `""`, the default).
+    #[serde(rename = "")]
+    All,
+    /// Receive only RFQs created by the authenticated user.
+    #[serde(rename = "self")]
+    SelfOnly,
 }
 
 impl WsSubscriptionParamsV2 {

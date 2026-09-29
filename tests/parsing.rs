@@ -2,8 +2,9 @@
 
 pub(crate) use cargo_husky as _;
 use kalshi_fast::{
-    ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
-    CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
+    AmendOrderV2Request, ApiKeyType, ApplySubaccountTransferResponse, BookSide, BuySell,
+    CreateOrderRequest, CreateRFQRequest, CreateSubaccountResponse, ErrorResponse, EventData,
+    EventMetadata, EventStatus, GenerateApiKeyRequest, GenerateApiKeyResponse,
     GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
     GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
     GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
@@ -12,7 +13,9 @@ use kalshi_fast::{
     GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
     GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
-    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
+    PositionCountFilter, PriceRange, SelfTradePreventionType, SettlementBoundsType, TimeInForce,
+    TradeTakerSide, WsChannelV2, WsLastUpdateReason, WsSubscriptionParamsV2, WsUserFilter,
+    WsUserOrder, YesNo,
 };
 
 // ============================================================================
@@ -630,7 +633,8 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "previous_price": 52,
             "previous_price_dollars": "0.5200",
             "liquidity": 1000,
-            "liquidity_dollars": "10.0000",
+            "settlement_bounds_type": "floor",
+            "settlement_floor_dollars": "0.2500",
             "expiration_value": "123.4",
             "occurrence_datetime": "2026-04-16T18:30:00Z",
             "tick_size": 1,
@@ -658,8 +662,12 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
     assert_eq!(
-        resp.markets[0].liquidity_dollars.as_deref(),
-        Some("10.0000")
+        resp.markets[0].settlement_bounds_type,
+        Some(SettlementBoundsType::Floor)
+    );
+    assert_eq!(
+        resp.markets[0].settlement_floor_dollars.as_deref(),
+        Some("0.2500")
     );
     assert_eq!(
         resp.markets[0].occurrence_datetime.as_deref(),
@@ -1723,7 +1731,7 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
                 "volume_fp": "10.00",
                 "open_interest_fp": "10.00",
                 "notional_value_dollars": "1.0000",
-                "liquidity_dollars": "20.0000",
+                "settlement_bounds_type": "default",
                 "price_level_structure": "linear_cent",
                 "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
             }]
@@ -1737,7 +1745,11 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
     assert_eq!(market.yes_ask, None);
     assert_eq!(market.notional_value, None);
     assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
-    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(SettlementBoundsType::Default)
+    );
+    assert_eq!(market.settlement_floor_dollars, None);
 }
 
 #[test]
@@ -2026,4 +2038,133 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn market_settlement_bounds_unknown_value_and_removed_liquidity_dollars() {
+    let market: kalshi_fast::Market = serde_json::from_value(serde_json::json!({
+        "ticker": "T",
+        "settlement_bounds_type": "ceiling",
+        "settlement_floor_dollars": null,
+        "liquidity_dollars": "0.0000"
+    }))
+    .expect("market parses");
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(SettlementBoundsType::Unknown)
+    );
+    assert_eq!(market.settlement_floor_dollars, None);
+}
+
+#[test]
+fn amend_order_v2_expiration_time_omitted_zero_and_future() {
+    let mut req = AmendOrderV2Request {
+        ticker: "T".into(),
+        side: BookSide::Bid,
+        price: "0.5000".into(),
+        count: "1.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        expiration_time: None,
+        exchange_index: None,
+    };
+    let v = serde_json::to_value(&req).unwrap();
+    assert!(
+        v.get("expiration_time").is_none(),
+        "omitted preserves expiry"
+    );
+    req.expiration_time = Some(0);
+    assert_eq!(serde_json::to_value(&req).unwrap()["expiration_time"], 0);
+    req.expiration_time = Some(1_900_000_000);
+    assert_eq!(
+        serde_json::to_value(&req).unwrap()["expiration_time"],
+        1_900_000_000
+    );
+}
+
+#[test]
+fn create_rfq_request_serializes_obscure_creator_id() {
+    let req = CreateRFQRequest {
+        market_ticker: "T".into(),
+        contracts: None,
+        contracts_fp: Some("1.00".into()),
+        target_cost_centi_cents: None,
+        target_cost_dollars: None,
+        rest_remainder: false,
+        replace_existing: None,
+        target_cost_excludes_fees: None,
+        obscure_creator_id: Some(true),
+        subtrader_id: None,
+        subaccount: None,
+    };
+    let v = serde_json::to_value(&req).unwrap();
+    assert_eq!(v["obscure_creator_id"], true);
+    assert!(v.get("target_cost_excludes_fees").is_none());
+}
+
+#[test]
+fn ws_communications_user_filter_serializes() {
+    let params = WsSubscriptionParamsV2 {
+        channels: vec![WsChannelV2::Communications],
+        user_filter: Some(WsUserFilter::SelfOnly),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&params).unwrap()["user_filter"],
+        "self"
+    );
+    let all = WsSubscriptionParamsV2 {
+        user_filter: Some(WsUserFilter::All),
+        ..params
+    };
+    assert_eq!(serde_json::to_value(&all).unwrap()["user_filter"], "");
+    let none = WsSubscriptionParamsV2::default();
+    assert!(
+        serde_json::to_value(&none)
+            .unwrap()
+            .get("user_filter")
+            .is_none()
+    );
+}
+
+#[test]
+fn ws_user_order_last_update_reason_parses() {
+    let parse = |reason: &str| -> WsUserOrder {
+        serde_json::from_value(serde_json::json!({
+            "order_id": "o", "user_id": "u", "ticker": "T",
+            "last_update_reason": reason
+        }))
+        .unwrap()
+    };
+    assert_eq!(
+        parse("ReduceOnlyCancel").last_update_reason,
+        Some(WsLastUpdateReason::ReduceOnlyCancel)
+    );
+    assert_eq!(
+        parse("SomethingNew").last_update_reason,
+        Some(WsLastUpdateReason::Unknown)
+    );
+    let absent: WsUserOrder =
+        serde_json::from_value(serde_json::json!({"order_id": "o", "user_id": "u", "ticker": "T"}))
+            .unwrap();
+    assert_eq!(absent.last_update_reason, None);
+}
+
+#[test]
+fn generate_api_key_supports_ed25519() {
+    let req = GenerateApiKeyRequest {
+        name: "k".into(),
+        key_type: Some(ApiKeyType::Ed25519),
+        scopes: vec![],
+    };
+    assert_eq!(serde_json::to_value(&req).unwrap()["key_type"], "ed25519");
+    let resp: GenerateApiKeyResponse = serde_json::from_value(serde_json::json!({
+        "api_key_id": "id", "private_key": "pem", "key_type": "ed25519"
+    }))
+    .unwrap();
+    assert_eq!(resp.key_type, Some(ApiKeyType::Ed25519));
+    let legacy: GenerateApiKeyResponse =
+        serde_json::from_value(serde_json::json!({"api_key_id": "id", "private_key": "pem"}))
+            .unwrap();
+    assert_eq!(legacy.key_type, None);
 }

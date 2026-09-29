@@ -1,6 +1,6 @@
 [package]
 name = "kalshi-fast-rs"
-version = "0.9.1"
+version = "0.10.0"
 edition = "2024"
 description = "High-performance async Rust client for Kalshi prediction markets API with full WebSocket support"
 license = "MIT"
@@ -39,9 +39,10 @@ serde_json = { version = "1", features = ["raw_value"] }
 url = "2"
 thiserror = "1"
 
-# Auth (RSA-PSS SHA256 + base64)
+# Auth (RSA-PSS SHA256 / Ed25519 + base64)
 rsa = { version = "0.9", features = ["pem"] }
 sha2 = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "pkcs8", "pem"] }
 rand = "0.8"
 base64 = "0.22"
 httpdate = "1"

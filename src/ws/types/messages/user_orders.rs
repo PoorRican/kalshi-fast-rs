@@ -3,6 +3,25 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// Reason for the most recent order update (`user_orders` channel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum WsLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    /// `reduce_only` capped the order at placement (no position to reduce).
+    ReduceOnlyCancel,
+    /// Unrecognised future value.
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
@@ -58,4 +77,7 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+    /// Reason for the most recent update, if applicable.
+    #[serde(default)]
+    pub last_update_reason: Option<WsLastUpdateReason>,
 }
