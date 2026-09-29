@@ -8,6 +8,26 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.9.1] - 2026-09-29
+
+### Fixed
+
+- [WebSocket] Defer subscription tracking mutations until acknowledgment frames arrive (`subscribed`,
+  `unsubscribed`, `ok`, `error`). Commands sent over the wire record desired pending state before
+  transmission with rollback on local send failure, preventing dropped subscriptions on fast ACKs
+  and keeping reconnect replay aligned with caller intent.
+- [WebSocket] `GetSnapshot` and `Indexlist` subscription updates are non-mutating and no longer
+  accumulate pending entries in the tracker.
+- [WebSocket] Subscription errors (`error` control frames) cancel pending subscribe, unsubscribe, and
+  update intents.
+- [WebSocket] Reconnect replay applies pending updates in ascending command-id order and folds pending
+  unsubscribes before re-subscribing.
+
+### Tests
+
+- [Tests] Added ACK-deferred tracker tests covering update application on `ok`, rollback on send error,
+  unsubscribe on ACK, resubscribe folding, error-ACK intent cancellation, non-recording of
+  non-mutating updates, and raw control message parsing for `ok`, `error`, and `unsubscribed` frames.
 ## [0.9.0] - 2026-09-29
 
 ### Breaking

@@ -18,7 +18,7 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
     env: KalshiEnvironment,
     auth: Option<KalshiAuth>,
     config: WsReconnectConfig,
-    tracker: Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    tracker: Arc<Mutex<SubscriptionTracker<P>>>,
     event_tx: mpsc::Sender<ReaderItem<P::Message>>,
     mut outgoing_rx: mpsc::Receiver<Message>,
     mut shutdown_rx: watch::Receiver<bool>,
@@ -111,7 +111,7 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
 pub(crate) async fn handle_incoming_message<P: WsProtocol>(
     msg: Message,
     client: &mut WsLowLevelClient<P>,
-    tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    tracker: &Arc<Mutex<SubscriptionTracker<P>>>,
     event_tx: &mpsc::Sender<ReaderItem<P::Message>>,
     mode: WsReaderMode,
 ) -> Result<(), KalshiError> {
@@ -134,7 +134,7 @@ pub(crate) async fn handle_incoming_message<P: WsProtocol>(
 
 pub(crate) fn handle_payload<'a, P: WsProtocol>(
     bytes: Bytes,
-    tracker: &'a Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    tracker: &'a Arc<Mutex<SubscriptionTracker<P>>>,
     event_tx: &'a mpsc::Sender<ReaderItem<P::Message>>,
     mode: WsReaderMode,
 ) -> impl Future<Output = Result<(), KalshiError>> + 'a {
@@ -198,7 +198,7 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
     env: &KalshiEnvironment,
     auth: &Option<KalshiAuth>,
     config: &WsReconnectConfig,
-    tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    tracker: &Arc<Mutex<SubscriptionTracker<P>>>,
     event_tx: &mpsc::Sender<ReaderItem<P::Message>>,
     shutdown_rx: &mut watch::Receiver<bool>,
 ) -> Result<(), KalshiError> {
@@ -251,12 +251,12 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
                     let params = tracker.lock().await.prepare_resubscribe();
                     let mut resubscribe_err: Option<KalshiError> = None;
                     for p in params {
-                        match client.subscribe(p.clone()).await {
-                            Ok(id) => tracker.lock().await.record_subscribe_cmd(id, p),
-                            Err(err) => {
-                                resubscribe_err = Some(err);
-                                break;
-                            }
+                        let id = client.next_cmd_id();
+                        tracker.lock().await.record_subscribe_cmd(id, p.clone());
+                        if let Err(err) = client.subscribe(p).await {
+                            tracker.lock().await.drop_pending_subscribe(id);
+                            resubscribe_err = Some(err);
+                            break;
                         }
                     }
                     if let Some(err) = resubscribe_err {
