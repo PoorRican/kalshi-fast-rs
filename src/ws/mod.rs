@@ -132,6 +132,7 @@
 mod client;
 mod event;
 mod low_level;
+pub mod protocol;
 pub(crate) mod reader;
 mod reconnect;
 pub(crate) mod subscription;
@@ -142,5 +143,6 @@ pub use client::*;
 pub use event::WsTimedEvent;
 pub use event::{WsEvent, WsEventReceiver, WsReaderConfig, WsReaderMode};
 pub use low_level::*;
+pub use protocol::*;
 pub use reconnect::*;
 pub use types::*;
