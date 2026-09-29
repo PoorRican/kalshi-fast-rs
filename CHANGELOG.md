@@ -8,6 +8,30 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.9.0] - 2026-09-29
+
+### Breaking
+
+- [Rust API] `WsReconnectConfig` gains the public `ping_interval` and `pong_timeout` fields.
+  Downstream exhaustive struct literals must add `..Default::default()` or provide both fields.
+
+### Added
+
+- [WebSocket] Added opt-in background-reader keepalive pings with a configurable inbound-frame
+  timeout. Keepalive is disabled by default.
+- [WebSocket] The background reader now exits promptly when its event receiver is dropped while
+  idle.
+
+### Fixed
+
+- [WebSocket] Reject zero keepalive intervals and zero pong timeouts when keepalive is enabled,
+  avoiding Tokio interval panics and immediate timeout loops.
+
+### Tests
+
+- [Tests] Added keepalive ping, timeout/reconnect, default-disabled, zero-duration validation, and
+  idle receiver-close coverage.
+
 ## [0.8.0] - 2026-09-28
 
 ### Compatibility

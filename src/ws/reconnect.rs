@@ -18,6 +18,8 @@ use tokio::time::Duration;
 /// | `max_delay` | 30 s |
 /// | `jitter` | 0.2 |
 /// | `resubscribe` | `true` |
+/// | `ping_interval` | `None` (disabled) |
+/// | `pong_timeout` | 10 s |
 #[derive(Debug, Clone)]
 pub struct WsReconnectConfig {
     /// Maximum reconnection attempts. `None` means unlimited.
@@ -30,6 +32,13 @@ pub struct WsReconnectConfig {
     pub jitter: f64,
     /// Whether to resubscribe to active channels after reconnecting.
     pub resubscribe: bool,
+    /// Interval between client-originated `Ping` frames. `None` disables
+    /// keepalive, leaving reads without a deadline.
+    pub ping_interval: Option<Duration>,
+    /// How long to wait for any inbound frame after a ping before treating
+    /// the connection as dead and reconnecting. Only meaningful when
+    /// `ping_interval` is set.
+    pub pong_timeout: Duration,
 }
 
 impl Default for WsReconnectConfig {
@@ -40,6 +49,8 @@ impl Default for WsReconnectConfig {
             max_delay: Duration::from_secs(30),
             jitter: 0.2,
             resubscribe: true,
+            ping_interval: None,
+            pong_timeout: Duration::from_secs(10),
         }
     }
 }
