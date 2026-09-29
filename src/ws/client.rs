@@ -160,6 +160,18 @@ impl<P: WsProtocol> GenericWsClient<P> {
                 "websocket reader buffer_size must be > 0".to_string(),
             ));
         }
+        if let Some(interval) = self.config.ping_interval
+            && interval.is_zero()
+        {
+            return Err(KalshiError::InvalidParams(
+                "ping_interval must be greater than zero".to_string(),
+            ));
+        }
+        if self.config.ping_interval.is_some() && self.config.pong_timeout.is_zero() {
+            return Err(KalshiError::InvalidParams(
+                "pong_timeout must be greater than zero when ping_interval is set".to_string(),
+            ));
+        }
 
         let client = self
             .client
@@ -653,6 +665,7 @@ mod tests {
             max_delay: Duration::ZERO,
             jitter: 0.0,
             resubscribe: true,
+            ..Default::default()
         };
         let mut client =
             KalshiWsClient::connect_authenticated(test_env(addr), load_test_auth(), reconnect)
@@ -740,6 +753,7 @@ mod tests {
             max_delay: Duration::from_secs(5),
             jitter: 0.0,
             resubscribe: false,
+            ..Default::default()
         };
         let mut client = KalshiWsClient::connect_authenticated(env, auth, config)
             .await
@@ -823,6 +837,7 @@ mod tests {
                 max_delay: Duration::from_millis(1),
                 jitter: 0.0,
                 resubscribe: false,
+                ..Default::default()
             },
         )
         .await
@@ -835,6 +850,49 @@ mod tests {
             WsEvent::Message(message) => assert_eq!(message.sequence(), Some(2)),
             other => panic!("expected valid message, got {other:?}"),
         }
+        server.await.expect("server");
+    }
+    #[tokio::test]
+    async fn start_reader_rejects_zero_ping_interval() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (release_server, server_released) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let _ws = accept_async(stream).await.expect("accept ws");
+            let _ = server_released.await;
+        });
+        let mut client = KalshiWsClient::connect_authenticated(
+            test_env(addr),
+            load_test_auth(),
+            WsReconnectConfig {
+                ping_interval: Some(Duration::ZERO),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("connect");
+        let error = client
+            .start_reader_v2(WsReaderConfig::default())
+            .await
+            .expect_err("zero ping interval must be rejected");
+        assert!(matches!(
+            error,
+            KalshiError::InvalidParams(message)
+                if message == "ping_interval must be greater than zero"
+        ));
+        client.config.ping_interval = Some(Duration::from_secs(1));
+        client.config.pong_timeout = Duration::ZERO;
+        let error = client
+            .start_reader_v2(WsReaderConfig::default())
+            .await
+            .expect_err("zero pong timeout must be rejected");
+        assert!(matches!(
+            error,
+            KalshiError::InvalidParams(message)
+                if message == "pong_timeout must be greater than zero when ping_interval is set"
+        ));
+        release_server.send(()).expect("release server");
         server.await.expect("server");
     }
 }
