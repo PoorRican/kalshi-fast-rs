@@ -8,6 +8,41 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.8.0] - 2026-09-28
+
+### Compatibility
+
+- Docs snapshot: 2026-09-28
+- OpenAPI: 3.20.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-09-28
+
+### Breaking
+
+- [Rust API] `KalshiEnvironment` gains `margin_ws_url`; downstream exhaustive struct literals must
+  provide the margin WebSocket endpoint.
+- [Rust API] `KalshiWsClient` and `KalshiWsLowLevelClient` are now aliases of generic protocol
+  client types.
+- [Rust API] `WsEvent`, `WsEventReceiver`, and `WsTimedEvent` gain a defaulted message type
+  parameter for protocol-specific events.
+
+### Added
+
+- [Rust API] Added generic event-contract and margin WebSocket protocol clients and perps/margin
+  REST and WebSocket support.
+- [Rust API] Added generic reader support for raw and owned event-contract and margin messages.
+
+### Fixed
+
+- [WebSocket] Restored raw reader mode, receiver-close handling, and single-parse owned frames.
+- [WebSocket] Preserved direct-path reconnect behavior for both transport and message parse errors.
+
+### Tests
+
+- [Tests] Added raw and owned reader coverage for subscription tracking and malformed frames.
+
 ## [0.7.1] - 2026-09-29
 
 ### Compatibility

@@ -429,6 +429,11 @@ impl GenericWsClient<EventContractProtocol> {
     pub async fn next_event_v2(&mut self) -> Result<WsEvent<WsMessageV2>, KalshiError> {
         self.next_event().await
     }
+    /// Wait for the next event with its reader-available timestamp.
+    #[cfg(feature = "timed-reader")]
+    pub async fn next_event_v2_timed(&mut self) -> Result<WsTimedEvent, KalshiError> {
+        self.next_event_timed().await
+    }
 }
 
 impl<P: WsProtocol> Drop for GenericWsClient<P> {
@@ -511,6 +516,7 @@ mod tests {
             WsEvent::Message(WsMessageV2::Subscribed {
                 id: Some(1),
                 sid: Some(42),
+                ..
             })
         ));
         client
@@ -613,6 +619,7 @@ mod tests {
             WsEvent::Message(WsMessageV2::Subscribed {
                 id: Some(1),
                 sid: Some(41),
+                ..
             })
         ));
         assert!(matches!(
@@ -627,6 +634,7 @@ mod tests {
             WsEvent::Message(WsMessageV2::Subscribed {
                 id: Some(1),
                 sid: Some(42),
+                ..
             })
         ));
         client

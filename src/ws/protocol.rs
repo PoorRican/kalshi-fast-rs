@@ -4,6 +4,17 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
+mod private {
+    pub trait Sealed {}
+
+    pub enum ControlAction {
+        Subscribed { cmd_id: Option<u64>, sid: u64 },
+        Unsubscribed { sid: u64 },
+    }
+}
+
+pub(crate) use private::ControlAction;
+
 pub trait Channel:
     Serialize + DeserializeOwned + Debug + Clone + PartialEq + Send + 'static
 {
@@ -11,7 +22,7 @@ pub trait Channel:
     fn as_str(&self) -> &'static str;
 }
 
-pub trait WsProtocol: Send + 'static {
+pub trait WsProtocol: private::Sealed + Send + 'static {
     type Message: Clone + Send + 'static;
     type Channel: Channel;
     type SubscribeParams: Clone + Default + Serialize + Send + 'static;
@@ -19,9 +30,12 @@ pub trait WsProtocol: Send + 'static {
     fn ws_url(env: &KalshiEnvironment) -> &str;
     fn signing_path() -> &'static str;
     fn parse_message(bytes: &[u8]) -> Result<Self::Message, KalshiError>;
+    #[doc(hidden)]
+    fn control_action(msg: &Self::Message) -> Option<private::ControlAction>;
 }
 
 pub struct EventContractProtocol;
+impl private::Sealed for EventContractProtocol {}
 
 impl WsProtocol for EventContractProtocol {
     type Message = crate::ws::types::WsMessageV2;
@@ -39,10 +53,28 @@ impl WsProtocol for EventContractProtocol {
     fn parse_message(bytes: &[u8]) -> Result<Self::Message, KalshiError> {
         crate::ws::types::WsMessageV2::from_bytes(bytes)
     }
+
+    fn control_action(msg: &Self::Message) -> Option<private::ControlAction> {
+        match msg {
+            crate::ws::types::WsMessageV2::Subscribed {
+                id: Some(id),
+                sid: Some(sid),
+                ..
+            } => Some(private::ControlAction::Subscribed {
+                cmd_id: Some(*id),
+                sid: *sid,
+            }),
+            crate::ws::types::WsMessageV2::Unsubscribed { sid: Some(sid), .. } => {
+                Some(private::ControlAction::Unsubscribed { sid: *sid })
+            }
+            _ => None,
+        }
+    }
 }
 
 #[allow(dead_code)]
 pub struct MarginProtocol;
+impl private::Sealed for MarginProtocol {}
 
 impl WsProtocol for MarginProtocol {
     type Message = crate::margin::ws::message::MarginDataMessage;
@@ -59,6 +91,23 @@ impl WsProtocol for MarginProtocol {
 
     fn parse_message(bytes: &[u8]) -> Result<Self::Message, KalshiError> {
         crate::margin::ws::message::MarginDataMessage::from_bytes(bytes)
+    }
+
+    fn control_action(msg: &Self::Message) -> Option<private::ControlAction> {
+        use crate::margin::ws::message::MarginDataMessage;
+
+        match msg {
+            MarginDataMessage::Subscribed { id, sid: Some(sid) } => {
+                Some(private::ControlAction::Subscribed {
+                    cmd_id: *id,
+                    sid: *sid,
+                })
+            }
+            MarginDataMessage::Unsubscribed { sid: Some(sid), .. } => {
+                Some(private::ControlAction::Unsubscribed { sid: *sid })
+            }
+            _ => None,
+        }
     }
 }
 
@@ -95,9 +144,4 @@ pub(crate) fn parse_control_message(bytes: &[u8]) -> Result<Option<ControlAction
         Ok(WsControlMessage::Other) => Ok(None),
         Err(_) => Ok(None),
     }
-}
-
-pub(crate) enum ControlAction {
-    Subscribed { cmd_id: Option<u64>, sid: u64 },
-    Unsubscribed { sid: u64 },
 }

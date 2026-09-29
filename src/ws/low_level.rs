@@ -183,6 +183,17 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
 }
 
 impl WsLowLevelClient<super::protocol::EventContractProtocol> {
+    /// Connect without auth. Kalshi requires authentication at handshake time.
+    pub async fn connect(_env: KalshiEnvironment) -> Result<Self, KalshiError> {
+        Err(KalshiError::AuthRequired("WebSocket connection"))
+    }
+
+    /// Read and deserialize the next event-contract envelope.
+    pub async fn next_envelope(&mut self) -> Result<super::types::WsEnvelope, KalshiError> {
+        let bytes = self.next_json_bytes().await?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
     pub async fn subscribe_v2(
         &mut self,
         params: WsSubscriptionParamsV2,

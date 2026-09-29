@@ -29,6 +29,7 @@ pub enum MarginDataMessage {
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        seq: Option<u64>,
     },
     Ok {
         id: Option<u64>,
@@ -38,6 +39,8 @@ pub enum MarginDataMessage {
     },
     Error {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         msg: MarginErrorMsg,
     },
     /// Catch-all for unrecognised message types (e.g. future channel types).
@@ -50,18 +53,25 @@ pub enum MarginDataMessage {
 impl MarginDataMessage {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, KalshiError> {
         match serde_json::from_slice::<MarginWireMessage>(bytes) {
-            Ok(wire) => Ok(wire.into()),
-            Err(_) => {
+            Ok(MarginWireMessage::Other) => {
                 #[derive(Deserialize)]
                 struct Raw {
                     #[serde(rename = "type")]
                     msg_type: Option<String>,
                 }
-                let raw = serde_json::from_slice::<Raw>(bytes)?;
+                let raw = serde_json::from_slice::<Raw>(bytes).map_err(|source| {
+                    KalshiError::parse_json("margin websocket message", bytes, source)
+                })?;
                 Ok(Self::Unknown {
                     msg_type: raw.msg_type,
                 })
             }
+            Ok(wire) => Ok(wire.into()),
+            Err(source) => Err(KalshiError::parse_json(
+                "margin websocket message",
+                bytes,
+                source,
+            )),
         }
     }
 }
@@ -74,33 +84,26 @@ impl MarginDataMessage {
 #[serde(tag = "type")]
 enum MarginWireMessage {
     #[serde(rename = "orderbook_snapshot")]
-    OrderbookSnapshot(MarginEnvelope<OrderbookSnapshotMsg>),
+    OrderbookSnapshot(SequencedMarginEnvelope<OrderbookSnapshotMsg>),
     #[serde(rename = "orderbook_delta")]
-    OrderbookDelta(MarginEnvelope<OrderbookDeltaMsg>),
+    OrderbookDelta(SequencedMarginEnvelope<OrderbookDeltaMsg>),
     #[serde(rename = "ticker")]
     Ticker(MarginEnvelope<TickerMsg>),
     #[serde(rename = "trade")]
-    Trade(MarginEnvelope<TradeMsg>),
+    Trade(SequencedMarginEnvelope<TradeMsg>),
     #[serde(rename = "fill")]
     Fill(MarginEnvelope<FillMsg>),
     #[serde(rename = "user_order")]
     UserOrder(MarginEnvelope<UserOrderMsg>),
     #[serde(rename = "order_group_updates")]
-    OrderGroupUpdates(MarginEnvelope<OrderGroupUpdatesMsg>),
+    OrderGroupUpdates(SequencedMarginEnvelope<OrderGroupUpdatesMsg>),
     #[serde(rename = "subscribed")]
     Subscribed {
         id: Option<u64>,
-        #[serde(default)]
-        sid: Option<u64>,
-        #[serde(default)]
-        msg: Option<MarginSubscribedMsg>,
+        msg: MarginSubscribedMsg,
     },
     #[serde(rename = "unsubscribed")]
-    Unsubscribed {
-        id: Option<u64>,
-        #[serde(default)]
-        sid: Option<u64>,
-    },
+    Unsubscribed { id: Option<u64>, sid: u64, seq: u64 },
     #[serde(rename = "ok")]
     Ok {
         id: Option<u64>,
@@ -114,27 +117,38 @@ enum MarginWireMessage {
     #[serde(rename = "error")]
     Error {
         id: Option<u64>,
+        #[serde(default)]
+        sid: Option<u64>,
+        #[serde(default)]
+        seq: Option<u64>,
         msg: MarginErrorMsg,
     },
+    #[serde(other)]
+    Other,
 }
 
 impl From<MarginWireMessage> for MarginDataMessage {
     fn from(wire: MarginWireMessage) -> Self {
         match wire {
-            MarginWireMessage::OrderbookSnapshot(e) => Self::OrderbookSnapshot(e),
-            MarginWireMessage::OrderbookDelta(e) => Self::OrderbookDelta(e),
+            MarginWireMessage::OrderbookSnapshot(e) => Self::OrderbookSnapshot(e.into()),
+            MarginWireMessage::OrderbookDelta(e) => Self::OrderbookDelta(e.into()),
             MarginWireMessage::Ticker(e) => Self::Ticker(e),
-            MarginWireMessage::Trade(e) => Self::Trade(e),
+            MarginWireMessage::Trade(e) => Self::Trade(e.into()),
             MarginWireMessage::Fill(e) => Self::Fill(e),
             MarginWireMessage::UserOrder(e) => Self::UserOrder(e),
-            MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e),
-            MarginWireMessage::Subscribed { id, sid, msg } => {
-                let sid = sid.or_else(|| msg.as_ref().and_then(|m| m.sid));
-                Self::Subscribed { id, sid }
-            }
-            MarginWireMessage::Unsubscribed { id, sid } => Self::Unsubscribed { id, sid },
+            MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e.into()),
+            MarginWireMessage::Subscribed { id, msg } => Self::Subscribed {
+                id,
+                sid: Some(msg.sid),
+            },
+            MarginWireMessage::Unsubscribed { id, sid, seq } => Self::Unsubscribed {
+                id,
+                sid: Some(sid),
+                seq: Some(seq),
+            },
             MarginWireMessage::Ok { id, sid, seq, msg } => Self::Ok { id, sid, seq, msg },
-            MarginWireMessage::Error { id, msg } => Self::Error { id, msg },
+            MarginWireMessage::Error { id, sid, seq, msg } => Self::Error { id, sid, seq, msg },
+            MarginWireMessage::Other => Self::Unknown { msg_type: None },
         }
     }
 }
@@ -145,14 +159,18 @@ impl From<MarginWireMessage> for MarginDataMessage {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct MarginSubscribedMsg {
-    pub channel: Option<String>,
-    pub sid: Option<u64>,
+    pub channel: String,
+    pub sid: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct MarginErrorMsg {
     pub code: u64,
     pub msg: String,
+    #[serde(default)]
+    pub market_ticker: Option<String>,
+    #[serde(default)]
+    pub market_tickers: Option<Vec<String>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -162,23 +180,112 @@ pub struct MarginErrorMsg {
 /// Shared envelope with `sid`, optional `seq`, and a typed `msg` payload.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct MarginEnvelope<T> {
+    #[serde(default)]
+    pub id: Option<u64>,
     pub sid: u64,
     #[serde(default)]
     pub seq: Option<u64>,
     pub msg: T,
 }
 
+#[derive(Debug, Deserialize)]
+struct SequencedMarginEnvelope<T> {
+    #[serde(default)]
+    id: Option<u64>,
+    sid: u64,
+    seq: u64,
+    msg: T,
+}
+
+impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
+    fn from(envelope: SequencedMarginEnvelope<T>) -> Self {
+        Self {
+            id: envelope.id,
+            sid: envelope.sid,
+            seq: Some(envelope.seq),
+            msg: envelope.msg,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // orderbook_snapshot  —  full orderbook depth
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MarginSide {
+    Bid,
+    Ask,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MarginOrderSource {
+    User,
+    System,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginSelfTradePreventionType {
+    TakerAtCross,
+    Maker,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum MarginLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    ReduceOnlyCancel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginOrderGroupEventType {
+    Created,
+    Triggered,
+    Reset,
+    Deleted,
+    LimitUpdated,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RequiredNullableI64(pub Option<i64>);
+
+impl<'de> Deserialize<'de> for RequiredNullableI64 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Option::<i64>::deserialize(deserializer).map(Self)
+    }
+}
+
+fn deserialize_required_nullable_i64<'de, D>(
+    deserializer: D,
+) -> Result<RequiredNullableI64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<i64>::deserialize(deserializer).map(RequiredNullableI64)
+}
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct OrderbookSnapshotMsg {
     pub market_ticker: String,
     #[serde(default)]
-    pub bid: Vec<Vec<String>>,
+    pub bid: Option<Vec<[String; 2]>>,
     #[serde(default)]
-    pub ask: Vec<Vec<String>>,
+    pub ask: Option<Vec<[String; 2]>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -190,9 +297,9 @@ pub struct OrderbookDeltaMsg {
     pub market_ticker: String,
     pub price: String,
     pub delta: String,
-    pub side: String,
+    pub side: MarginSide,
     #[serde(default)]
-    pub last_update_reason: Option<String>,
+    pub last_update_reason: Option<MarginLastUpdateReason>,
     #[serde(default)]
     pub client_order_id: Option<String>,
     #[serde(default)]
@@ -254,7 +361,7 @@ pub struct TradeMsg {
     pub market_ticker: String,
     pub price: String,
     pub count: String,
-    pub taker_side: String,
+    pub taker_side: MarginSide,
     pub ts_ms: i64,
 }
 
@@ -270,7 +377,7 @@ pub struct FillMsg {
     pub client_order_id: Option<String>,
     pub market_ticker: String,
     pub is_taker: bool,
-    pub side: String,
+    pub side: MarginSide,
     pub ts_ms: i64,
     pub price: String,
     pub count: String,
@@ -278,6 +385,7 @@ pub struct FillMsg {
     pub post_position: String,
     #[serde(default)]
     pub subaccount: Option<i64>,
+    pub order_source: MarginOrderSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -290,21 +398,25 @@ pub struct UserOrderMsg {
     pub user_id: String,
     pub client_order_id: String,
     pub ticker: String,
-    pub side: String,
+    pub side: MarginSide,
     pub price: String,
     pub fill_count: String,
     pub remaining_count: String,
     #[serde(default)]
-    pub self_trade_prevention_type: Option<String>,
+    pub self_trade_prevention_type: Option<MarginSelfTradePreventionType>,
     #[serde(default)]
     pub order_group_id: Option<String>,
     #[serde(default)]
     pub expiration_ts_ms: Option<i64>,
-    pub created_ts_ms: i64,
+    #[serde(deserialize_with = "deserialize_required_nullable_i64")]
+    pub created_ts_ms: RequiredNullableI64,
     #[serde(default)]
     pub last_updated_ts_ms: Option<i64>,
     #[serde(default)]
+    pub last_update_reason: Option<MarginLastUpdateReason>,
+    #[serde(default)]
     pub subaccount_number: Option<i64>,
+    pub order_source: MarginOrderSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -313,7 +425,7 @@ pub struct UserOrderMsg {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct OrderGroupUpdatesMsg {
-    pub event_type: String,
+    pub event_type: MarginOrderGroupEventType,
     pub order_group_id: String,
     #[serde(default)]
     pub contracts_limit_fp: Option<String>,
@@ -346,7 +458,10 @@ mod tests {
                 assert_eq!(e.sid, 1);
                 assert_eq!(e.seq, Some(100));
                 assert_eq!(e.msg.market_ticker, "KXBTCPERP1");
-                assert_eq!(e.msg.bid[0], vec!["50000.00", "1.5"]);
+                assert_eq!(
+                    e.msg.bid.as_ref().unwrap()[0],
+                    ["50000.00".to_string(), "1.5".to_string()]
+                );
             }
             _ => panic!("expected OrderbookSnapshot"),
         }
@@ -370,7 +485,7 @@ mod tests {
         match msg {
             MarginDataMessage::OrderbookDelta(e) => {
                 assert_eq!(e.msg.market_ticker, "KXBTCPERP1");
-                assert_eq!(e.msg.side, "bid");
+                assert_eq!(e.msg.side, MarginSide::Bid);
                 assert_eq!(e.msg.ts_ms, Some(1_700_000_000_000));
             }
             _ => panic!("expected OrderbookDelta"),
@@ -414,6 +529,7 @@ mod tests {
         let json = serde_json::json!({
             "type": "trade",
             "sid": 3,
+            "seq": 42,
             "msg": {
                 "trade_id": "t-123",
                 "market_ticker": "KXBTCPERP1",
@@ -427,7 +543,7 @@ mod tests {
         match msg {
             MarginDataMessage::Trade(e) => {
                 assert_eq!(e.msg.trade_id, "t-123");
-                assert_eq!(e.msg.taker_side, "bid");
+                assert_eq!(e.msg.taker_side, MarginSide::Bid);
             }
             _ => panic!("expected Trade"),
         }
@@ -450,6 +566,7 @@ mod tests {
                 "count": "1.0",
                 "fee_cost": "0.50",
                 "post_position": "5.0",
+                "order_source": "user",
                 "subaccount": 1
             }
         });
@@ -457,7 +574,7 @@ mod tests {
         match msg {
             MarginDataMessage::Fill(e) => {
                 assert!(e.msg.is_taker);
-                assert_eq!(e.msg.side, "ask");
+                assert_eq!(e.msg.side, MarginSide::Ask);
                 assert_eq!(e.msg.subaccount, Some(1));
             }
             _ => panic!("expected Fill"),
@@ -478,17 +595,33 @@ mod tests {
                 "price": "50000.00",
                 "fill_count": "0",
                 "remaining_count": "1.0",
-                "created_ts_ms": 1_700_000_000_000_i64
+                "created_ts_ms": null,
+                "order_source": "user"
             }
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
         match msg {
             MarginDataMessage::UserOrder(e) => {
-                assert_eq!(e.msg.side, "bid");
+                assert_eq!(e.msg.side, MarginSide::Bid);
                 assert_eq!(e.msg.fill_count, "0");
+                assert_eq!(e.msg.created_ts_ms.0, None);
             }
             _ => panic!("expected UserOrder"),
         }
+    }
+
+    #[test]
+    fn user_order_requires_nullable_created_timestamp_field() {
+        let bytes = br#"{"type":"user_order","sid":5,"msg":{"order_id":"o","user_id":"u","client_order_id":"c","ticker":"KXBTCPERP1","side":"bid","price":"1","fill_count":"0","remaining_count":"1","order_source":"user"}}"#;
+        let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
+        assert_eq!(error.parse_context(), Some("margin websocket message"));
+    }
+
+    #[test]
+    fn known_message_rejects_unknown_enum_value() {
+        let bytes = br#"{"type":"trade","sid":1,"seq":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"sideways","ts_ms":1}}"#;
+        let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
+        assert_eq!(error.parse_context(), Some("margin websocket message"));
     }
 
     #[test]
@@ -507,7 +640,7 @@ mod tests {
         let msg = parse(&serde_json::to_vec(&json).unwrap());
         match msg {
             MarginDataMessage::OrderGroupUpdates(e) => {
-                assert_eq!(e.msg.event_type, "limit_updated");
+                assert_eq!(e.msg.event_type, MarginOrderGroupEventType::LimitUpdated);
                 assert_eq!(e.msg.order_group_id, "og_123");
             }
             _ => panic!("expected OrderGroupUpdates"),
@@ -519,7 +652,7 @@ mod tests {
         let json = serde_json::json!({
             "type": "subscribed",
             "id": 1,
-            "sid": 42
+            "msg": {"channel": "ticker", "sid": 42}
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
         assert_eq!(
@@ -527,23 +660,6 @@ mod tests {
             MarginDataMessage::Subscribed {
                 id: Some(1),
                 sid: Some(42)
-            }
-        );
-    }
-
-    #[test]
-    fn parse_subscribed_with_msg_sid() {
-        let json = serde_json::json!({
-            "type": "subscribed",
-            "id": 1,
-            "msg": {"channel": "ticker", "sid": 99}
-        });
-        let msg = parse(&serde_json::to_vec(&json).unwrap());
-        assert_eq!(
-            msg,
-            MarginDataMessage::Subscribed {
-                id: Some(1),
-                sid: Some(99)
             }
         );
     }
@@ -552,14 +668,16 @@ mod tests {
     fn parse_unsubscribed() {
         let json = serde_json::json!({
             "type": "unsubscribed",
-            "sid": 42
+            "sid": 42,
+            "seq": 1
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
         assert_eq!(
             msg,
             MarginDataMessage::Unsubscribed {
                 id: None,
-                sid: Some(42)
+                sid: Some(42),
+                seq: Some(1)
             }
         );
     }
@@ -569,6 +687,8 @@ mod tests {
         let json = serde_json::json!({
             "type": "error",
             "id": 1,
+            "sid": 42,
+            "seq": 7,
             "msg": {"code": 8, "msg": "Unknown channel name"}
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
@@ -576,9 +696,13 @@ mod tests {
             msg,
             MarginDataMessage::Error {
                 id: Some(1),
+                sid: Some(42),
+                seq: Some(7),
                 msg: MarginErrorMsg {
                     code: 8,
-                    msg: "Unknown channel name".into()
+                    msg: "Unknown channel name".into(),
+                    market_ticker: None,
+                    market_tickers: None,
                 }
             }
         );
@@ -603,6 +727,28 @@ mod tests {
                 msg: Some(serde_json::json!({"ok": true})),
             }
         );
+    }
+
+    #[test]
+    fn malformed_known_type_is_an_error() {
+        let bytes = br#"{"type":"ticker","sid":1,"msg":{"market_ticker":"KXBTCPERP1"}}"#;
+        let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
+        assert_eq!(error.parse_context(), Some("margin websocket message"));
+        assert_eq!(error.parse_raw_bytes(), Some(bytes.as_slice()));
+    }
+
+    #[test]
+    fn sequenced_message_requires_sequence_number() {
+        let bytes = br#"{"type":"trade","sid":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"bid","ts_ms":1}}"#;
+        let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
+        assert_eq!(error.parse_context(), Some("margin websocket message"));
+    }
+
+    #[test]
+    fn snapshot_rejects_price_levels_with_wrong_length() {
+        let bytes = br#"{"type":"orderbook_snapshot","sid":1,"seq":1,"msg":{"market_ticker":"KXBTCPERP1","bid":[["1"]]}}"#;
+        let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
+        assert_eq!(error.parse_context(), Some("margin websocket message"));
     }
 
     #[test]

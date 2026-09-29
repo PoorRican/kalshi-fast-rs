@@ -3,6 +3,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::types::BookSide;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
 // Query parameter helpers
@@ -84,6 +85,8 @@ pub struct GetMarginFundingHistoryParams {
     pub end_date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -141,6 +144,8 @@ pub struct AmendMarginOrderRequest {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,12 +156,53 @@ pub struct CreateMarginOrderGroupRequest {
     pub contracts_limit: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdateMarginOrderGroupLimitRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateMarginOrderGroupResponse {
+    pub order_group_id: String,
+    pub subaccount: u32,
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginOrderGroupsResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub order_groups: Vec<MarginOrderGroup>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginOrderGroup {
+    pub id: String,
+    #[serde(default)]
+    pub contracts_limit_fp: Option<String>,
+    pub is_auto_cancel_enabled: bool,
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginOrderGroupResponse {
+    pub is_auto_cancel_enabled: bool,
+    #[serde(default)]
+    pub contracts_limit_fp: Option<String>,
+    pub orders: Vec<String>,
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -194,6 +240,12 @@ pub enum MarginMarketStatus {
     Closed,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginOrderReason {
+    Liquidation,
+    TakeProfitStopLoss,
+}
 // ---------------------------------------------------------------------------
 // Responses
 // ---------------------------------------------------------------------------
@@ -229,12 +281,20 @@ pub struct MarginMarket {
     pub status: MarginMarketStatus,
     pub title: String,
     pub contract_size: String,
+    pub underlying_multiplier: String,
     pub tick_size: String,
     pub fractional_trading_enabled: bool,
     #[serde(default)]
+    pub schedule: Option<MarginMarketSchedule>,
+    pub exchange_index: u32,
+    #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
-    pub leverage_estimates: Option<serde_json::Map<String, serde_json::Value>>,
+    pub leverage_estimates: Option<BTreeMap<String, f64>>,
+    #[serde(default)]
+    pub long_leverage_estimates: Option<BTreeMap<String, f64>>,
+    #[serde(default)]
+    pub short_leverage_estimates: Option<BTreeMap<String, f64>>,
     #[serde(default)]
     pub price: Option<String>,
     #[serde(default)]
@@ -259,6 +319,19 @@ pub struct MarginMarket {
     pub liquidation_mark_price: Option<TickerPrice>,
     #[serde(default)]
     pub reference_price: Option<TickerPrice>,
+    #[serde(default)]
+    pub asset_class: Option<String>,
+    #[serde(default)]
+    pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginMarketSchedule {
+    pub is_open: bool,
+    #[serde(default)]
+    pub next_close_ts: Option<i64>,
+    #[serde(default)]
+    pub next_open_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -357,8 +430,7 @@ pub struct GetMarginOrdersResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub orders: Vec<MarginOrder>,
-    #[serde(default)]
-    pub cursor: Option<String>,
+    pub cursor: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -387,13 +459,7 @@ pub struct MarginOrder {
     #[serde(default)]
     pub order_source: Option<String>,
     #[serde(default)]
-    pub time_in_force: Option<MarginTimeInForce>,
-    #[serde(default)]
-    pub post_only: Option<bool>,
-    #[serde(default)]
-    pub reduce_only: Option<bool>,
-    #[serde(default)]
-    pub subaccount: Option<u32>,
+    pub order_reason: Option<MarginOrderReason>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -434,8 +500,7 @@ pub struct GetMarginFillsResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub fills: Vec<MarginFill>,
-    #[serde(default)]
-    pub cursor: Option<String>,
+    pub cursor: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -471,10 +536,12 @@ pub struct MarginPosition {
     pub position: String,
     pub entry_price: String,
     pub unrealized_pnl: String,
-    pub margin_used: String,
+    #[serde(default)]
+    pub margin_used: Option<String>,
     pub fees: String,
     #[serde(default)]
     pub roe: Option<f64>,
+    pub is_portfolio: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -484,8 +551,7 @@ pub struct GetMarginTradesResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub trades: Vec<MarginTrade>,
-    #[serde(default)]
-    pub cursor: Option<String>,
+    pub cursor: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -501,9 +567,13 @@ pub struct MarginTrade {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NotionalRiskLimitResponse {
     pub default_notional_value_risk_limit: String,
+    pub notional_value_risk_limits_by_market_ticker: BTreeMap<String, String>,
+    pub total_current_usage: String,
+    pub current_usage_by_market_ticker: BTreeMap<String, String>,
     #[serde(default)]
-    pub notional_value_risk_limits_by_market_ticker:
-        Option<serde_json::Map<String, serde_json::Value>>,
+    pub member_notional_value_risk_limit: Option<String>,
+    #[serde(default)]
+    pub effective_account_notional_value_risk_limit: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -523,10 +593,8 @@ pub struct MarginSubaccountBalance {
     pub account_equity: String,
     pub maintenance_margin: String,
     pub initial_margin: String,
-    #[serde(default)]
-    pub resting_orders_margin: Option<String>,
-    #[serde(default)]
-    pub available_balance: Option<String>,
+    pub resting_orders_margin: String,
+    pub available_balance: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -555,14 +623,14 @@ pub struct MarginRiskPosition {
     pub position_leverage: Option<f64>,
     #[serde(default)]
     pub estimated_liquidation_price: Option<String>,
+    pub is_portfolio: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetMarginRiskParametersResponse {
     pub liquidation_margin_ratio_threshold: f64,
     pub queue_entry_margin_ratio_threshold: f64,
-    #[serde(default)]
-    pub initial_margin_multiplier: Option<serde_json::Map<String, serde_json::Value>>,
+    pub initial_margin_multiplier: BTreeMap<String, f64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -617,10 +685,6 @@ pub struct GetMarginFundingRateEstimateResponse {
 }
 
 use crate::rest::account::EmptyResponse;
-use crate::rest::orders::{
-    CreateOrderGroupResponse, GetOrderGroupResponse, GetOrderGroupsResponse,
-    UpdateOrderGroupLimitRequest,
-};
 
 // ---------------------------------------------------------------------------
 // Endpoints
@@ -789,10 +853,22 @@ impl KalshiRestClient {
         &self,
         order_id: &str,
         body: &AmendMarginOrderRequest,
+        subaccount: Option<u32>,
     ) -> Result<AmendMarginOrderResponse, KalshiError> {
         let path = Self::full_path(&format!("/margin/orders/{order_id}/amend"));
-        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
-            .await
+        #[derive(Serialize)]
+        struct Q {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            subaccount: Option<u32>,
+        }
+        self.send(
+            Method::POST,
+            &path,
+            Some(&Q { subaccount }),
+            Some(body),
+            true,
+        )
+        .await
     }
 
     pub async fn get_margin_fills(
@@ -964,7 +1040,7 @@ impl KalshiRestClient {
     pub async fn get_margin_order_groups(
         &self,
         subaccount: Option<u32>,
-    ) -> Result<GetOrderGroupsResponse, KalshiError> {
+    ) -> Result<GetMarginOrderGroupsResponse, KalshiError> {
         let path = Self::full_path("/margin/order_groups");
         #[derive(Serialize)]
         struct Q {
@@ -984,7 +1060,7 @@ impl KalshiRestClient {
     pub async fn create_margin_order_group(
         &self,
         body: &CreateMarginOrderGroupRequest,
-    ) -> Result<CreateOrderGroupResponse, KalshiError> {
+    ) -> Result<CreateMarginOrderGroupResponse, KalshiError> {
         let path = Self::full_path("/margin/order_groups/create");
         self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
             .await
@@ -994,7 +1070,7 @@ impl KalshiRestClient {
         &self,
         order_group_id: &str,
         subaccount: Option<u32>,
-    ) -> Result<GetOrderGroupResponse, KalshiError> {
+    ) -> Result<GetMarginOrderGroupResponse, KalshiError> {
         let path = Self::full_path(&format!("/margin/order_groups/{order_group_id}"));
         #[derive(Serialize)]
         struct Q {
@@ -1077,7 +1153,7 @@ impl KalshiRestClient {
     pub async fn update_margin_order_group_limit(
         &self,
         order_group_id: &str,
-        body: &UpdateOrderGroupLimitRequest,
+        body: &UpdateMarginOrderGroupLimitRequest,
         subaccount: Option<u32>,
     ) -> Result<EmptyResponse, KalshiError> {
         let path = Self::full_path(&format!("/margin/order_groups/{order_group_id}/limit"));
@@ -1117,5 +1193,45 @@ impl KalshiRestClient {
         let path = Self::full_path("/portfolio/margin/subaccounts/transfer");
         self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GetMarginOrderGroupResponse, MarginPosition};
+
+    #[test]
+    fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {
+        let position: MarginPosition = serde_json::from_value(serde_json::json!({
+            "subaccount": 2,
+            "market_ticker": "KXBTC-26JUN",
+            "position": "1.2500",
+            "entry_price": "100.00",
+            "unrealized_pnl": "2.50",
+            "margin_used": null,
+            "fees": "0.10",
+            "roe": null,
+            "is_portfolio": true
+        }))
+        .unwrap();
+
+        assert_eq!(position.margin_used, None);
+        assert_eq!(position.roe, None);
+        assert!(position.is_portfolio);
+    }
+
+    #[test]
+    fn margin_order_group_deserializes_order_ids() {
+        let response: GetMarginOrderGroupResponse = serde_json::from_value(serde_json::json!({
+            "is_auto_cancel_enabled": true,
+            "contracts_limit_fp": "12.5000",
+            "orders": ["a", "b"],
+            "exchange_index": 3
+        }))
+        .unwrap();
+
+        assert_eq!(response.orders, vec!["a".to_string(), "b".to_string()]);
+        assert!(response.is_auto_cancel_enabled);
+        assert_eq!(response.exchange_index, Some(3));
     }
 }

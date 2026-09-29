@@ -29,8 +29,10 @@ async fn main() -> anyhow::Result<()> {
 
     ws.subscribe(MarginSubscribeParams {
         channels: Some(vec![MarginChannel::Ticker]),
-        market_tickers: Some(vec![market_ticker.clone()]),
-        sub_account_id: None,
+        market_ticker: Some(market_ticker.clone()),
+        market_tickers: None,
+        send_initial_snapshot: None,
+        skip_ticker_ack: None,
     })
     .await?;
 
