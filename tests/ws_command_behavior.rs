@@ -56,7 +56,8 @@ async fn ws_demo_ticker_subscription_can_be_listed_and_unsubscribed() {
             msg,
             WsMessageV2::Unsubscribed {
                 id: Some(id),
-                sid: Some(msg_sid)
+                sid: Some(msg_sid),
+                ..
             } if *id == unsubscribe_id && *msg_sid == sid
         )
     })
@@ -66,6 +67,7 @@ async fn ws_demo_ticker_subscription_can_be_listed_and_unsubscribed() {
         WsMessageV2::Unsubscribed {
             id: Some(id),
             sid: Some(msg_sid),
+            ..
         } => {
             assert_eq!(id, unsubscribe_id);
             assert_eq!(msg_sid, sid);

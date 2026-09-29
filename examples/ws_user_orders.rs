@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
             WsEvent::Message(WsMessageV2::Subscribed {
                 id: Some(id),
                 sid: Some(subscription_id),
+                ..
             }) if id == sub_cmd_id => {
                 println!("subscribed sid={subscription_id}");
 

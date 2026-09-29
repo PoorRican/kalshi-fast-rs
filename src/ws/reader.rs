@@ -1,7 +1,7 @@
 use crate::auth::KalshiAuth;
 use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
-use crate::ws::event::{WsEvent, WsReaderMode};
+use crate::ws::event::{ReaderItem, WsEvent, WsReaderMode};
 use crate::ws::low_level::WsLowLevelClient;
 use crate::ws::protocol::{WsProtocol, parse_control_message};
 use crate::ws::reconnect::WsReconnectConfig;
@@ -10,6 +10,8 @@ use crate::ws::subscription::SubscriptionTracker;
 use bytes::Bytes;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, watch};
+#[cfg(feature = "timed-reader")]
+use tokio::time::Instant;
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -19,18 +21,16 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
     auth: Option<KalshiAuth>,
     config: WsReconnectConfig,
     tracker: Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
-    event_tx: mpsc::Sender<WsEvent<P::Message>>,
+    event_tx: mpsc::Sender<ReaderItem<P::Message>>,
     mut outgoing_rx: mpsc::Receiver<Message>,
     mut shutdown_rx: watch::Receiver<bool>,
     mode: WsReaderMode,
 ) {
     let mut outgoing_closed = false;
-
     loop {
-        if *shutdown_rx.borrow() {
+        if *shutdown_rx.borrow() || event_tx.is_closed() {
             return;
         }
-
         let result: Result<(), KalshiError> = tokio::select! {
             shutdown = shutdown_rx.changed() => {
                 let _ = shutdown;
@@ -52,8 +52,10 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
                 }
             }
         };
-
         if let Err(_err) = result {
+            if event_tx.is_closed() {
+                return;
+            }
             match handle_reconnect(
                 &mut client,
                 &env,
@@ -65,12 +67,18 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
             )
             .await
             {
-                Ok(()) => {}
+                Ok(()) => {
+                    if event_tx.is_closed() {
+                        return;
+                    }
+                }
                 Err(err) => {
                     if *shutdown_rx.borrow() {
                         return;
                     }
-                    let _ = event_tx.send(WsEvent::Disconnected { error: err }).await;
+                    let _ = event_tx
+                        .send(wrap_event(WsEvent::Disconnected { error: err }, None))
+                        .await;
                     return;
                 }
             }
@@ -82,7 +90,7 @@ pub(crate) async fn handle_incoming_message<P: WsProtocol>(
     msg: Message,
     client: &mut WsLowLevelClient<P>,
     tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
-    event_tx: &mpsc::Sender<WsEvent<P::Message>>,
+    event_tx: &mpsc::Sender<ReaderItem<P::Message>>,
     mode: WsReaderMode,
 ) -> Result<(), KalshiError> {
     match msg {
@@ -102,26 +110,65 @@ pub(crate) async fn handle_incoming_message<P: WsProtocol>(
     }
 }
 
-pub(crate) async fn handle_payload<P: WsProtocol>(
+pub(crate) fn handle_payload<'a, P: WsProtocol>(
     bytes: Bytes,
-    tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
-    event_tx: &mpsc::Sender<WsEvent<P::Message>>,
-    _mode: WsReaderMode,
-) -> Result<(), KalshiError> {
-    // Parse control messages for subscription tracking (shared JSON format)
-    if let Ok(Some(action)) = parse_control_message(&bytes) {
-        let mut tracker = tracker.lock().await;
-        tracker.handle_control_action(action);
-        // Fall through to also forward the control message to the user
+    tracker: &'a Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
+    event_tx: &'a mpsc::Sender<ReaderItem<P::Message>>,
+    mode: WsReaderMode,
+) -> impl Future<Output = Result<(), KalshiError>> + 'a {
+    let available_at = {
+        #[cfg(feature = "timed-reader")]
+        {
+            Some(Instant::now())
+        }
+        #[cfg(not(feature = "timed-reader"))]
+        {
+            None
+        }
+    };
+    async move {
+        match mode {
+            WsReaderMode::Owned => {
+                let msg = P::parse_message(&bytes)?;
+                if let Some(action) = P::control_action(&msg) {
+                    tracker.lock().await.handle_control_action(action);
+                }
+                event_tx
+                    .send(wrap_event(WsEvent::Message(msg), available_at))
+                    .await
+                    .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
+            }
+            WsReaderMode::Raw => {
+                let raw = crate::ws::types::WsRawEvent::new(bytes);
+                if let Ok(Some(action)) = parse_control_message(raw.as_slice()) {
+                    tracker.lock().await.handle_control_action(action);
+                }
+                event_tx
+                    .send(wrap_event(WsEvent::Raw(raw), available_at))
+                    .await
+                    .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
+            }
+        }
+        Ok(())
     }
+}
 
-    let msg = P::parse_message(&bytes)?;
-    event_tx
-        .send(WsEvent::Message(msg))
-        .await
-        .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
-
-    Ok(())
+pub(crate) fn wrap_event<M>(
+    event: WsEvent<M>,
+    available_at: Option<tokio::time::Instant>,
+) -> ReaderItem<M> {
+    #[cfg(feature = "timed-reader")]
+    {
+        crate::ws::event::WsTimedEvent {
+            event,
+            available_at: available_at.unwrap_or_else(Instant::now),
+        }
+    }
+    #[cfg(not(feature = "timed-reader"))]
+    {
+        let _ = available_at;
+        event
+    }
 }
 
 pub(crate) async fn handle_reconnect<P: WsProtocol>(
@@ -130,35 +177,35 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
     auth: &Option<KalshiAuth>,
     config: &WsReconnectConfig,
     tracker: &Arc<Mutex<SubscriptionTracker<P::SubscribeParams>>>,
-    event_tx: &mpsc::Sender<WsEvent<P::Message>>,
+    event_tx: &mpsc::Sender<ReaderItem<P::Message>>,
     shutdown_rx: &mut watch::Receiver<bool>,
 ) -> Result<(), KalshiError> {
     let mut attempt: u32 = 0;
     let mut last_err = KalshiError::Ws("websocket disconnected".to_string());
-
     loop {
-        if *shutdown_rx.borrow() {
+        if *shutdown_rx.borrow() || event_tx.is_closed() {
             return Ok(());
         }
-
         attempt = attempt.saturating_add(1);
         if let Some(max) = config.max_retries
             && attempt > max
         {
             return Err(last_err);
         }
-
         let delay = config.backoff_delay(attempt);
         if !delay.is_zero() {
             tokio::select! {
                 _ = sleep(delay) => {}
+                _ = event_tx.closed() => return Ok(()),
                 changed = shutdown_rx.changed() => {
                     let _ = changed;
                     return Ok(());
                 }
             }
         }
-
+        if event_tx.is_closed() {
+            return Ok(());
+        }
         let reconnect_future = async {
             match auth {
                 Some(auth) => {
@@ -169,27 +216,21 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
         };
         let reconnect = tokio::select! {
             result = reconnect_future => result,
+            _ = event_tx.closed() => return Ok(()),
             changed = shutdown_rx.changed() => {
                 let _ = changed;
                 return Ok(());
             }
         };
-
         match reconnect {
             Ok(new_client) => {
                 *client = new_client;
                 if config.resubscribe {
-                    let params = {
-                        let mut tracker = tracker.lock().await;
-                        tracker.prepare_resubscribe()
-                    };
+                    let params = tracker.lock().await.prepare_resubscribe();
                     let mut resubscribe_err: Option<KalshiError> = None;
                     for p in params {
                         match client.subscribe(p.clone()).await {
-                            Ok(id) => {
-                                let mut tracker = tracker.lock().await;
-                                tracker.record_subscribe_cmd(id, p);
-                            }
+                            Ok(id) => tracker.lock().await.record_subscribe_cmd(id, p),
                             Err(err) => {
                                 resubscribe_err = Some(err);
                                 break;
@@ -201,17 +242,15 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
                         continue;
                     }
                 }
-
-                if *shutdown_rx.borrow() {
+                if *shutdown_rx.borrow() || event_tx.is_closed() {
                     return Ok(());
                 }
-                let _ = event_tx.send(WsEvent::Reconnected { attempt }).await;
+                let _ = event_tx
+                    .send(wrap_event(WsEvent::Reconnected { attempt }, None))
+                    .await;
                 return Ok(());
             }
-            Err(err) => {
-                last_err = err;
-                continue;
-            }
+            Err(err) => last_err = err,
         }
     }
 }

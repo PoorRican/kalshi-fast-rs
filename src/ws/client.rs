@@ -1,9 +1,11 @@
 use crate::auth::KalshiAuth;
 use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
+#[cfg(feature = "timed-reader")]
+use crate::ws::event::WsTimedEvent;
 use crate::ws::event::{WsEvent, WsEventReceiver, WsReaderConfig};
 use crate::ws::low_level::WsLowLevelClient;
-use crate::ws::protocol::{Channel, EventContractProtocol, WsProtocol, parse_control_message};
+use crate::ws::protocol::{Channel, EventContractProtocol, WsProtocol};
 use crate::ws::reader::reader_loop;
 use crate::ws::reconnect::WsReconnectConfig;
 use crate::ws::subscription::SubscriptionTracker;
@@ -17,6 +19,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio::task::JoinHandle;
+#[cfg(feature = "timed-reader")]
+use tokio::time::Instant;
 use tokio::time::{Duration, sleep, timeout as tokio_timeout};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -248,24 +252,43 @@ impl<P: WsProtocol> GenericWsClient<P> {
                 .await
                 .ok_or_else(|| KalshiError::Ws("websocket reader closed".to_string()));
         }
+        self.next_direct_event().await
+    }
 
-        let message = {
+    async fn next_direct_event(&mut self) -> Result<WsEvent<P::Message>, KalshiError> {
+        let bytes = {
             let client = self
                 .client
                 .as_mut()
                 .ok_or_else(|| KalshiError::Ws("websocket client not connected".to_string()))?;
             client.next_json_bytes().await
         };
-
-        match message {
-            Ok(bytes) => {
-                if let Ok(Some(action)) = parse_control_message(&bytes) {
-                    self.tracker.lock().await.handle_control_action(action);
+        match bytes {
+            Ok(bytes) => match P::parse_message(&bytes) {
+                Ok(msg) => {
+                    if let Some(action) = P::control_action(&msg) {
+                        self.tracker.lock().await.handle_control_action(action);
+                    }
+                    Ok(WsEvent::Message(msg))
                 }
-                Ok(WsEvent::Message(P::parse_message(&bytes)?))
-            }
+                Err(err) => self.reconnect_loop(err).await,
+            },
             Err(err) => self.reconnect_loop(err).await,
         }
+    }
+
+    #[cfg(feature = "timed-reader")]
+    pub async fn next_event_timed(&mut self) -> Result<WsTimedEvent<P::Message>, KalshiError> {
+        if let Some(reader) = &self.reader {
+            return reader
+                .next_timed()
+                .await
+                .ok_or_else(|| KalshiError::Ws("websocket reader closed".to_string()));
+        }
+        Ok(WsTimedEvent {
+            event: self.next_direct_event().await?,
+            available_at: Instant::now(),
+        })
     }
 
     async fn reconnect_loop(
@@ -280,18 +303,13 @@ impl<P: WsProtocol> GenericWsClient<P> {
             {
                 return Ok(WsEvent::Disconnected { error: err });
             }
-
             let delay = self.config.backoff_delay(attempt);
             if !delay.is_zero() {
                 sleep(delay).await;
             }
-
             match self.reconnect().await {
                 Ok(()) => return Ok(WsEvent::Reconnected { attempt }),
-                Err(e) => {
-                    err = e;
-                    continue;
-                }
+                Err(e) => err = e,
             }
         }
     }
@@ -362,26 +380,8 @@ impl GenericWsClient<EventContractProtocol> {
                 "WebSocket private channel subscription",
             ));
         }
-
         validate_subscription(&params)?;
-
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
-
-        {
-            let mut tracker = self.tracker.lock().await;
-            tracker.record_subscribe_cmd(id, params.clone());
-        }
-
-        let cmd = WsSubscribeCmd {
-            id,
-            cmd: "subscribe",
-            params,
-        };
-
-        let text = serde_json::to_string(&cmd)?;
-        self.send_command(Message::Text(text)).await?;
-        Ok(id)
+        self.subscribe(params).await
     }
 
     /// Unsubscribe from one or more subscriptions by SID. Returns the command `id`.
@@ -392,21 +392,17 @@ impl GenericWsClient<EventContractProtocol> {
         self.unsubscribe(params).await
     }
 
-    /// Update an existing subscription (e.g. change market tickers).
     pub async fn update_subscription_v2(
         &mut self,
         params: WsUpdateSubscriptionParamsV2,
     ) -> Result<u64, KalshiError> {
         validate_update(&params)?;
-
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
-
         {
             let mut tracker = self.tracker.lock().await;
             tracker.apply_update(&params);
         }
-
         let cmd = WsUpdateSubscriptionCmd {
             id,
             cmd: "update_subscription",

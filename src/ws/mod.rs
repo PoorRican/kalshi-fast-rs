@@ -124,8 +124,10 @@
 //! channels and emits [`WsEvent::Reconnected`]. If retries are exhausted it
 //! emits [`WsEvent::Disconnected`]. Configure via [`WsReconnectConfig`].
 //!
-//! **Note:** Sequence resync is not automatic; callers must handle any gaps
-//! using the `seq` field on [`WsDataMessageV2`] variants.
+//! **Note:** Sequence resync is not automatic; callers must detect gaps with
+//! [`WsMessageV2::subscription_id`] and [`WsMessageV2::sequence`]. Matching only
+//! [`WsDataMessageV2`] variants is unsafe because control and future unknown frames can also
+//! consume the per-subscription cursor.
 
 mod client;
 mod event;
@@ -137,7 +139,9 @@ pub(crate) mod subscription;
 pub mod types;
 
 pub use client::*;
-pub use event::*;
+#[cfg(feature = "timed-reader")]
+pub use event::WsTimedEvent;
+pub use event::{WsEvent, WsEventReceiver, WsReaderConfig, WsReaderMode};
 pub use low_level::*;
 pub use protocol::*;
 pub use reconnect::*;
