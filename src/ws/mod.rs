@@ -138,7 +138,9 @@ pub(crate) mod subscription;
 pub mod types;
 
 pub use client::*;
-pub use event::*;
+#[cfg(feature = "timed-reader")]
+pub use event::WsTimedEvent;
+pub use event::{WsEvent, WsEventReceiver, WsReaderConfig, WsReaderMode};
 pub use low_level::*;
 pub use reconnect::*;
 pub use types::*;

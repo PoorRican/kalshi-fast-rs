@@ -1251,7 +1251,9 @@ mod tests {
 
         let msg = WsMessageV2::from_bytes(json.as_bytes()).unwrap();
         match msg {
-            WsMessageV2::ListSubscriptions { id, subscriptions } => {
+            WsMessageV2::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));
@@ -1262,7 +1264,9 @@ mod tests {
 
         let msg_ref = WsMessageRef::from_bytes(json.as_bytes()).unwrap();
         match msg_ref {
-            WsMessageRef::ListSubscriptions { id, subscriptions } => {
+            WsMessageRef::ListSubscriptions {
+                id, subscriptions, ..
+            } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
                 assert_eq!(subscriptions[0].shard_factor, Some(4));

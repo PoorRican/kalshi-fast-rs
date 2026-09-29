@@ -91,6 +91,9 @@ pub struct WsOrderbookDeltaRef<'a> {
 }
 
 impl<'a> WsOrderbookDeltaRef<'a> {
+    // The wire can still omit `ts_ms`; preserve deprecated `ts` while
+    // consumers migrate to the millisecond field.
+    #[allow(deprecated)]
     pub fn into_owned(self) -> WsOrderbookDelta {
         WsOrderbookDelta {
             market_ticker: self.market_ticker.into_owned(),
@@ -123,7 +126,10 @@ mod tests {
         assert!(matches!(delta.side, YesNo::Yes));
     }
 
+    // The deprecated venue field remains accepted because the wire may omit
+    // `ts_ms`; compatibility must round-trip it. Consumers prefer `ts_ms`.
     #[test]
+    #[allow(deprecated)]
     fn ws_orderbook_delta_timestamps_are_optional() {
         let json_missing_both = r#"{
             "market_ticker":"TEST",

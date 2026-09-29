@@ -92,6 +92,18 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+## Optional Timed Reader
+
+The `timed-reader` Cargo feature is disabled by default. Enable it when a background WebSocket
+reader needs the process-local availability time captured before its bounded handoff:
+
+```toml
+kalshi-fast-rs = { version = "0.7.1", features = ["timed-reader"] }
+```
+
+The feature adds an owned WebSocket event delivery API that includes this availability timestamp.
+Existing WebSocket event-reading APIs remain available without enabling the feature.
+
 ## Examples
 
 - `examples/rest_retry_config.rs`

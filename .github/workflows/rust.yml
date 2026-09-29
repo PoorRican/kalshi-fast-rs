@@ -23,3 +23,7 @@ jobs:
       run: cargo build --verbose
     - name: Run deterministic tests
       run: cargo test --all-targets --verbose
+    - name: Clippy (timed-reader)
+      run: cargo clippy --all-targets --features timed-reader
+    - name: Run deterministic tests (timed-reader)
+      run: cargo test --all-targets --features timed-reader --verbose

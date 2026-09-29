@@ -1,6 +1,8 @@
 use crate::auth::KalshiAuth;
 use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
+#[cfg(feature = "timed-reader")]
+use crate::ws::event::WsTimedEvent;
 use crate::ws::event::{WsEvent, WsEventReceiver, WsReaderConfig};
 use crate::ws::low_level::KalshiWsLowLevelClient;
 use crate::ws::reader::reader_loop;
@@ -15,6 +17,8 @@ use crate::ws::types::{
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio::task::JoinHandle;
+#[cfg(feature = "timed-reader")]
+use tokio::time::Instant;
 use tokio::time::{Duration, sleep, timeout as tokio_timeout};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -359,6 +363,30 @@ impl KalshiWsClient {
                 .ok_or_else(|| KalshiError::Ws("websocket reader closed".to_string()));
         }
 
+        self.next_direct_event_v2().await
+    }
+
+    /// Wait for the next event with the time it became available to this process.
+    ///
+    /// With a background reader, this preserves the timestamp recorded by the
+    /// reader immediately after decoding. Without one, the event is stamped
+    /// after the shared direct read/reconnect path returns it.
+    #[cfg(feature = "timed-reader")]
+    pub async fn next_event_v2_timed(&mut self) -> Result<WsTimedEvent, KalshiError> {
+        if let Some(reader) = &self.reader {
+            return reader
+                .next_timed()
+                .await
+                .ok_or_else(|| KalshiError::Ws("websocket reader closed".to_string()));
+        }
+
+        Ok(WsTimedEvent {
+            event: self.next_direct_event_v2().await?,
+            available_at: Instant::now(),
+        })
+    }
+
+    async fn next_direct_event_v2(&mut self) -> Result<WsEvent, KalshiError> {
         let client = self
             .client
             .as_mut()
@@ -463,6 +491,106 @@ mod tests {
     use tokio::time::{Duration, Instant};
     use tokio_tungstenite::accept_async;
     use url::Url;
+
+    #[cfg(feature = "timed-reader")]
+    fn ticker_frame(market_ticker: &str, market_id: &str, sequence: u64) -> String {
+        serde_json::json!({
+            "type": "ticker",
+            "sid": 1,
+            "seq": sequence,
+            "msg": {
+                "market_ticker": market_ticker,
+                "market_id": market_id,
+                "price_dollars": "0.01",
+                "yes_bid_dollars": "0.01",
+                "yes_ask_dollars": "0.02",
+                "yes_bid_size_fp": "1.00",
+                "yes_ask_size_fp": "2.00",
+                "last_trade_size_fp": "1.00",
+                "volume_fp": "0.00",
+                "open_interest_fp": "0.00",
+                "dollar_volume": 0,
+                "dollar_open_interest": 0,
+                "ts": 0,
+                "ts_ms": 0,
+                "time": "1970-01-01T00:00:00Z"
+            }
+        })
+        .to_string()
+    }
+
+    #[cfg(feature = "timed-reader")]
+    async fn client_with_ticker_frames() -> (KalshiWsClient, JoinHandle<()>) {
+        use futures::SinkExt;
+        use tokio_tungstenite::tungstenite::Message;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            for (ticker, market_id, sequence) in [("A", "1", 1), ("B", "2", 2)] {
+                ws.send(Message::Text(ticker_frame(ticker, market_id, sequence)))
+                    .await
+                    .expect("send ticker");
+            }
+        });
+
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{addr}"),
+        };
+        let client = KalshiWsClient::connect_authenticated(
+            env,
+            load_test_auth(),
+            WsReconnectConfig::default(),
+        )
+        .await
+        .expect("connect");
+
+        (client, server)
+    }
+
+    #[cfg(feature = "timed-reader")]
+    fn event_sequence(event: WsEvent) -> u64 {
+        match event {
+            WsEvent::Message(message) => message.sequence().expect("sequence"),
+            event => panic!("unexpected event: {event:?}"),
+        }
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_event_reads_directly_without_a_background_reader() {
+        let (mut client, server) = client_with_ticker_frames().await;
+
+        let timed = client.next_event_v2_timed().await.expect("timed event");
+
+        assert_eq!(event_sequence(timed.event), 1);
+        assert!(timed.available_at <= Instant::now());
+        server.await.expect("server");
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_background_reader_preserves_the_untimed_client_api() {
+        let (mut client, server) = client_with_ticker_frames().await;
+        client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 2,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+
+        let timed = client.next_event_v2_timed().await.expect("timed event");
+        let untimed = client.next_event_v2().await.expect("untimed event");
+
+        assert_eq!(event_sequence(timed.event), 1);
+        assert!(timed.available_at <= Instant::now());
+        assert_eq!(event_sequence(untimed), 2);
+        server.await.expect("server");
+    }
 
     #[tokio::test]
     async fn close_stops_reader_without_waiting_for_reconnect_backoff() {
