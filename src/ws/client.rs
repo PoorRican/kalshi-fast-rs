@@ -467,6 +467,62 @@ mod tests {
             margin_ws_url: format!("ws://{}", addr),
         }
     }
+    fn ticker_frame(market_ticker: &str, market_id: &str, sequence: u64) -> String {
+        json!({
+            "type": "ticker",
+            "sid": 1,
+            "seq": sequence,
+            "msg": {
+                "market_ticker": market_ticker,
+                "market_id": market_id,
+                "price_dollars": "0.01",
+                "yes_bid_dollars": "0.01",
+                "yes_ask_dollars": "0.02",
+                "yes_bid_size_fp": "1.00",
+                "yes_ask_size_fp": "2.00",
+                "last_trade_size_fp": "1.00",
+                "volume_fp": "0.00",
+                "open_interest_fp": "0.00",
+                "dollar_volume": 0,
+                "dollar_open_interest": 0,
+                "ts": 0,
+                "ts_ms": 0,
+                "time": "1970-01-01T00:00:00Z"
+            }
+        })
+        .to_string()
+    }
+
+    #[cfg(feature = "timed-reader")]
+    async fn client_with_ticker_frames() -> (KalshiWsClient, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            for (ticker, market_id, sequence) in [("A", "1", 1), ("B", "2", 2)] {
+                ws.send(Message::Text(ticker_frame(ticker, market_id, sequence)))
+                    .await
+                    .expect("send ticker");
+            }
+        });
+        let client = KalshiWsClient::connect_authenticated(
+            test_env(addr),
+            load_test_auth(),
+            WsReconnectConfig::default(),
+        )
+        .await
+        .expect("connect");
+        (client, server)
+    }
+
+    #[cfg(feature = "timed-reader")]
+    fn event_sequence(event: WsEvent) -> u64 {
+        match event {
+            WsEvent::Message(message) => message.sequence().expect("sequence"),
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
 
     #[tokio::test]
     async fn inline_next_event_promotes_subscribed_tracker() {
@@ -705,6 +761,80 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(1));
         assert!(client.reader_task.is_none());
 
+        server.await.expect("server");
+    }
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_event_reads_directly_without_a_background_reader() {
+        let (mut client, server) = client_with_ticker_frames().await;
+        let timed = client.next_event_v2_timed().await.expect("timed event");
+        assert_eq!(event_sequence(timed.event), 1);
+        assert!(timed.available_at <= Instant::now());
+        server.await.expect("server");
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_background_reader_preserves_the_untimed_client_api() {
+        let (mut client, server) = client_with_ticker_frames().await;
+        client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 2,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+        let timed = client.next_event_v2_timed().await.expect("timed event");
+        let untimed = client.next_event_v2().await.expect("untimed event");
+        assert_eq!(event_sequence(timed.event), 1);
+        assert!(timed.available_at <= Instant::now());
+        assert_eq!(event_sequence(untimed), 2);
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn direct_parse_error_reconnects_before_next_valid_event() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("first accept");
+            let mut first = accept_async(stream).await.expect("first ws");
+            first
+                .send(Message::Text(
+                    r#"{"type":"ticker","sid":1,"seq":1,"msg":{"market_ticker":"X"}}"#.to_owned(),
+                ))
+                .await
+                .expect("send malformed known message");
+            first.close(None).await.expect("close first socket");
+
+            let (stream, _) = listener.accept().await.expect("reconnect accept");
+            let mut second = accept_async(stream).await.expect("reconnect ws");
+            second
+                .send(Message::Text(ticker_frame("A", "1", 2)))
+                .await
+                .expect("send valid message");
+        });
+        let mut client = KalshiWsClient::connect_authenticated(
+            test_env(addr),
+            load_test_auth(),
+            WsReconnectConfig {
+                max_retries: Some(2),
+                base_delay: Duration::from_millis(1),
+                max_delay: Duration::from_millis(1),
+                jitter: 0.0,
+                resubscribe: false,
+            },
+        )
+        .await
+        .expect("connect");
+        assert!(matches!(
+            client.next_event_v2().await.expect("reconnect event"),
+            WsEvent::Reconnected { .. }
+        ));
+        match client.next_event_v2().await.expect("valid event") {
+            WsEvent::Message(message) => assert_eq!(message.sequence(), Some(2)),
+            other => panic!("expected valid message, got {other:?}"),
+        }
         server.await.expect("server");
     }
 }

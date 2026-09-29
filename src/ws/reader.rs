@@ -308,6 +308,13 @@ mod tests {
         })
         .to_string()
     }
+    #[cfg(feature = "timed-reader")]
+    fn ticker_sequence(event: &WsEvent) -> u64 {
+        match event {
+            WsEvent::Message(message) => message.sequence().expect("sequence"),
+            other => panic!("expected ticker message, got {other:?}"),
+        }
+    }
 
     #[tokio::test]
     async fn reader_backpressure_preserves_messages() {
@@ -560,6 +567,109 @@ mod tests {
         task.abort();
         server.await.expect("server");
     }
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_reader_stamps_before_backpressure_and_preserves_sequence() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        let receiver = crate::ws::event::WsEventReceiver::new(event_rx);
+        let tracker = Arc::new(Mutex::new(SubscriptionTracker::default()));
+        let first = WsEvent::Message(
+            WsMessageV2::from_bytes(&Bytes::from(ticker_frame("A", "1", 1, 1)))
+                .expect("decode first"),
+        );
+        event_tx
+            .send(wrap_event(first, None))
+            .await
+            .expect("fill channel");
+
+        let tracker_guard = tracker.lock().await;
+        let blocked_tracker = Arc::clone(&tracker);
+        let blocked_tx = event_tx.clone();
+        let blocked = tokio::spawn(async move {
+            handle_payload::<EventContractProtocol>(
+                Bytes::from(ticker_frame("B", "2", 2, 2)),
+                &blocked_tracker,
+                &blocked_tx,
+                WsReaderMode::Owned,
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        drop(tracker_guard);
+
+        let released_at = tokio::time::Instant::now();
+        let first = receiver.next().await.expect("first event");
+        let second = receiver.next_timed().await.expect("second event");
+        blocked
+            .await
+            .expect("blocked task join")
+            .expect("blocked result");
+        handle_payload::<EventContractProtocol>(
+            Bytes::from(ticker_frame("C", "3", 3, 3)),
+            &tracker,
+            &event_tx,
+            WsReaderMode::Owned,
+        )
+        .await
+        .expect("third payload");
+        let third = receiver.next().await.expect("third event");
+
+        assert_eq!(ticker_sequence(&first), 1);
+        assert_eq!(ticker_sequence(&second.event), 2);
+        assert_eq!(ticker_sequence(&third), 3);
+        assert!(second.available_at < released_at);
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_reader_stamps_at_payload_entry_before_owned_decode() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        let receiver = crate::ws::event::WsEventReceiver::new(event_rx);
+        let tracker = Arc::new(Mutex::new(SubscriptionTracker::default()));
+        let pending = handle_payload::<EventContractProtocol>(
+            Bytes::from(ticker_frame("A", "1", 1, 1)),
+            &tracker,
+            &event_tx,
+            WsReaderMode::Owned,
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let first_poll_at = tokio::time::Instant::now();
+        pending.await.expect("owned payload");
+        let event = receiver.next_timed().await.expect("owned event");
+        assert!(matches!(event.event, WsEvent::Message(_)));
+        assert!(event.available_at < first_poll_at);
+    }
+
+    #[cfg(feature = "timed-reader")]
+    #[tokio::test]
+    async fn timed_raw_reader_stamps_before_tracker_work() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        let receiver = crate::ws::event::WsEventReceiver::new(event_rx);
+        let tracker = Arc::new(Mutex::new(SubscriptionTracker::default()));
+        let tracker_guard = tracker.lock().await;
+        let blocked_tracker = Arc::clone(&tracker);
+        let payload = ticker_frame("A", "1", 1, 1);
+        let blocked = tokio::spawn(async move {
+            handle_payload::<EventContractProtocol>(
+                Bytes::from(payload),
+                &blocked_tracker,
+                &event_tx,
+                WsReaderMode::Raw,
+            )
+            .await
+        });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let tracker_released_at = tokio::time::Instant::now();
+        drop(tracker_guard);
+        let event = receiver.next_timed().await.expect("raw event");
+        blocked
+            .await
+            .expect("blocked task join")
+            .expect("blocked result");
+        assert!(matches!(event.event, WsEvent::Raw(_)));
+        assert!(event.available_at < tracker_released_at);
+    }
+
     #[tokio::test]
     async fn reader_loop_exits_when_event_receiver_closes() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");

@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
         MarginWsClient::connect_authenticated(env, auth, WsReconnectConfig::default()).await?;
 
     ws.subscribe(MarginSubscribeParams {
-        channels: Some(vec![MarginChannel::OrderbookDelta, MarginChannel::Trade]),
+        channels: vec![MarginChannel::OrderbookDelta, MarginChannel::Trade],
         market_ticker: None,
         market_tickers: Some(vec![market_ticker.clone()]),
         send_initial_snapshot: None,

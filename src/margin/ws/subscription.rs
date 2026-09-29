@@ -8,8 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MarginSubscribeParams {
     /// Channels to subscribe to.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub channels: Option<Vec<MarginChannel>>,
+    pub channels: Vec<MarginChannel>,
     /// A single perpetual market ticker.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub market_ticker: Option<String>,
@@ -42,5 +41,14 @@ mod tests {
         let value = serde_json::to_value(params).unwrap();
         assert_eq!(value["send_initial_snapshot"], true);
         assert_eq!(value["skip_ticker_ack"], false);
+    }
+
+    #[test]
+    fn channels_are_required_and_serialize_as_an_array_when_empty() {
+        assert!(serde_json::from_str::<MarginSubscribeParams>("{}").is_err());
+
+        let params = MarginSubscribeParams::default();
+        let value = serde_json::to_value(params).unwrap();
+        assert_eq!(value["channels"], serde_json::json!([]));
     }
 }

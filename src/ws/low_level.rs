@@ -188,10 +188,11 @@ impl WsLowLevelClient<super::protocol::EventContractProtocol> {
         Err(KalshiError::AuthRequired("WebSocket connection"))
     }
 
-    /// Read and deserialize the next event-contract envelope.
+    /// Read the next message envelope.
     pub async fn next_envelope(&mut self) -> Result<super::types::WsEnvelope, KalshiError> {
         let bytes = self.next_json_bytes().await?;
-        Ok(serde_json::from_slice(&bytes)?)
+        serde_json::from_slice(&bytes)
+            .map_err(|source| KalshiError::parse_json("websocket envelope", &bytes, source))
     }
 
     pub async fn subscribe_v2(
