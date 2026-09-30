@@ -85,6 +85,11 @@ pub struct RFQ {
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
+    /// Visible only when the caller is the RFQ creator.
+    #[serde(default)]
+    pub creator_subaccount: Option<i64>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
     #[serde(default)]
     pub cancelled_ts: Option<String>,
     #[serde(default)]
@@ -201,6 +206,14 @@ pub struct CreateRFQRequest {
     pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Hide the RFQ creator ID from other users until execution (server default `false`).
+    /// Other users then see `creator_id == "0"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
+    /// Size quotes against target cost as principal only, with taker fees charged on top.
+    /// Only valid together with a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

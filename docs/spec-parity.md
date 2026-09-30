@@ -90,6 +90,16 @@ examples are ambiguous.
 - The AsyncAPI marks several timestamp/required fields that the exchange may omit in practice
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
+- WebSocket messages now carry `sending_ts_ms` (Kalshi's network-layer queue time, 2026-10-01). It is
+  not modeled on the message enums: serde ignores the unknown key, and adding it to every variant
+  would widen the hot-path structs. Use the reader's own receive timestamps for latency tracking.
+- `Market::settlement_bounds_type` is required in the OpenAPI but modeled as `Option` (with an
+  `Unknown` catch-all) so older payloads and future variants parse. `settlement_floor_dollars` is
+  only present when the type is `floor`. `exchange_index` on `Market`/`MarketPosition` is likewise
+  required upstream but `Option` here.
+- `Market.liquidity*` fields were removed from the crate: they are absent from the live schema
+  (`liquidity_dollars` removal shipped in the 2026-10-01 release).
+- Known gap: the perps OpenAPI exit-trigger endpoints (stop-loss / take-profit) are not yet modeled.
 
 ## Test Strategy
 

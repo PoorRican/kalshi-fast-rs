@@ -81,6 +81,8 @@ async fn test_rfq_lifecycle() {
                 replace_existing: None,
                 subtrader_id: None,
                 subaccount: None,
+                obscure_creator_id: None,
+                target_cost_excludes_fees: None,
             })
             .await
     })
@@ -150,6 +152,8 @@ async fn test_quote_lifecycle() {
                 replace_existing: None,
                 subtrader_id: None,
                 subaccount: None,
+                obscure_creator_id: None,
+                target_cost_excludes_fees: None,
             })
             .await
     })

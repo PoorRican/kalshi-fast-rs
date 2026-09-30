@@ -121,3 +121,16 @@ async fn ws_demo_orderbook_subscription_is_listed_with_market_filter() {
         other => panic!("expected list_subscriptions response, got {other:?}"),
     }
 }
+
+#[test]
+fn communications_subscribe_serializes_user_filter() {
+    use kalshi_fast::{WsSubscriptionParamsV2, WsUserFilter};
+    let params = WsSubscriptionParamsV2 {
+        user_filter: Some(WsUserFilter::SelfOnly),
+        ..Default::default()
+    };
+    let v = serde_json::to_value(&params).unwrap();
+    assert_eq!(v["user_filter"], "self");
+    let v = serde_json::to_value(WsSubscriptionParamsV2::default()).unwrap();
+    assert!(v.get("user_filter").is_none());
+}

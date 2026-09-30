@@ -268,6 +268,18 @@ impl fmt::Display for PositionCountFilter {
     }
 }
 
+/// `settlement_status` filter for `GET /portfolio/positions`.
+///
+/// The server defaults to `unsettled` when omitted. `Settled` pages through settled positions that
+/// are still in the live data set (not yet archived to `/historical/positions`); `All` returns both.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    Settled,
+    All,
+}
+
 /// --- Order Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]

@@ -7,6 +7,50 @@ Kalshi docs snapshot tracked by that release.
 
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
+## [0.10.0] - 2026-09-30
+
+### Compatibility
+
+- Docs snapshot: 2026-09-30
+- OpenAPI: 3.32.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-09-30
+
+### Breaking
+
+- [Rust API] Removed `Market::liquidity`, `Market::liquidity_fp`, and `Market::liquidity_dollars`;
+  none is present in the live `Market` schema (`liquidity_dollars` removed in the 2026-10-01
+  release).
+- [Rust API] Added public fields `GetPositionsParams::settlement_status`,
+  `AmendOrderV2Request::expiration_time`, `CreateRFQRequest::obscure_creator_id`, and
+  `CreateRFQRequest::target_cost_excludes_fees`, and `WsSubscriptionParamsV2::user_filter`;
+  exhaustive struct literals must add them (or use `..Default::default()` where available).
+
+### Added
+
+- [Upstream] `GET /portfolio/positions` `settlement_status` filter (`PositionSettlementStatus`:
+  `unsettled` | `settled` | `all`) for reading settled positions before archival.
+- [Upstream] `Market::settlement_bounds_type` (`SettlementBoundsType`) and
+  `Market::settlement_floor_dollars`.
+- [Upstream] Amend Order V2 `expiration_time` (omit to preserve, `0` to clear, future Unix seconds to
+  set; queue priority preserved for expiry-only amends).
+- [Upstream] RFQ `obscure_creator_id` and `target_cost_excludes_fees` request fields;
+  `RFQ::creator_subaccount` / `RFQ::target_cost_excludes_fees` response fields.
+- [Upstream] `communications` WebSocket `user_filter` (`WsUserFilter::SelfOnly`) to receive only your
+  own RFQ events.
+- [Upstream] `WsUserOrder::last_update_reason` (`WsLastUpdateReason`).
+- [Upstream] `exchange_index` on `Market` and `MarketPosition` (and `MarketPositionRef`).
+- [Upstream] `get_margin_premium_index` (`GET /margin/funding_rates/premium_index`, informational
+  only) and `premium_index` / `premium_index_ts` on the margin funding-rate estimate.
+
+### Docs
+
+- [Docs] No code change needed for: WebSocket `sending_ts_ms` (transport metadata, ignored by serde;
+  see `docs/spec-parity.md`), exit-trigger positive-price validation (server-side; the crate has no
+  exit-trigger endpoints), FIX-only entries (reduce-only `ExecInst`, `SETTLEMENT_BOUNDS_CANCEL`,
+  `ClearingBusinessDate`, RFQ/quote creation timestamps), and Pyth `reference_price` (already modeled).
 
 ## [0.9.1] - 2026-09-29
 

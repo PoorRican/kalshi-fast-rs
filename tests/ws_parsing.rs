@@ -118,3 +118,19 @@ async fn ws_demo_orderbook_delta_subscription_parses_snapshot_and_delta() {
         other => panic!("expected orderbook delta, got {other:?}"),
     }
 }
+
+#[test]
+fn user_order_last_update_reason_and_sending_ts_ignored() {
+    let json = r#"{"order_id":"o","user_id":"u","ticker":"T","last_update_reason":"ExpiryCancel","some_future":1}"#;
+    let o: kalshi_fast::WsUserOrder = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        o.last_update_reason,
+        Some(kalshi_fast::WsLastUpdateReason::ExpiryCancel)
+    );
+    let json = r#"{"order_id":"o","user_id":"u","ticker":"T","last_update_reason":"Brand New"}"#;
+    let o: kalshi_fast::WsUserOrder = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        o.last_update_reason,
+        Some(kalshi_fast::WsLastUpdateReason::Unknown)
+    );
+}

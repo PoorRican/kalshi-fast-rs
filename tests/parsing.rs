@@ -629,8 +629,8 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "previous_yes_ask_dollars": "0.5500",
             "previous_price": 52,
             "previous_price_dollars": "0.5200",
-            "liquidity": 1000,
-            "liquidity_dollars": "10.0000",
+            "settlement_bounds_type": "floor",
+            "settlement_floor_dollars": "0.2500",
             "expiration_value": "123.4",
             "occurrence_datetime": "2026-04-16T18:30:00Z",
             "tick_size": 1,
@@ -658,8 +658,12 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
     assert_eq!(
-        resp.markets[0].liquidity_dollars.as_deref(),
-        Some("10.0000")
+        resp.markets[0].settlement_bounds_type,
+        Some(kalshi_fast::SettlementBoundsType::Floor)
+    );
+    assert_eq!(
+        resp.markets[0].settlement_floor_dollars.as_deref(),
+        Some("0.2500")
     );
     assert_eq!(
         resp.markets[0].occurrence_datetime.as_deref(),
@@ -1723,7 +1727,7 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
                 "volume_fp": "10.00",
                 "open_interest_fp": "10.00",
                 "notional_value_dollars": "1.0000",
-                "liquidity_dollars": "20.0000",
+                "settlement_bounds_type": "default",
                 "price_level_structure": "linear_cent",
                 "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
             }]
@@ -1737,7 +1741,11 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
     assert_eq!(market.yes_ask, None);
     assert_eq!(market.notional_value, None);
     assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
-    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(kalshi_fast::SettlementBoundsType::Default)
+    );
+    assert_eq!(market.settlement_floor_dollars, None);
 }
 
 #[test]
@@ -2026,4 +2034,64 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn positions_params_serialize_settlement_status() {
+    let params = GetPositionsParams {
+        settlement_status: Some(kalshi_fast::PositionSettlementStatus::Settled),
+        ..Default::default()
+    };
+    let v = serde_json::to_value(&params).unwrap();
+    assert_eq!(v["settlement_status"], "settled");
+    let v = serde_json::to_value(GetPositionsParams::default()).unwrap();
+    assert!(v.get("settlement_status").is_none());
+}
+
+#[test]
+fn amend_v2_and_rfq_requests_serialize_new_fields() {
+    let amend = kalshi_fast::AmendOrderV2Request {
+        ticker: "T".into(),
+        side: kalshi_fast::BookSide::Bid,
+        price: "0.5000".into(),
+        count: "1.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        expiration_time: Some(0),
+        exchange_index: None,
+    };
+    let v = serde_json::to_value(&amend).unwrap();
+    assert_eq!(v["expiration_time"], 0);
+
+    let rfq = kalshi_fast::CreateRFQRequest {
+        market_ticker: "T".into(),
+        contracts: None,
+        contracts_fp: Some("1.00".into()),
+        target_cost_centi_cents: None,
+        target_cost_dollars: None,
+        rest_remainder: false,
+        replace_existing: None,
+        subtrader_id: None,
+        subaccount: None,
+        obscure_creator_id: Some(true),
+        target_cost_excludes_fees: None,
+    };
+    assert_eq!(
+        serde_json::to_value(&rfq).unwrap()["obscure_creator_id"],
+        true
+    );
+}
+
+#[test]
+fn margin_premium_index_deserializes() {
+    let r: kalshi_fast::GetMarginPremiumIndexResponse = serde_json::from_str(
+        r#"{"points":[{"second_ts":"2026-09-30T00:00:00Z","premium_index":"0.0012"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(r.points[0].premium_index, "0.0012");
+    let e: kalshi_fast::GetMarginFundingRateEstimateResponse = serde_json::from_str(
+        r#"{"next_funding_time":"2026-09-30T01:00:00Z","premium_index":"0.001","premium_index_ts":"2026-09-30T00:59:59Z"}"#,
+    )
+    .unwrap();
+    assert_eq!(e.premium_index.as_deref(), Some("0.001"));
 }

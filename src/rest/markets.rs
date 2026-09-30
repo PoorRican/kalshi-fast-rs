@@ -15,6 +15,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fmt;
 
+/// Which settlement bounds apply to a market. `Default` means no bounds.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    Default,
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MarketStatus {
@@ -301,12 +311,6 @@ pub struct Market {
     #[serde(default)]
     pub previous_price_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub liquidity: Option<i64>,
-    #[serde(default)]
-    pub liquidity_fp: Option<String>,
-    #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]
     pub occurrence_datetime: Option<String>,
@@ -318,6 +322,15 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
+    /// Required in the spec; `Option` so older payloads still parse.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest YES/LONG settlement value; only set when `settlement_bounds_type` is `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

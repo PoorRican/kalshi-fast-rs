@@ -58,4 +58,25 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+    /// Reason for the most recent update, if applicable.
+    #[serde(default)]
+    pub last_update_reason: Option<WsLastUpdateReason>,
+}
+
+/// `last_update_reason` on `user_orders` messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum WsLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    ReduceOnlyCancel,
+    /// Unrecognised future reason.
+    #[serde(other)]
+    Unknown,
 }

@@ -682,6 +682,39 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    /// Premium index for the final second evaluated by the estimate (signed decimal fraction).
+    /// Omitted when that second has no available premium.
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    /// Timestamp of the final second evaluated; can precede `computed_time`.
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
+}
+
+/// GET /margin/funding_rates/premium_index query params. Window is at most one hour.
+#[derive(Debug, Clone, Serialize)]
+pub struct GetMarginPremiumIndexParams {
+    pub ticker: String,
+    /// Inclusive start (Unix seconds).
+    pub start_ts: i64,
+    /// Exclusive end (Unix seconds); must be after `start_ts` and within one hour.
+    pub end_ts: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginPremiumIndexPoint {
+    pub second_ts: String,
+    /// Informational only; `"0"` when no premium was measurable for that second.
+    pub premium_index: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginPremiumIndexResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub points: Vec<MarginPremiumIndexPoint>,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -1007,6 +1040,22 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&Q { ticker }),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Informational per-second premium index; may differ from values used in funding calculations.
+    pub async fn get_margin_premium_index(
+        &self,
+        params: GetMarginPremiumIndexParams,
+    ) -> Result<GetMarginPremiumIndexResponse, KalshiError> {
+        let path = Self::full_path("/margin/funding_rates/premium_index");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
             Option::<&()>::None,
             false,
         )
