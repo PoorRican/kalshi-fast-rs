@@ -682,6 +682,60 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    /// Signed decimal-fraction premium index for the final second evaluated by
+    /// the estimate. Omitted when that second has no available premium.
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    /// Timestamp of the final second evaluated; can precede `computed_time`.
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
+}
+
+/// `GET /margin/funding_rates/premium_index` query params.
+#[derive(Debug, Clone, Serialize)]
+pub struct GetMarginPremiumIndexParams {
+    pub ticker: String,
+    /// Window start, inclusive (Unix seconds).
+    pub start_ts: i64,
+    /// Window end, exclusive (Unix seconds); must be after `start_ts` and at most
+    /// one hour later.
+    pub end_ts: i64,
+}
+
+impl GetMarginPremiumIndexParams {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        if self.ticker.is_empty() {
+            return Err(KalshiError::InvalidParams(
+                "GET /margin/funding_rates/premium_index: ticker is required".to_string(),
+            ));
+        }
+        if self.end_ts <= self.start_ts || self.end_ts - self.start_ts > 3600 {
+            return Err(KalshiError::InvalidParams(
+                "GET /margin/funding_rates/premium_index: end_ts must be after start_ts and at most one hour later".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// One per-second premium index point. Informational only; may differ from the
+/// premium index used in actual funding calculations.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginPremiumIndexPoint {
+    /// The one-second bucket this point measures.
+    pub second_ts: String,
+    /// Signed decimal fraction of the index price; `"0"` when no premium was measurable.
+    pub premium_index: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginPremiumIndexResponse {
+    /// Ascending by `second_ts`; may be sparse or empty.
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub points: Vec<MarginPremiumIndexPoint>,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -1007,6 +1061,22 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&Q { ticker }),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_margin_premium_index(
+        &self,
+        params: GetMarginPremiumIndexParams,
+    ) -> Result<GetMarginPremiumIndexResponse, KalshiError> {
+        params.validate()?;
+        let path = Self::full_path("/margin/funding_rates/premium_index");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
             Option::<&()>::None,
             false,
         )

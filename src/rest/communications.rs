@@ -195,6 +195,14 @@ pub struct CreateRFQRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
     pub rest_remainder: bool,
+    /// Size quotes against the target cost as principal only, with taker fees
+    /// charged on top. Only valid together with a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Hide the RFQ creator's public communications ID from other users until a
+    /// quote executes. Server default is `false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

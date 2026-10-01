@@ -91,6 +91,20 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Refresh through changelog 2026-10-01 (OpenAPI 3.32.0):
+  - Ed25519 keys are now the web-app default. The PEM header does not identify the key type, so
+    `KalshiAuth` tries Ed25519 PKCS#8 first, then RSA PKCS#8/PKCS#1. Signing is the raw message for
+    Ed25519 and RSA-PSS/SHA-256 for RSA.
+  - `Market.settlement_bounds_type` is `required` in the OpenAPI schema but modeled as `Option` so
+    cached/older payloads parse; `settlement_floor_dollars` is nullable and only set for `floor`.
+  - `sending_ts_ms` is a new top-level field on every WebSocket frame. Unknown envelope fields are
+    ignored by the wire parser, so no struct change was needed; it is not yet exposed.
+  - `WsUserOrder.last_update_reason` is not in the AsyncAPI `required` set, so it is `Option`. The
+    Predictions reason enum gained `SettlementBoundsCancel`; the Perps AsyncAPI enum did not, so
+    `MarginLastUpdateReason` is unchanged.
+  - Server-side-only validation changes (positive exit-trigger prices, `stop_loss_past_liquidation`)
+    are not pre-validated by the crate; the server's 400 is surfaced as a `KalshiError`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

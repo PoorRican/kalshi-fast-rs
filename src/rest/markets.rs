@@ -46,6 +46,18 @@ impl MarketStatus {
     }
 }
 
+/// Which settlement bounds apply to a market (`settlement_bounds_type`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    /// The market has no settlement bounds.
+    Default,
+    /// The YES side cannot settle below `settlement_floor_dollars`.
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
 /// Error returned by strict lifecycle/query status conversions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarketStatusConversionError {
@@ -318,6 +330,13 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// Required by the OpenAPI `Market` schema; `Option` so older payloads still parse.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES side can settle at. Only present when
+    /// `settlement_bounds_type` is `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

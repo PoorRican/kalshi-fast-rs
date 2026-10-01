@@ -3,6 +3,26 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// Reason for the most recent order update (`lastUpdateReason` in the AsyncAPI).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum WsOrderUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    /// `reduce_only` capped the order at placement.
+    ReduceOnlyCancel,
+    /// A resting order was cancelled because a settlement bounds update put it out of bounds.
+    SettlementBoundsCancel,
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
@@ -56,6 +76,9 @@ pub struct WsUserOrder {
     pub expiration_time: Option<String>,
     #[serde(default)]
     pub expiration_ts_ms: Option<i64>,
+    /// Reason for the most recent update, if applicable (not in the spec's `required` set).
+    #[serde(default)]
+    pub last_update_reason: Option<WsOrderUpdateReason>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
 }

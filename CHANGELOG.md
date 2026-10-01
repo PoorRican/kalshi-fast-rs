@@ -8,6 +8,50 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-01
+
+### Compatibility
+
+- Docs snapshot: 2026-10-01
+- OpenAPI: 3.32.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-01
+
+### Breaking
+
+- [Rust API] `AmendOrderV2Request` gains `expiration_time`, `GetPositionsParams` gains
+  `settlement_status`, `CreateRFQRequest` gains `obscure_creator_id` and `target_cost_excludes_fees`,
+  `GenerateApiKeyRequest` gains `key_type`, `Market` gains `settlement_bounds_type` and
+  `settlement_floor_dollars`, `WsUserOrder` gains `last_update_reason`, and
+  `GetMarginFundingRateEstimateResponse` gains `premium_index` / `premium_index_ts`. Downstream
+  exhaustive struct literals of the request types must add the new fields (or use
+  `..Default::default()` where available).
+
+### Added
+
+- [Upstream] Ed25519 API keys: `KalshiAuth::from_pem_str` / `from_pem_file` accept Ed25519 (PKCS#8)
+  private keys in addition to RSA, and sign with the matching algorithm. RSA signing now reuses a
+  pre-built signing key instead of cloning the private key per request. Added `ApiKeyType` and
+  `GenerateApiKeyRequest::key_type`.
+- [Upstream] `settlement_bounds_type` (`SettlementBoundsType`) and `settlement_floor_dollars` on `Market`.
+- [Upstream] `GET /portfolio/positions` `settlement_status` filter (`PositionSettlementStatus`).
+- [Upstream] Predictions V2 amend `expiration_time` (omit = preserve, `0` = clear).
+- [Upstream] RFQ `obscure_creator_id` (and the previously missing `target_cost_excludes_fees`) on `CreateRFQRequest`.
+- [Upstream] `get_margin_premium_index` (`GET /margin/funding_rates/premium_index`) plus
+  `premium_index` / `premium_index_ts` on the funding-rate estimate.
+- [Upstream] `WsUserOrder::last_update_reason` (`WsOrderUpdateReason`, including `SettlementBoundsCancel`).
+- [Docs] `GetFillsParams::ticker` documents the new comma-separated list (up to 100 tickers).
+
+### Fixed
+
+- [Tests] Live `rest_auth` test updated for the restructured `/account/limits` response.
+
+### Tests
+
+- [Tests] Parsing/serialization coverage for every addition above, plus Ed25519 sign/verify.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

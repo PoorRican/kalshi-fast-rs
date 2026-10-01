@@ -171,9 +171,24 @@ pub struct CreateApiKeyResponse {
     pub extra: Map<String, Value>,
 }
 
+/// Signature algorithm of an API key pair.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyType {
+    /// 2048-bit RSA; requests are signed with RSA-PSS SHA-256.
+    Rsa,
+    /// Ed25519 (RFC 8032).
+    Ed25519,
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
+    /// Defaults to `rsa` server-side when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
 }

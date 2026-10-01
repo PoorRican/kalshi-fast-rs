@@ -2027,3 +2027,182 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         Some("politics")
     );
 }
+
+// --- Spec refresh: changelog through 2026-10-01 ---
+
+#[test]
+fn market_parses_settlement_bounds() {
+    use kalshi_fast::{Market, SettlementBoundsType};
+    let floor: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "T",
+        "settlement_bounds_type": "floor",
+        "settlement_floor_dollars": "0.2500"
+    }))
+    .unwrap();
+    assert_eq!(
+        floor.settlement_bounds_type,
+        Some(SettlementBoundsType::Floor)
+    );
+    assert_eq!(floor.settlement_floor_dollars.as_deref(), Some("0.2500"));
+
+    let default: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "T", "settlement_bounds_type": "default"
+    }))
+    .unwrap();
+    assert_eq!(
+        default.settlement_bounds_type,
+        Some(SettlementBoundsType::Default)
+    );
+    assert!(default.settlement_floor_dollars.is_none());
+
+    let future: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "T", "settlement_bounds_type": "ceiling"
+    }))
+    .unwrap();
+    assert_eq!(
+        future.settlement_bounds_type,
+        Some(SettlementBoundsType::Unknown)
+    );
+
+    let legacy: Market = serde_json::from_value(serde_json::json!({"ticker": "T"})).unwrap();
+    assert!(legacy.settlement_bounds_type.is_none());
+}
+
+#[test]
+fn get_positions_params_serializes_settlement_status() {
+    use kalshi_fast::PositionSettlementStatus;
+    for (status, wire) in [
+        (PositionSettlementStatus::Unsettled, "unsettled"),
+        (PositionSettlementStatus::Settled, "settled"),
+        (PositionSettlementStatus::All, "all"),
+    ] {
+        let params = GetPositionsParams {
+            settlement_status: Some(status),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&params).unwrap()["settlement_status"],
+            wire
+        );
+    }
+    let json = serde_json::to_value(GetPositionsParams::default()).unwrap();
+    assert!(json.get("settlement_status").is_none());
+}
+
+#[test]
+fn amend_order_v2_request_serializes_expiration_time() {
+    use kalshi_fast::AmendOrderV2Request;
+    let mut req = AmendOrderV2Request {
+        ticker: "T".into(),
+        side: BookSide::Bid,
+        price: "0.5000".into(),
+        count: "1.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        expiration_time: None,
+        exchange_index: None,
+    };
+    assert!(
+        serde_json::to_value(&req)
+            .unwrap()
+            .get("expiration_time")
+            .is_none()
+    );
+    // 0 clears expiry and must be serialized (not skipped).
+    req.expiration_time = Some(0);
+    assert_eq!(serde_json::to_value(&req).unwrap()["expiration_time"], 0);
+}
+
+#[test]
+fn create_rfq_request_serializes_obscure_creator_id() {
+    use kalshi_fast::CreateRFQRequest;
+    let json = serde_json::to_value(CreateRFQRequest {
+        market_ticker: "T".into(),
+        contracts: None,
+        contracts_fp: Some("1.00".into()),
+        target_cost_centi_cents: None,
+        target_cost_dollars: None,
+        target_cost_excludes_fees: None,
+        obscure_creator_id: Some(true),
+        rest_remainder: false,
+        replace_existing: None,
+        subtrader_id: None,
+        subaccount: None,
+    })
+    .unwrap();
+    assert_eq!(json["obscure_creator_id"], true);
+    assert!(json.get("target_cost_excludes_fees").is_none());
+}
+
+#[test]
+fn generate_api_key_request_serializes_key_type() {
+    use kalshi_fast::{ApiKeyType, GenerateApiKeyRequest};
+    let json = serde_json::to_value(GenerateApiKeyRequest {
+        name: "k".into(),
+        key_type: Some(ApiKeyType::Ed25519),
+        scopes: vec![],
+    })
+    .unwrap();
+    assert_eq!(json["key_type"], "ed25519");
+}
+
+#[test]
+fn margin_premium_index_parses_and_validates() {
+    use kalshi_fast::{
+        GetMarginFundingRateEstimateResponse, GetMarginPremiumIndexParams,
+        GetMarginPremiumIndexResponse,
+    };
+    let resp: GetMarginPremiumIndexResponse = serde_json::from_value(serde_json::json!({
+        "points": [{"second_ts": "2026-09-30T13:00:00Z", "premium_index": "-0.0012"}]
+    }))
+    .unwrap();
+    assert_eq!(resp.points[0].premium_index, "-0.0012");
+    let empty: GetMarginPremiumIndexResponse =
+        serde_json::from_value(serde_json::json!({"points": null})).unwrap();
+    assert!(empty.points.is_empty());
+
+    let est: GetMarginFundingRateEstimateResponse = serde_json::from_value(serde_json::json!({
+        "next_funding_time": "2026-10-01T00:00:00Z",
+        "premium_index": "0.0003",
+        "premium_index_ts": "2026-09-30T23:59:59Z"
+    }))
+    .unwrap();
+    assert_eq!(est.premium_index.as_deref(), Some("0.0003"));
+
+    let ok = GetMarginPremiumIndexParams {
+        ticker: "X".into(),
+        start_ts: 0,
+        end_ts: 3600,
+    };
+    assert!(ok.validate().is_ok());
+    let too_long = GetMarginPremiumIndexParams {
+        end_ts: 3601,
+        ..ok.clone()
+    };
+    assert!(too_long.validate().is_err());
+    let backwards = GetMarginPremiumIndexParams { end_ts: 0, ..ok };
+    assert!(backwards.validate().is_err());
+}
+
+#[test]
+fn ws_user_order_parses_last_update_reason_and_tolerates_sending_ts_ms() {
+    use kalshi_fast::{WsDataMessageV2, WsMessageV2, WsOrderUpdateReason};
+    for (wire, expected) in [
+        (
+            "SettlementBoundsCancel",
+            WsOrderUpdateReason::SettlementBoundsCancel,
+        ),
+        ("ReduceOnlyCancel", WsOrderUpdateReason::ReduceOnlyCancel),
+        ("SomethingNew", WsOrderUpdateReason::Unknown),
+    ] {
+        let frame = format!(
+            r#"{{"type":"user_order","sid":2,"seq":5,"sending_ts_ms":1669149841234,"msg":{{"order_id":"o","user_id":"u","ticker":"T","last_update_reason":"{wire}"}}}}"#
+        );
+        match WsMessageV2::from_bytes(frame.as_bytes()).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::UserOrder { msg, .. }) => {
+                assert_eq!(msg.last_update_reason, Some(expected));
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+    }
+}
