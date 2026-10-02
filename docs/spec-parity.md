@@ -91,6 +91,49 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `sending_ts_ms` (2026-10) is a top-level envelope field on every WebSocket server message
+  (`sendingTimestampMs`: when Kalshi queued the frame). It is exposed on `WsEnvelope` /
+  `WsEnvelopeRef` as `Option<i64>` but is not (yet) carried on the typed `WsMessageV2` /
+  `WsDataMessageV2` variants, to keep the hot-path event shapes unchanged. The spec does not list it
+  as required on any payload.
+
+- `Market.settlement_bounds_type` is `required` in the OpenAPI but modeled as
+  `Option<SettlementBoundsType>` like every other `Market` field (the struct tolerates historical
+  and nested-event payloads); `settlement_floor_dollars` is only present for `floor` markets.
+  `Market.liquidity_dollars` was removed upstream (deprecated Feb 2026, always `"0.0000"`) and is
+  removed from the crate; `liquidity` / `liquidity_fp` are legacy fields no longer in the schema and
+  are retained only as `Option`s pending a separate cleanup.
+
+- API keys may be RSA or Ed25519. `KalshiAuth::from_pem_str` selects RSA-PSS SHA-256 or Ed25519 from
+  the PEM (RSA PKCS#8/PKCS#1, Ed25519 PKCS#8) and signs the same `timestamp + METHOD + path` text.
+  `GenerateApiKeyRequest.key_type` is optional; the server defaults to RSA, so omitting it keeps the
+  old behavior. `ApiKeyType` has an `Unknown` catch-all.
+
+- `communications` subscriptions accept `user_filter` (`""` | `"self"`, modeled by `WsUserFilter`);
+  it is rejected locally for any other channel. `last_update_reason` on `user_orders` is
+  `Option<WsOrderUpdateReason>` (omitted when no reason applies, `Unknown` catch-all).
+
+### Known unreconciled drift (as of the 2026-10 refresh)
+
+Found by diffing every OpenAPI schema against the Rust structs; not fixed in this refresh because
+they pre-date the previous watermark or need design decisions:
+
+- `exchange_index` (shard selector) is absent from most event-contract REST request/response structs
+  (`Order`, `Fill`, `MarketPosition`, `Settlement`, `CreateOrderRequest`, `AmendOrderRequest`,
+  order-group types, `EventData`, `Series`, subaccount types, ...). It is modeled for the V2 order
+  requests, `Market`, `WsUserOrder`, and the margin types only.
+- AsyncAPI channels `cfbenchmarks_value_5hz` and `pyth_value` (plus `subscribed_underlyings` /
+  Pyth update actions) are not modeled; `WsChannelV2` only knows `cfbenchmarks_value`.
+- `EventData` lacks `fee_type_override`, `fee_multiplier_override`, `settlement_sources`; `Series`
+  lacks `categories`; `GetBalanceResponse.balance_breakdown`,
+  `GetPortfolioRestingOrderTotalValueResponse.resting_order_value_breakdown`,
+  `GetHistoricalCutoffResponse.market_positions_last_updated_ts`, and
+  `GetApiKeysResponse.api_key_region_expiration_ts` are missing. `IncentiveProgram`
+  (`incentive_description`, `max_reward_per_account`) and `GetSubaccountTransfersResponse`
+  (`transfers` vs `subaccount_transfers`) disagree with the schema.
+- `MarketCandlestick`, `BidAskDistribution`, `PriceDistribution`, `Milestone`, `EventData`, `Series`
+  and `Market` still carry legacy fields that are no longer in the OpenAPI schema.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

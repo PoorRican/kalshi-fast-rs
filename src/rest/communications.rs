@@ -61,6 +61,17 @@ pub struct Quote {
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_contracts_fp: Option<FixedPointCount>,
+    /// Visible only to the quote creator.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    /// Visible only to the RFQ creator.
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
+    /// Visible only to the quote creator.
+    #[serde(default)]
+    pub post_only: Option<bool>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -89,6 +100,11 @@ pub struct RFQ {
     pub cancelled_ts: Option<String>,
     #[serde(default)]
     pub updated_ts: Option<String>,
+    /// Visible only to the RFQ creator.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -132,7 +148,7 @@ pub struct GetQuoteResponse {
     pub quote: Quote,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateQuoteRequest {
     pub rfq_id: String,
     pub yes_bid: String,
@@ -140,6 +156,9 @@ pub struct CreateQuoteRequest {
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Cancel rather than cross if the quote creator's order would take liquidity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -183,7 +202,7 @@ pub struct GetRFQResponse {
     pub rfq: RFQ,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateRFQRequest {
     pub market_ticker: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -201,6 +220,14 @@ pub struct CreateRFQRequest {
     pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Hide the creator's public communications ID from other users behind the
+    /// shared placeholder hash until a quote executes. Defaults to `false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
+    /// Size quotes against the target cost as principal only (fees on top).
+    /// Only valid together with a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

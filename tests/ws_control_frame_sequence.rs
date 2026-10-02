@@ -183,3 +183,34 @@ fn every_control_arm_preserves_optional_position_metadata() {
         assert_eq!(envelope_borrowed.sequence(), sequence);
     }
 }
+
+#[test]
+fn envelope_exposes_sending_ts_ms_and_user_order_update_reason() {
+    use kalshi_fast::{WsDataMessageV2, WsOrderUpdateReason};
+
+    let raw = r#"{"type":"user_order","sid":7,"seq":3,"sending_ts_ms":1669149841234,"msg":{"order_id":"o1","user_id":"u1","ticker":"T-1","exchange_index":0,"last_update_reason":"SettlementBoundsCancel"}}"#;
+
+    let owned: WsEnvelope = serde_json::from_str(raw).unwrap();
+    assert_eq!(owned.sending_ts_ms, Some(1669149841234));
+    let borrowed: WsEnvelopeRef = serde_json::from_str(raw).unwrap();
+    assert_eq!(borrowed.sending_ts_ms, Some(1669149841234));
+
+    match owned.into_message().unwrap() {
+        WsMessageV2::Data(WsDataMessageV2::UserOrder { msg, .. }) => {
+            assert_eq!(
+                msg.last_update_reason,
+                Some(WsOrderUpdateReason::SettlementBoundsCancel)
+            );
+        }
+        other => panic!("unexpected message: {other:?}"),
+    }
+
+    let raw = raw.replace("SettlementBoundsCancel", "SomeFutureReason");
+    let owned: WsEnvelope = serde_json::from_str(&raw).unwrap();
+    match owned.into_message().unwrap() {
+        WsMessageV2::Data(WsDataMessageV2::UserOrder { msg, .. }) => {
+            assert_eq!(msg.last_update_reason, Some(WsOrderUpdateReason::Unknown));
+        }
+        other => panic!("unexpected message: {other:?}"),
+    }
+}

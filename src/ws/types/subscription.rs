@@ -29,6 +29,21 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `communications` only. [`WsUserFilter::SelfOnly`] limits `rfq_created` /
+    /// `rfq_deleted` to RFQs you created; quote notifications are unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<WsUserFilter>,
+}
+
+/// `user_filter` values for the `communications` channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsUserFilter {
+    /// Receive RFQ events for all users (same as omitting the field).
+    #[serde(rename = "")]
+    All,
+    /// Receive RFQ events only for RFQs you created.
+    #[serde(rename = "self")]
+    SelfOnly,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -381,6 +396,12 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
         ));
     }
 
+    if params.user_filter.is_some() && !has_communications {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: user_filter only allowed for communications".to_string(),
+        ));
+    }
+
     Ok(())
 }
 
@@ -450,6 +471,27 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_subscription(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_subscription_user_filter_requires_communications() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            user_filter: Some(WsUserFilter::SelfOnly),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_err());
+
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Communications],
+            user_filter: Some(WsUserFilter::SelfOnly),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["user_filter"], "self");
+        let json = serde_json::to_value(WsUserFilter::All).unwrap();
+        assert_eq!(json, "");
     }
 
     #[test]

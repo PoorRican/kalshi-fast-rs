@@ -8,6 +8,97 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-02
+
+### Compatibility
+
+- Docs snapshot: 2026-10-02
+- OpenAPI: 3.32.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-08
+
+### Breaking
+
+- [Rust API] [Upstream] Removed `Market::liquidity_dollars` (removed from every market response on
+  2026-10; it always returned `"0.0000"`). Use `yes_bid_size_fp` / `yes_ask_size_fp`.
+- [Rust API] `AmendOrderV2Request` gains `expiration_time`; `CreateRFQRequest` gains
+  `obscure_creator_id` and `target_cost_excludes_fees`; `CreateQuoteRequest` gains `post_only`;
+  `CreateApiKeyRequest` / `GenerateApiKeyRequest` gain `subaccount`, `fcm_subtrader_id` (and
+  `key_type` on generate). Exhaustive struct literals must add the fields or use
+  `..Default::default()` (`CreateRFQRequest`, `CreateQuoteRequest`, `CreateApiKeyRequest` and
+  `GenerateApiKeyRequest` now derive `Default`).
+- [Rust API] `WsEnvelope`, `WsEnvelopeRef`, `GetPositionsParams`, `Market`, `WsUserOrder`, `RFQ`,
+  `Quote`, `ApiKey`, `CreateApiKeyResponse`, `GenerateApiKeyResponse`,
+  `GetMarginFundingRateEstimateResponse` and `WsSubscriptionParamsV2` gain public fields.
+- [Rust API] `KalshiAuth` no longer exposes the RSA key type in its internals and its `Debug`
+  output is redacted.
+
+### Added
+
+- [Rust API] [Upstream] Ed25519 API-key support: `KalshiAuth::from_pem_str` / `from_pem_file` accept
+  Ed25519 PKCS#8 keys alongside RSA and sign REST, WebSocket and auth headers accordingly. Added
+  `ApiKeyType` and `key_type` on `GenerateApiKeyRequest/Response`.
+- [Rust API] [Upstream] `GetPositionsParams::settlement_status` (`PositionSettlementStatus`:
+  `unsettled` | `settled` | `all`).
+- [Rust API] [Upstream] `Market::settlement_bounds_type` (`SettlementBoundsType`),
+  `settlement_floor_dollars`, `exchange_index`.
+- [Rust API] [Upstream] `AmendOrderV2Request::expiration_time` (omit = preserve, `0` = clear).
+- [Rust API] [Upstream] RFQ/quote fields: `obscure_creator_id`, `target_cost_excludes_fees`,
+  `post_only`, `creator_subaccount`, `rfq_creator_subaccount`.
+- [Rust API] [Upstream] Perps `get_margin_premium_index` (`GET /margin/funding_rates/premium_index`)
+  and `premium_index` / `premium_index_ts` on the funding-rate estimate.
+- [Rust API] [Upstream] WebSocket: `WsSubscriptionParamsV2::user_filter` (`WsUserFilter`) for
+  `communications`; `WsUserOrder::last_update_reason` (`WsOrderUpdateReason`, including
+  `SettlementBoundsCancel`) and `exchange_index`; `sending_ts_ms` on `WsEnvelope(Ref)`.
+
+### Changed
+
+- [Rust API] RSA signing no longer clones the private key on every request; the PSS signing key is
+  built once at load time.
+- [Docs] `GetFillsParams::ticker` documents the new comma-separated list (up to 100 tickers).
+
+### Changelog entries since the previous watermark (2026-09-28) and disposition
+
+| Entry (week bucket) | Disposition |
+| --- | --- |
+| Oct 8: FIX market data `TradeID (1003)` | No change: FIX only. |
+| Oct 8: `GET /portfolio/fills` comma-separated `ticker` (<=100) | `ticker` is already a free-form `String`; doc comment updated. |
+| Oct 1: margin stop-loss past liquidation rejected (`stop_loss_past_liquidation`) | No change: server-side validation, no shape change. |
+| Oct 1: `GET /portfolio/positions` `settlement_status` | Added `PositionSettlementStatus` + `GetPositionsParams::settlement_status`. |
+| Oct 1: WebSocket `sending_ts_ms` | Added to `WsEnvelope`/`WsEnvelopeRef`; see `docs/spec-parity.md`. |
+| Oct 1: REST amend `expiration_time` (Predictions + Margin) | Predictions V2: added. Margin: already present on `AmendMarginOrderRequest`. |
+| Oct 1: exit-trigger prices must be > 0 | No change: server-side validation. |
+| Oct 1: `settlement_bounds_type` / `settlement_floor_dollars` on markets | Added to `Market` (covers events, historical markets, MVE responses). |
+| Oct 1: FIX `SETTLEMENT_BOUNDS_CANCEL` | No change: FIX only. |
+| Oct 1: `user_orders` `SettlementBoundsCancel` | Added `WsOrderUpdateReason` / `WsUserOrder::last_update_reason`. |
+| Oct 1: Ed25519 keys default in web app (also Sep 24: Ed25519 support) | Implemented Ed25519 signing + `ApiKeyType`. |
+| Oct 1: FIX reduce-only `ExecInst=E` | No change: FIX only. |
+| Oct 1: RFQ `obscure_creator_id` | Added to `CreateRFQRequest`; response/broadcast ids are opaque strings, no shape change. |
+| Oct 1: `GET /margin/funding_rates/premium_index` + estimate fields | Added endpoint, types and estimate fields. |
+| Oct 1: Margin FIX `ClearingBusinessDate (715)` | No change: FIX only. |
+| Oct 1: `user_orders` `last_update_reason` (`ReduceOnlyCancel`) | Margin enum already had `ReduceOnlyCancel`; Predictions enum added. |
+| Oct 1: communications `user_filter: "self"` | Added `WsUserFilter` + validation. |
+| Oct 1: removal of `liquidity_dollars` | Removed from `Market` (breaking). |
+| Oct 1: FIX RFQ/quote `TransactTime` | No change: FIX only. |
+| Oct 1: Margin ticker `reference_price` for Pyth perps | No change: `reference_price` is already modeled on the margin ticker. |
+| Sep 24 (in bucket, before watermark): rate-limit increase, permessage-deflate | No change: server-side behavior. |
+
+Required-field sets were re-checked against the YAML for every struct touched (verified field-by-field during this refresh);
+remaining pre-existing drift is listed in `docs/spec-parity.md`.
+
+**Version bump:** minor (0.9.1 -> 0.10.0). `VERSIONING.md` ("While the crate remains below 1.0.0:
+Minor releases are for any intentional breaking change to the public Rust API") applies because a
+public field was removed (`Market::liquidity_dollars`) and several public request structs gained
+fields that break exhaustive struct literals.
+
+### Tests
+
+- [Tests] Ed25519/RSA signing round-trips, PEM loading, `Debug` redaction; parsing/serialization
+  coverage for settlement bounds, positions filter, amend expiry, RFQ/quote fields, premium index,
+  `key_type`, `sending_ts_ms`, `last_update_reason` and `user_filter`.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

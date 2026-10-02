@@ -6,7 +6,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::trades::GetHistoricalMarketsParams;
 use crate::types::{
-    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter,
+    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter, SettlementBoundsType,
     deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
@@ -304,8 +304,15 @@ pub struct Market {
     pub liquidity: Option<i64>,
     #[serde(default)]
     pub liquidity_fp: Option<String>,
+    /// Exchange shard the market lives on.
     #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
+    pub exchange_index: Option<u32>,
+    /// Always present in the spec; `Option` so older/historical payloads still parse.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Only filled when `settlement_bounds_type` is `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]

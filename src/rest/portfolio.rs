@@ -8,8 +8,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter,
+    PositionSettlementStatus, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -54,6 +54,11 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Defaults to `unsettled` server-side. `Settled` returns settled positions
+    /// not yet archived to `GET /historical/positions`; `All` returns both.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
 }
 
 impl GetPositionsParams {
@@ -217,6 +222,7 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// Market ticker, or a comma-separated list of up to 100 market tickers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

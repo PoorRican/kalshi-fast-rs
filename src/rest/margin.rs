@@ -682,6 +682,38 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    /// Premium index for the final second evaluated by the estimate. Omitted
+    /// when that second has no available premium.
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
+}
+
+/// `GET /margin/funding_rates/premium_index` query. All fields are required by
+/// the spec; `end_ts` is exclusive and must be within one hour of `start_ts`.
+#[derive(Debug, Clone, Serialize)]
+pub struct GetMarginPremiumIndexParams {
+    pub ticker: String,
+    pub start_ts: i64,
+    pub end_ts: i64,
+}
+
+/// Informational per-second premium index point (may differ from the value
+/// used in actual funding calculations).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginPremiumIndexPoint {
+    pub second_ts: String,
+    pub premium_index: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginPremiumIndexResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub points: Vec<MarginPremiumIndexPoint>,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -1018,6 +1050,22 @@ impl KalshiRestClient {
         params: GetMarginHistoricalFundingRatesParams,
     ) -> Result<GetMarginHistoricalFundingRatesResponse, KalshiError> {
         let path = Self::full_path("/margin/funding_rates/historical");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Informational per-second premium index for a perp (window <= 1 hour).
+    pub async fn get_margin_premium_index(
+        &self,
+        params: GetMarginPremiumIndexParams,
+    ) -> Result<GetMarginPremiumIndexResponse, KalshiError> {
+        let path = Self::full_path("/margin/funding_rates/premium_index");
         self.send(
             Method::GET,
             &path,

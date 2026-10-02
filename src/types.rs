@@ -268,6 +268,33 @@ impl fmt::Display for PositionCountFilter {
     }
 }
 
+// --- Position Settlement Status ---
+
+/// `settlement_status` filter for `GET /portfolio/positions`.
+/// The server default is `unsettled`.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    /// Settled positions that have not yet moved to `GET /historical/positions`.
+    Settled,
+    All,
+}
+
+// --- Settlement Bounds ---
+
+/// Which settlement bounds apply to a market.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    /// No settlement bounds.
+    Default,
+    /// The YES side cannot settle below `settlement_floor_dollars`.
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
 /// --- Order Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]

@@ -146,6 +146,12 @@ pub struct ApiKey {
     pub name: String,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
+    /// Set when the key is restricted to a single sub-account.
+    #[serde(default)]
+    pub subaccount: Option<u32>,
+    /// FCM members only: the bound FCM subtrader.
+    #[serde(default)]
+    pub fcm_subtrader_id: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -156,32 +162,68 @@ pub struct GetApiKeysResponse {
     pub api_keys: Vec<ApiKey>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// Signature algorithm of an API key pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyType {
+    /// 2048-bit RSA; requests are signed with RSA-PSS SHA-256.
+    Rsa,
+    /// Ed25519 (RFC 8032) over the same pre-sign text.
+    Ed25519,
+    #[serde(other)]
+    Unknown,
+}
+
+/// `public_key` may be an RSA or Ed25519 public key in PEM format.
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateApiKeyRequest {
     pub name: String,
     pub public_key: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Restrict the key to a single sub-account (0-63) you own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind the key to a single FCM subtrader.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateApiKeyResponse {
     pub api_key_id: String,
+    /// Present only for an FCM-subtrader-bound key missing per-subtrader setup.
+    #[serde(default)]
+    pub warning: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Defaults to RSA server-side when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
+    /// Restrict the key to a single sub-account (0-63) you own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
+    /// FCM members only: bind the key to a single FCM subtrader.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fcm_subtrader_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateApiKeyResponse {
     pub api_key_id: String,
+    /// PKCS#1 PEM for `rsa`, PKCS#8 PEM for `ed25519`. Cannot be retrieved again.
     pub private_key: String,
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
+    #[serde(default)]
+    pub warning: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
