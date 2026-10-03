@@ -6,6 +6,9 @@ use std::collections::BTreeMap;
 /// Market lifecycle message (type: "market_lifecycle_v2")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsMarketLifecycleV2 {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub market_ticker: String,
     #[serde(default)]
     pub event_type: Option<WsMarketLifecycleEventType>,
@@ -97,6 +100,9 @@ pub struct WsMarketLifecycleAdditionalMetadata {
 /// Event lifecycle message (type: "event_lifecycle")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsEventLifecycle {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub event_ticker: String,
     #[serde(default)]
     pub title: Option<String>,
@@ -125,6 +131,9 @@ pub struct WsEventLifecycleAdditionalMetadata {
 /// Market lifecycle message (type: "market_lifecycle_v2")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsMarketLifecycleV2Ref<'a> {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
     #[serde(default)]
@@ -163,6 +172,7 @@ pub struct WsMarketLifecycleV2Ref<'a> {
 impl<'a> WsMarketLifecycleV2Ref<'a> {
     pub fn into_owned(self) -> WsMarketLifecycleV2 {
         WsMarketLifecycleV2 {
+            exchange_index: self.exchange_index,
             market_ticker: self.market_ticker.into_owned(),
             event_type: self.event_type,
             open_ts: self.open_ts,
@@ -240,6 +250,9 @@ impl<'a> WsMarketLifecycleAdditionalMetadataRef<'a> {
 /// Event lifecycle message (type: "event_lifecycle")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsEventLifecycleRef<'a> {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(borrow)]
     pub event_ticker: Cow<'a, str>,
     #[serde(default, borrow)]
@@ -261,6 +274,7 @@ pub struct WsEventLifecycleRef<'a> {
 impl<'a> WsEventLifecycleRef<'a> {
     pub fn into_owned(self) -> WsEventLifecycle {
         WsEventLifecycle {
+            exchange_index: self.exchange_index,
             event_ticker: self.event_ticker.into_owned(),
             title: self.title.map(Cow::into_owned),
             subtitle: self.subtitle.map(Cow::into_owned),

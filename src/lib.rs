@@ -16,7 +16,7 @@
 //! - **Pagination helpers** — page-level ([`CursorPager`]) and item-level (`stream_*`) iteration
 //! - **REST reliability controls** — retry/backoff/jitter with `429 Retry-After` support
 //! - **Transport builder** — timeout/connect-timeout/headers/user-agent/proxy/custom client
-//! - **RSA-PSS authentication** — secure signing for private endpoints
+//! - **RSA-PSS / Ed25519 authentication** — secure signing for private endpoints
 //! - **Timed reader** (`timed-reader` feature) — timestamps WebSocket events
 //!   when they become available to the process
 //!
@@ -87,7 +87,8 @@
 //!
 //! ## Authentication
 //!
-//! Private endpoints (portfolio, orders, WebSocket fills) require RSA-PSS signing.
+//! Private endpoints (portfolio, orders, WebSocket fills) require signed requests (RSA-PSS or
+//! Ed25519, chosen by the key type).
 //! Load your key with [`KalshiAuth::from_pem_file`] or [`KalshiAuth::from_pem_str`]:
 //!
 //! ```no_run
@@ -96,7 +97,7 @@
 //! // From a .key file on disk
 //! let auth = KalshiAuth::from_pem_file("your-key-id", "/path/to/private.key")?;
 //!
-//! // Or from PEM content directly (supports PKCS#8 and PKCS#1)
+//! // Or from PEM content directly (RSA PKCS#8/PKCS#1, or Ed25519 PKCS#8)
 //! let pem = std::fs::read_to_string("/path/to/private.key").unwrap();
 //! let auth = KalshiAuth::from_pem_str("your-key-id", &pem)?;
 //! # Ok(())
@@ -105,7 +106,7 @@
 //!
 //! Environment variables used by the examples:
 //! - `KALSHI_KEY_ID` — your API key ID
-//! - `KALSHI_PRIVATE_KEY_PATH` — path to your RSA private key (PEM format)
+//! - `KALSHI_PRIVATE_KEY_PATH` — path to your private key (RSA or Ed25519, PEM format)
 //!
 //! ## Pagination
 //!

@@ -124,6 +124,11 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Version of the market the caller expects (see [`MarginMarket::market_version`]). If set
+    /// and the market has moved to a different version, the order is rejected with HTTP 409
+    /// `market_version_mismatch`. `None` (or `0`) skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -287,6 +292,9 @@ pub struct MarginMarket {
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    /// Current market version; starts at 1 and may increase on corporate actions (e.g. splits).
+    /// A read can briefly return the previous version right after a bump.
+    pub market_version: i32,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -1198,7 +1206,11 @@ impl KalshiRestClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{GetMarginOrderGroupResponse, MarginPosition};
+    use super::{
+        CreateMarginOrderRequest, GetMarginOrderGroupResponse, MarginMarket, MarginPosition,
+        MarginSelfTradePreventionType, MarginTimeInForce,
+    };
+    use crate::BookSide;
 
     #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {
@@ -1233,5 +1245,54 @@ mod tests {
         assert_eq!(response.orders, vec!["a".to_string(), "b".to_string()]);
         assert!(response.is_auto_cancel_enabled);
         assert_eq!(response.exchange_index, Some(3));
+    }
+
+    #[test]
+    fn margin_market_requires_and_parses_market_version() {
+        let json = serde_json::json!({
+            "ticker": "KXBTC-PERP",
+            "status": "active",
+            "title": "BTC",
+            "contract_size": "1.000000",
+            "underlying_multiplier": "1.000000",
+            "tick_size": "0.01",
+            "fractional_trading_enabled": true,
+            "exchange_index": 0,
+            "market_version": 2
+        });
+        let market: MarginMarket = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(market.market_version, 2);
+
+        let mut missing = json;
+        missing.as_object_mut().unwrap().remove("market_version");
+        assert!(serde_json::from_value::<MarginMarket>(missing).is_err());
+    }
+
+    #[test]
+    fn create_margin_order_request_serializes_market_version() {
+        let mut req = CreateMarginOrderRequest {
+            ticker: "T".into(),
+            client_order_id: "c".into(),
+            side: BookSide::Bid,
+            count: "1".into(),
+            price: "1.00".into(),
+            time_in_force: MarginTimeInForce::GoodTillCanceled,
+            self_trade_prevention_type: MarginSelfTradePreventionType::TakerAtCross,
+            expiration_time: None,
+            post_only: None,
+            cancel_order_on_pause: None,
+            reduce_only: None,
+            subaccount: None,
+            order_group_id: None,
+            market_version: None,
+        };
+        assert!(
+            serde_json::to_value(&req)
+                .unwrap()
+                .get("market_version")
+                .is_none()
+        );
+        req.market_version = Some(3);
+        assert_eq!(serde_json::to_value(&req).unwrap()["market_version"], 3);
     }
 }

@@ -89,6 +89,9 @@ pub struct Milestone {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EventData {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub event_ticker: String,
     #[serde(default)]
     pub series_ticker: Option<String>,

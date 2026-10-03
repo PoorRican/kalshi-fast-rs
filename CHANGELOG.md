@@ -8,6 +8,57 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-03
+
+### Compatibility
+
+- Docs snapshot: 2026-10-03
+- OpenAPI: 3.32.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-02
+
+### Breaking
+
+- [Rust API] New fields on public structs that downstream code may construct with exhaustive
+  literals: `CreateRFQRequest::obscure_creator_id`, `AmendOrderV2Request::expiration_time`,
+  `CreateMarginOrderRequest::market_version`, `GetPositionsParams::settlement_status`
+  (`GetPositionsParams` is `Default`, so `..Default::default()` keeps working).
+- [Rust API] `MarginMarket::market_version: i32` is required by the perps OpenAPI and is therefore
+  non-optional; deserialization fails if a payload omits it.
+- [Rust API] `Fill`, `Settlement`, `MarketPosition`, `Order`, `Market`, `EventData`, `WsFill`,
+  `WsMarketLifecycleV2`, `WsEventLifecycle`, `WsUserOrder` gain `exchange_index: Option<u32>`
+  (exhaustive struct literals must add it).
+
+### Added
+
+- [Upstream] Settlement bounds on markets: `Market::settlement_bounds_type`
+  (`SettlementBoundsType`, `Unknown` catch-all) and `Market::settlement_floor_dollars`.
+- [Upstream] `GetPositionsParams::settlement_status` (`PositionSettlementStatus`:
+  `unsettled` | `settled` | `all`).
+- [Upstream] `GET /portfolio/fills` `ticker` accepts up to 100 comma-separated tickers; the limit is
+  validated client-side (`GetFillsParams::validate`).
+- [Upstream] Amend expiry: `AmendOrderV2Request::expiration_time` (omit = preserve, `0` = clear).
+- [Upstream] RFQ identity privacy: `CreateRFQRequest::obscure_creator_id`.
+- [Upstream] Margin `market_version` on `MarginMarket` and `CreateMarginOrderRequest`.
+- [Upstream] `user_orders` `last_update_reason` via `WsLastUpdateReason`, including
+  `SettlementBoundsCancel` (with an `Unknown` catch-all).
+- [Upstream] `exchange_index` shard identifier on REST and WebSocket response structs listed above.
+- [Rust API] Ed25519 request signing: `KalshiAuth::from_pem_str`/`from_pem_file` now accept Ed25519
+  PKCS#8 keys (selected by key type) in addition to RSA. The RSA-PSS signing key is now built once at
+  load time instead of being cloned on every signature.
+
+### Docs
+
+- [Docs] Recorded the `sending_ts_ms` and `exchange_index` request-side decisions in
+  `docs/spec-parity.md`.
+
+### Tests
+
+- [Tests] Added coverage for the new REST/WS fields, fills ticker-list validation, and Ed25519
+  signing round-trip.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

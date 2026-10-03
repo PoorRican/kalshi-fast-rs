@@ -91,6 +91,36 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `sending_ts_ms` (2026-09-29, "WebSockets sending ts") is a top-level envelope field on every
+  AsyncAPI message. It is intentionally not surfaced on `WsMessageV2`/`MarginDataMessage`: adding it
+  to every variant would be a breaking change on the hot path, and unknown envelope keys are ignored
+  by serde. Use `WsTimedEvent` receive timestamps for latency measurement.
+
+- `settlement_bounds_type` is `required` on `Market` in the OpenAPI, but every `Market` field is
+  `Option` in this crate, so it is `Option<SettlementBoundsType>` as well (`default` | `floor`, with
+  an `Unknown` catch-all). `settlement_floor_dollars` is nullable and only set for `floor` markets.
+
+- `GET /portfolio/fills` `ticker` is still `Option<String>` (comma-separated, max 100) instead of a
+  `Vec`, to avoid a type change; `GetFillsParams::validate` enforces the 100-ticker cap.
+
+- `MarginMarket::market_version` is required by the perps OpenAPI and modeled as `i32`. A read may
+  briefly return the previous version right after a bump; re-read on HTTP 409
+  `market_version_mismatch`. `CreateMarginOrderRequest::market_version` is `Option` (`None`/`0` skips
+  the check).
+
+- `exchange_index` is `required` on `Fill`, `Settlement`, `MarketPosition` and `ws user_orders`, but
+  is modeled as `Option<u32>` on every response struct so pre-sharding payloads still parse. Request
+  side, the OpenAPI allows `-1` (auto-route by ticker) on v1 create/amend; those v1 request bodies do
+  not yet expose `exchange_index` (V2 requests keep `Option<u32>`, 0..). Known gap.
+
+- v1 `AmendOrderRequest` has no `expiration_time` in the OpenAPI despite the 2026-09-29 changelog
+  wording ("Predictions and Margin REST amend requests accept `expiration_time`"); only the V2 amend
+  (`/portfolio/events/orders/{id}/amend`) and margin amend carry it. The YAML wins: only V2 was
+  changed (margin amend already had it).
+
+- Ed25519 API keys (web app default since 2026-10-01): `KalshiAuth` selects RSA-PSS or Ed25519
+  from the PEM key type. The signed message is unchanged.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

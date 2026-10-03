@@ -2027,3 +2027,147 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         Some("politics")
     );
 }
+
+// ============================================================================
+// Changelog 2026-09/10 alignment
+// ============================================================================
+
+#[test]
+fn market_parses_settlement_bounds() {
+    use kalshi_fast::{Market, SettlementBoundsType};
+
+    let floor: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "M-1",
+        "settlement_bounds_type": "floor",
+        "settlement_floor_dollars": "0.2500"
+    }))
+    .unwrap();
+    assert_eq!(
+        floor.settlement_bounds_type,
+        Some(SettlementBoundsType::Floor)
+    );
+    assert_eq!(floor.settlement_floor_dollars.as_deref(), Some("0.2500"));
+
+    let default: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "M-2",
+        "settlement_bounds_type": "default",
+        "settlement_floor_dollars": null
+    }))
+    .unwrap();
+    assert_eq!(
+        default.settlement_bounds_type,
+        Some(SettlementBoundsType::Default)
+    );
+    assert!(default.settlement_floor_dollars.is_none());
+
+    let future: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "M-3",
+        "settlement_bounds_type": "ceiling"
+    }))
+    .unwrap();
+    assert_eq!(
+        future.settlement_bounds_type,
+        Some(SettlementBoundsType::Unknown)
+    );
+}
+
+#[test]
+fn positions_params_serialize_settlement_status() {
+    use kalshi_fast::PositionSettlementStatus;
+
+    let params = GetPositionsParams {
+        settlement_status: Some(PositionSettlementStatus::Settled),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&params).unwrap()["settlement_status"],
+        "settled"
+    );
+    assert!(
+        serde_json::to_value(GetPositionsParams::default())
+            .unwrap()
+            .get("settlement_status")
+            .is_none()
+    );
+}
+
+#[test]
+fn fills_params_validate_ticker_list_limit() {
+    let tickers = |n: usize| {
+        (0..n)
+            .map(|i| format!("M-{i}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let ok = GetFillsParams {
+        ticker: Some(tickers(100)),
+        ..Default::default()
+    };
+    assert!(ok.validate().is_ok());
+    let too_many = GetFillsParams {
+        ticker: Some(tickers(101)),
+        ..Default::default()
+    };
+    assert!(too_many.validate().is_err());
+}
+
+#[test]
+fn amend_v2_and_rfq_requests_serialize_new_fields() {
+    use kalshi_fast::{AmendOrderV2Request, CreateRFQRequest};
+
+    let mut amend = AmendOrderV2Request {
+        ticker: "T".into(),
+        side: BookSide::Bid,
+        price: "0.5000".into(),
+        count: "10.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        expiration_time: None,
+        exchange_index: None,
+    };
+    assert!(
+        serde_json::to_value(&amend)
+            .unwrap()
+            .get("expiration_time")
+            .is_none()
+    );
+    amend.expiration_time = Some(0);
+    assert_eq!(serde_json::to_value(&amend).unwrap()["expiration_time"], 0);
+
+    let rfq = CreateRFQRequest {
+        market_ticker: "T".into(),
+        contracts: None,
+        contracts_fp: Some("1.00".into()),
+        target_cost_centi_cents: None,
+        target_cost_dollars: None,
+        rest_remainder: false,
+        replace_existing: None,
+        subtrader_id: None,
+        subaccount: None,
+        obscure_creator_id: Some(true),
+    };
+    assert_eq!(
+        serde_json::to_value(&rfq).unwrap()["obscure_creator_id"],
+        true
+    );
+}
+
+#[test]
+fn ws_user_order_parses_settlement_bounds_cancel_reason() {
+    use kalshi_fast::{WsLastUpdateReason, WsUserOrder};
+
+    let base = |reason: &str| {
+        serde_json::json!({
+            "order_id": "o", "user_id": "u", "ticker": "T", "exchange_index": 2,
+            "last_update_reason": reason
+        })
+    };
+    let order: WsUserOrder = serde_json::from_value(base("SettlementBoundsCancel")).unwrap();
+    assert_eq!(order.exchange_index, Some(2));
+    assert_eq!(
+        order.last_update_reason,
+        Some(WsLastUpdateReason::SettlementBoundsCancel)
+    );
+    let order: WsUserOrder = serde_json::from_value(base("SomethingNew")).unwrap();
+    assert_eq!(order.last_update_reason, Some(WsLastUpdateReason::Unknown));
+}

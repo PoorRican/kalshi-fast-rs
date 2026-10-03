@@ -17,6 +17,15 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    Default,
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum MarketStatus {
     Initialized,
     Inactive,
@@ -167,6 +176,9 @@ pub struct PriceRange {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Market {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     #[serde(default)]
     pub event_ticker: Option<String>,
@@ -318,6 +330,13 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// Which settlement bounds apply (`default` = none). Required by the spec; `Option` so
+    /// payloads predating the field still parse.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES side can settle at; only set when `settlement_bounds_type` is `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

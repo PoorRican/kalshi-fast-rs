@@ -8,8 +8,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter,
+    PositionSettlementStatus, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -54,6 +54,10 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// `unsettled` (server default), `settled`, or `all`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
 }
 
 impl GetPositionsParams {
@@ -85,6 +89,9 @@ impl GetPositionsParams {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
@@ -133,6 +140,9 @@ impl From<GetPositionsResponse> for PositionsPage {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     pub event_ticker: String,
     pub market_result: String,
@@ -175,6 +185,9 @@ pub struct GetSettlementsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub fill_id: String,
     pub order_id: String,
     pub trade_id: String,
@@ -218,11 +231,27 @@ pub struct GetFillsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Market ticker filter. Accepts a comma-separated list of up to 100 tickers
+    /// (e.g. `"MARKET-A,MARKET-B"`).
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+}
+
+impl GetFillsParams {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        if let Some(t) = &self.ticker
+            && t.split(',').count() > 100
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /portfolio/fills: ticker supports up to 100 comma-separated tickers"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -271,6 +300,7 @@ impl KalshiRestClient {
     ///
     /// **Requires auth.**
     pub async fn get_fills(&self, params: GetFillsParams) -> Result<GetFillsResponse, KalshiError> {
+        params.validate()?;
         let path = Self::full_path("/portfolio/fills");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await

@@ -3,9 +3,33 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// Reason for the most recent `user_orders` update (`lastUpdateReason` in the AsyncAPI).
+///
+/// Unrecognised future values deserialize as [`WsLastUpdateReason::Unknown`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum WsLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    ReduceOnlyCancel,
+    /// Resting order cancelled because a settlement-bounds update put it out of bounds.
+    SettlementBoundsCancel,
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
+    /// Exchange shard identifier (sharding rollout). Optional so pre-sharding payloads still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub order_id: String,
     pub user_id: String,
     pub ticker: String,
@@ -58,4 +82,6 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+    #[serde(default)]
+    pub last_update_reason: Option<WsLastUpdateReason>,
 }
