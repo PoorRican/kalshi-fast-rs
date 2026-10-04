@@ -89,6 +89,12 @@ pub struct RFQ {
     pub cancelled_ts: Option<String>,
     #[serde(default)]
     pub updated_ts: Option<String>,
+    /// True when the target cost is principal-only (taker fees charged on top).
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Subaccount of the RFQ creator; only visible to the creator.
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -183,7 +189,7 @@ pub struct GetRFQResponse {
     pub rfq: RFQ,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateRFQRequest {
     pub market_ticker: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -194,6 +200,14 @@ pub struct CreateRFQRequest {
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    /// Size quotes against the target cost as principal only, with taker fees charged on top.
+    /// Only valid together with a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Replace the RFQ creator's public communications ID with a shared empty-input SHA-256 hash
+    /// for other users until a quote executes successfully.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,

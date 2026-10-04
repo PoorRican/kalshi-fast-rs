@@ -268,6 +268,18 @@ impl fmt::Display for PositionCountFilter {
     }
 }
 
+/// `settlement_status` query value for `GET /portfolio/positions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    /// Unsettled positions (the server default).
+    Unsettled,
+    /// Settled positions that have not yet been archived to `/historical/positions`.
+    Settled,
+    /// Both live states.
+    All,
+}
+
 /// --- Order Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]

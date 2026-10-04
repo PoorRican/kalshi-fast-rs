@@ -2,17 +2,18 @@
 
 pub(crate) use cargo_husky as _;
 use kalshi_fast::{
-    ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
-    CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
-    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
+    AmendOrderV2Request, ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
+    CreateRFQRequest, CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata,
+    EventStatus, GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
     GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
     GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
     GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
     GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
     GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
-    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
-    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
-    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
+    GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, Market, MarketMetadata,
+    MarketStatus, MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus,
+    OrderType, PositionCountFilter, PositionSettlementStatus, PriceRange, SelfTradePreventionType,
+    SettlementBoundsType, TimeInForce, TradeTakerSide, WsOrderUpdateReason, WsUserOrder, YesNo,
 };
 
 // ============================================================================
@@ -1408,7 +1409,7 @@ fn get_positions_params_validates_subaccount_bounds() {
     assert!(params.validate().is_ok());
 
     let params = GetPositionsParams {
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1459,7 +1460,7 @@ fn get_orders_params_validates_event_ticker_count() {
 #[test]
 fn get_orders_params_validates_subaccount_bounds() {
     let params = GetOrdersParams {
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1560,7 +1561,7 @@ fn create_order_request_validate_subaccount_bounds() {
         action: BuySell::Buy,
         count: Some(1),
         yes_price: Some(10),
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(req.validate().is_err());
@@ -2026,4 +2027,149 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+// ============================================================================
+// Spec refresh 2026-10-02: settlement bounds, amend expiry, positions filter, RFQ privacy
+// ============================================================================
+
+#[test]
+fn market_parses_settlement_bounds() {
+    let floor: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "T-1",
+        "settlement_bounds_type": "floor",
+        "settlement_floor_dollars": "0.2500",
+        "exchange_index": 2
+    }))
+    .unwrap();
+    assert_eq!(
+        floor.settlement_bounds_type,
+        Some(SettlementBoundsType::Floor)
+    );
+    assert_eq!(floor.settlement_floor_dollars.as_deref(), Some("0.2500"));
+    assert_eq!(floor.exchange_index, Some(2));
+
+    let default: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "T-2",
+        "settlement_bounds_type": "default",
+        "settlement_floor_dollars": null
+    }))
+    .unwrap();
+    assert_eq!(
+        default.settlement_bounds_type,
+        Some(SettlementBoundsType::Default)
+    );
+    assert_eq!(default.settlement_floor_dollars, None);
+
+    let future: Market = serde_json::from_value(serde_json::json!({
+        "ticker": "T-3",
+        "settlement_bounds_type": "ceiling"
+    }))
+    .unwrap();
+    assert_eq!(
+        future.settlement_bounds_type,
+        Some(SettlementBoundsType::Unknown)
+    );
+
+    let legacy: Market = serde_json::from_value(serde_json::json!({"ticker": "T-4"})).unwrap();
+    assert_eq!(legacy.settlement_bounds_type, None);
+}
+
+#[test]
+fn ws_user_order_parses_last_update_reason() {
+    let order: WsUserOrder = serde_json::from_value(serde_json::json!({
+        "order_id": "o1",
+        "user_id": "u1",
+        "ticker": "T-1",
+        "last_update_reason": "SettlementBoundsCancel",
+        "exchange_index": 1
+    }))
+    .unwrap();
+    assert_eq!(
+        order.last_update_reason,
+        Some(WsOrderUpdateReason::SettlementBoundsCancel)
+    );
+    assert_eq!(order.exchange_index, Some(1));
+
+    let unknown: WsUserOrder = serde_json::from_value(serde_json::json!({
+        "order_id": "o1", "user_id": "u1", "ticker": "T-1",
+        "last_update_reason": "BrandNewReason"
+    }))
+    .unwrap();
+    assert_eq!(
+        unknown.last_update_reason,
+        Some(WsOrderUpdateReason::Unknown)
+    );
+}
+
+#[test]
+fn amend_order_v2_request_serializes_expiration_time() {
+    let mut req = AmendOrderV2Request {
+        ticker: "T-1".into(),
+        side: BookSide::Bid,
+        price: "0.5700".into(),
+        count: "8.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        exchange_index: None,
+        expiration_time: None,
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert!(json.get("expiration_time").is_none());
+
+    // 0 removes the expiry (good-till-canceled) and must still be sent.
+    req.expiration_time = Some(0);
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["expiration_time"], 0);
+}
+
+#[test]
+fn positions_params_serialize_settlement_status_and_exchange_index() {
+    let params = GetPositionsParams {
+        settlement_status: Some(PositionSettlementStatus::Settled),
+        subaccount: Some(63),
+        exchange_index: Some(1),
+        ..Default::default()
+    };
+    assert!(params.validate().is_ok());
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["settlement_status"], "settled");
+    assert_eq!(json["exchange_index"], 1);
+    assert_eq!(
+        serde_json::to_value(PositionSettlementStatus::All).unwrap(),
+        "all"
+    );
+    assert_eq!(
+        serde_json::to_value(PositionSettlementStatus::Unsettled).unwrap(),
+        "unsettled"
+    );
+}
+
+#[test]
+fn fills_params_serialize_csv_ticker_and_exchange_index() {
+    let params = GetFillsParams {
+        ticker: Some("A-1,B-2".into()),
+        exchange_index: Some(0),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["ticker"], "A-1,B-2");
+    assert_eq!(json["exchange_index"], 0);
+}
+
+#[test]
+fn create_rfq_request_serializes_privacy_and_fee_flags() {
+    let req = CreateRFQRequest {
+        market_ticker: "T-1".into(),
+        rest_remainder: false,
+        obscure_creator_id: Some(true),
+        target_cost_excludes_fees: Some(true),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["obscure_creator_id"], true);
+    assert_eq!(json["target_cost_excludes_fees"], true);
+
+    let json = serde_json::to_value(CreateRFQRequest::default()).unwrap();
+    assert!(json.get("obscure_creator_id").is_none());
 }

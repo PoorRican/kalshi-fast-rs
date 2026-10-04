@@ -8,6 +8,64 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-04
+
+### Compatibility
+
+- Docs snapshot: 2026-10-04
+- OpenAPI: 3.32.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-02
+
+**Changelog entries since the 0.8.0 watermark (2026-09-28) and disposition:**
+
+| Entry | Action |
+|---|---|
+| Settlement bounds on markets (2026-09-28) | `Market::settlement_bounds_type` (`SettlementBoundsType`), `Market::settlement_floor_dollars` |
+| SETTLEMENT_BOUNDS_CANCEL cancel reason on ExecutionReports (2026-09-28) | No change needed — FIX only |
+| Exit trigger prices must be positive (2026-09-28) | No change needed — server-side validation on perps exit-trigger endpoints, which the crate does not expose |
+| RFQ creators may obscure pre-trade identity (2026-09-28) | `CreateRFQRequest::obscure_creator_id`; `RFQ` gains typed `target_cost_excludes_fees` / `creator_subaccount` |
+| Amend order expiry (2026-09-29) | `AmendOrderV2Request::expiration_time` |
+| Web Sockets Sending Ts (2026-09-29) | No change needed — optional envelope field is ignored by owned/borrowed parsing; regression test added. Not surfaced on message variants to avoid another all-variant breaking change |
+| Read settled positions before archival (2026-09-30) | `GetPositionsParams::settlement_status` (`PositionSettlementStatus`) |
+| SettlementBoundsCancel order update reason (2026-09-30) | `WsUserOrder::last_update_reason` (`WsOrderUpdateReason`) |
+| Stop losses past liquidation are rejected (2026-09-30) | No change needed — server-side validation on perps exit-trigger endpoints, which the crate does not expose |
+| Filter fills across multiple markets (2026-10-01) | `GetFillsParams::ticker` documented as comma-separated (up to 100); type unchanged |
+| Trade IDs on FIX market data (2026-10-01) | No change needed — FIX only |
+| Web app generates Ed25519 API keys by default (2026-10-01) | `KalshiAuth::from_pem_str` / `from_pem_file` now accept Ed25519 PKCS#8 keys |
+| market_version on margin markets and orders (2026-10-02) | `MarginMarket::market_version`, `CreateMarginOrderRequest::market_version` |
+| Disable automatic order transfers on the Kalshi App and Web (2026-10-02) | No change needed — app/web behavior |
+| Reduce-only orders over FIX (2026-09-25, pre-watermark) | No change needed — FIX only |
+
+### Breaking
+
+- [Rust API] `AmendOrderV2Request`, `CreateRFQRequest`, and `CreateMarginOrderRequest` exhaustive struct
+  literals must provide the new fields: `AmendOrderV2Request::expiration_time`,
+  `CreateRFQRequest::{obscure_creator_id, target_cost_excludes_fees}` and
+  `CreateMarginOrderRequest::market_version` (all `Option`). `CreateRFQRequest` now derives
+  `Default`, so `..Default::default()` keeps literals forward-compatible.
+- [Rust API] `GetPositionsParams` and `GetFillsParams` gain `exchange_index`; `GetPositionsParams`
+  also gains `settlement_status`. Exhaustive literals must add them (or `..Default::default()`).
+
+### Added
+
+- [Upstream] Ed25519 API-key signing alongside RSA-PSS; key type is detected from the PEM. The RSA
+  PSS signing key is now built once at load time instead of cloned per request.
+- [Upstream] `Market::exchange_index`, `WsUserOrder::exchange_index`.
+
+### Fixed
+
+- [Rust API] Client-side `subaccount` validation now allows `0..=63` (spec: 1-63 for numbered
+  subaccounts); it previously rejected 33–63.
+
+### Tests
+
+- [Tests] Added parsing/serialization coverage for settlement bounds, order update reasons, amend
+  expiry (including `0` = remove expiry), positions/fills filters, RFQ flags, margin
+  `market_version`, `sending_ts_ms` frames, and an Ed25519 sign/verify round trip.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

@@ -58,4 +58,31 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+    /// Reason for the most recent update, if applicable.
+    #[serde(default)]
+    pub last_update_reason: Option<WsOrderUpdateReason>,
+    /// Exchange shard where the order resides.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
+}
+
+/// `last_update_reason` on `user_order` messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum WsOrderUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    /// `reduce_only` capped the order at placement.
+    ReduceOnlyCancel,
+    /// Resting order cancelled because a settlement-bounds update put it out of bounds.
+    SettlementBoundsCancel,
+    /// Unrecognised future reason.
+    #[serde(other)]
+    Unknown,
 }

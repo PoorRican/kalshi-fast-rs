@@ -124,6 +124,10 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Reject the order (HTTP 409 `market_version_mismatch`) if the market's current
+    /// `market_version` differs. `None` or `Some(0)` skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -287,6 +291,10 @@ pub struct MarginMarket {
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    /// Starts at 1; increases on corporate actions such as stock splits. Required by the spec;
+    /// `Option` so older payloads still parse. Pass to `CreateMarginOrderRequest::market_version`.
+    #[serde(default)]
+    pub market_version: Option<i32>,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -1198,7 +1206,7 @@ impl KalshiRestClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{GetMarginOrderGroupResponse, MarginPosition};
+    use super::{GetMarginOrderGroupResponse, MarginMarket, MarginPosition};
 
     #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {
@@ -1218,6 +1226,23 @@ mod tests {
         assert_eq!(position.margin_used, None);
         assert_eq!(position.roe, None);
         assert!(position.is_portfolio);
+    }
+
+    #[test]
+    fn margin_market_parses_market_version() {
+        let market: MarginMarket = serde_json::from_value(serde_json::json!({
+            "ticker": "KXBTC-26JUN",
+            "status": "active",
+            "title": "BTC",
+            "contract_size": "1.000000",
+            "underlying_multiplier": "1",
+            "tick_size": "0.01",
+            "fractional_trading_enabled": true,
+            "exchange_index": 0,
+            "market_version": 2
+        }))
+        .unwrap();
+        assert_eq!(market.market_version, Some(2));
     }
 
     #[test]

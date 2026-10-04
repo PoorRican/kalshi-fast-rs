@@ -165,6 +165,16 @@ pub struct PriceRange {
     pub step: String,
 }
 
+/// Settlement bounds that apply to a market (`default` means no bounds).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    Default,
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Market {
     pub ticker: String,
@@ -318,6 +328,17 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// Which settlement bounds apply to this market. Required by the spec; `Option` so payloads
+    /// predating the field (2026-09-28) still parse.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES/LONG side can settle at. Only set when `settlement_bounds_type` is
+    /// `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
+    /// Exchange shard the market lives on.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

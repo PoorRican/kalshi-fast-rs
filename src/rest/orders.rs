@@ -65,10 +65,10 @@ impl GetOrdersParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -255,10 +255,10 @@ impl CreateOrderRequest {
         }
 
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
+                "CreateOrderRequest: subaccount must be 0..=63".to_string(),
             ));
         }
 
@@ -586,6 +586,11 @@ pub struct AmendOrderV2Request {
     pub updated_client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_index: Option<u32>,
+    /// New Unix expiration timestamp in seconds. `None` preserves the current expiry, `Some(0)`
+    /// removes it (good-till-canceled); a nonzero value must be in the future. Send the current
+    /// price and total count for an expiry-only amendment, which preserves queue position.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

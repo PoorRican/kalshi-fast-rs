@@ -1138,6 +1138,21 @@ mod tests {
     }
 
     #[test]
+    fn frames_with_sending_ts_ms_still_parse() {
+        // `sending_ts_ms` (2026-09-29) is an optional envelope field on every frame; it must not
+        // disturb owned or borrowed parsing of control or data frames.
+        let subscribed = br#"{"id":1,"type":"subscribed","sending_ts_ms":1669149841234,"msg":{"channel":"orderbook_delta","sid":1}}"#;
+        assert!(matches!(
+            WsMessageV2::from_bytes(subscribed).unwrap(),
+            WsMessageV2::Subscribed { .. }
+        ));
+        assert!(WsMessageRef::from_bytes(subscribed).is_ok());
+
+        let ok = br#"{"id":2,"type":"ok","sid":1,"seq":3,"sending_ts_ms":1669149841234,"msg":[]}"#;
+        assert!(WsMessageV2::from_bytes(ok).is_ok());
+    }
+
+    #[test]
     fn ws_envelope_into_message_event_fee_update() {
         // Delivered on the market_lifecycle_v2 channel; both overrides set.
         let json = r#"{

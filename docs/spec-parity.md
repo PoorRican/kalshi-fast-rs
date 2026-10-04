@@ -91,6 +91,24 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market::settlement_bounds_type` is `required` in the OpenAPI `Market` schema (added 2026-09-28)
+  but modeled as `Option<SettlementBoundsType>` (with an `Unknown` catch-all) so older payloads and
+  future variants still parse. `settlement_floor_dollars` is nullable and only set for `floor`.
+  `MarginMarket::market_version` is likewise required in the perps spec but `Option<i32>` here.
+  `CreateMarginOrderRequest::market_version` of `0`/`None` skips the server check.
+- `AmendOrderV2Request::expiration_time` has three meanings: `None` preserves the expiry,
+  `Some(0)` removes it (good-till-canceled), any other value is a future Unix-seconds expiry.
+- `sending_ts_ms` (added 2026-09-29) is an optional envelope field on every AsyncAPI frame. It is
+  tolerated but not surfaced on `WsMessageV2`/`WsMessageRef` variants.
+- API keys may be RSA (RSA-PSS SHA-256) or Ed25519; `KalshiAuth` detects the type from the PEM and
+  signs the same `timestamp + METHOD + path` message either way.
+- Subaccount numbers are `0..=63` per the spec (the crate previously capped at 32).
+- Known unmodeled drift (pre-existing): OpenAPI 3.32.0 operations with no crate method include
+  `/events/fee_changes`, `/portfolio/{deposits,withdrawals,target_balance_allocation}`,
+  `/portfolio/intra_exchange_instance_transfer*`, `/communications/block-trade-proposals*`,
+  `/account/api_usage_level/*`, `/live_data/{events,weather}/*`, `/historical/positions`, and
+  `/fcm/*`. `Market` also still carries legacy integer-cent fields that are absent from the schema.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
