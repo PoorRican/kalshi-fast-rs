@@ -67,6 +67,9 @@ pub struct WsEnvelope {
     pub msg_type: WsMsgType,
     pub sid: Option<u64>,
     pub seq: Option<u64>,
+    /// Unix ms when Kalshi queued the message at the network layer (absent on older frames).
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
     pub msg: Option<Box<RawValue>>,
     #[serde(default)]
     pub subscriptions: Option<Vec<WsSubscriptionInfo>>,
@@ -101,6 +104,7 @@ impl WsEnvelope {
             seq,
             msg,
             subscriptions,
+            sending_ts_ms: _,
         } = self;
 
         match msg_type {
@@ -293,6 +297,9 @@ pub struct WsEnvelopeRef<'a> {
     pub msg_type: WsMsgType,
     pub sid: Option<u64>,
     pub seq: Option<u64>,
+    /// Unix ms when Kalshi queued the message at the network layer (absent on older frames).
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
     #[serde(borrow)]
     pub msg: Option<&'a RawValue>,
     #[serde(default, borrow)]
@@ -326,6 +333,7 @@ impl<'a> WsEnvelopeRef<'a> {
             seq,
             msg,
             subscriptions,
+            sending_ts_ms: _,
         } = self;
         match msg_type {
             WsMsgType::Subscribed => {

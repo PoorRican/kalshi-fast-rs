@@ -8,6 +8,50 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-05
+
+### Compatibility
+
+- Docs snapshot: 2026-10-05
+- OpenAPI: 3.32.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-02
+
+### Breaking
+
+- [Rust API] `AmendOrderV2Request` gains `expiration_time`, `CreateRFQRequest` gains
+  `obscure_creator_id`, and `CreateMarginOrderRequest` gains `market_version`. Exhaustive struct
+  literals must add the new fields (`None` preserves prior behavior).
+- [Rust API] `WsEnvelope` / `WsEnvelopeRef` gain `sending_ts_ms`; exhaustive destructuring must
+  mention it.
+
+### Added
+
+- [Upstream] Ed25519 API keys (2026-10-01): `KalshiAuth::from_pem_str` / `from_pem_file` accept
+  PKCS#8 Ed25519 keys and sign with Ed25519; RSA keys are unchanged. The signing key is now built
+  once at load time instead of being cloned on every RSA signature.
+- [Upstream] `Market::settlement_bounds_type` (`SettlementBoundsType`) and
+  `Market::settlement_floor_dollars` (2026-09-28).
+- [Upstream] `GetPositionsParams::settlement_status` (`PositionSettlementStatus`) (2026-09-30).
+- [Upstream] `AmendOrderV2Request::expiration_time` for expiry-only amendments (2026-09-29).
+- [Upstream] `CreateRFQRequest::obscure_creator_id` (2026-09-28).
+- [Upstream] `MarginMarket::market_version` and `CreateMarginOrderRequest::market_version`
+  (2026-10-02).
+- [Upstream] `WsUserOrder::last_update_reason` (`WsOrderUpdateReason`, including
+  `SettlementBoundsCancel`) (2026-09-30).
+- [Upstream] `sending_ts_ms` on raw WebSocket envelopes (2026-09-29).
+
+### Changed
+
+- [Docs] `GetFillsParams::ticker` documents the comma-separated list of up to 100 tickers
+  (2026-10-01).
+
+### Tests
+
+- [Tests] Added `tests/spec_refresh_2026_10.rs` and Ed25519 signing/verification unit tests.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

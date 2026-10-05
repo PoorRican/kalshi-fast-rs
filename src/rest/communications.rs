@@ -201,6 +201,10 @@ pub struct CreateRFQRequest {
     pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Replace the creator's public communications ID with the shared empty-input SHA-256
+    /// placeholder for other users until a quote executes. Defaults to `false` server-side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

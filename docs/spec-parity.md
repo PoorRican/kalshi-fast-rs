@@ -87,6 +87,22 @@ examples are ambiguous.
   `ApiUsageLevelGrant.exchange_instance` is kept as `String` rather than an `ExchangeInstance` enum
   (`event_contract` | `margined`); the raw string round-trips losslessly and tolerates any future
   exchange-instance values without a crate update.
+- Ed25519 API keys (2026-10-01): `KalshiAuth` selects the algorithm from the PEM key type (RSA-PSS
+  SHA-256 for RSA, Ed25519 over the same pre-sign text for PKCS#8 Ed25519 keys).
+- `Market.settlement_bounds_type` is `required` in the OpenAPI schema but modeled as `Option` like
+  every other `Market` field, so older/partial payloads still parse; `settlement_floor_dollars` is
+  nullable and only set when the type is `floor`. `SettlementBoundsType` and `WsOrderUpdateReason`
+  carry `#[serde(other)] Unknown` catch-alls.
+- `MarginMarket.market_version` is `required` in the perps spec; modeled as `Option<i32>` for
+  tolerance. `CreateMarginOrderRequest.market_version` of `0` skips the server-side check.
+- `AmendOrderV2Request.expiration_time` is a Unix timestamp in seconds (`0` removes the expiry).
+- `sending_ts_ms` is exposed only on the raw `WsEnvelope`/`WsEnvelopeRef`; the typed message enums
+  ignore it.
+- `WsUserOrder.last_update_reason` is spec-optional (`SettlementBoundsCancel` added 2026-09-30).
+- Known unresolved drift (predates this refresh): `exchange_index` on most REST/WS objects,
+  `key_type`/`warning` on API-key responses, `balance_breakdown`, `creator_subaccount` /
+  `target_cost_excludes_fees` / `post_only` on RFQ and Quote, `EventData` fee overrides, and
+  `premium_index` on the margin funding-rate estimate.
 - The AsyncAPI marks several timestamp/required fields that the exchange may omit in practice
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.

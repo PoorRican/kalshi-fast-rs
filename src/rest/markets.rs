@@ -6,7 +6,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::trades::GetHistoricalMarketsParams;
 use crate::types::{
-    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter,
+    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter, SettlementBoundsType,
     deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
@@ -318,6 +318,14 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// Which settlement bounds apply. Required by the OpenAPI schema; `Option` so payloads
+    /// predating the field still parse.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES/LONG side can settle at. Only set when
+    /// `settlement_bounds_type` is `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

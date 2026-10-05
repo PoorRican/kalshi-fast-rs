@@ -16,7 +16,7 @@
 //! - **Pagination helpers** — page-level ([`CursorPager`]) and item-level (`stream_*`) iteration
 //! - **REST reliability controls** — retry/backoff/jitter with `429 Retry-After` support
 //! - **Transport builder** — timeout/connect-timeout/headers/user-agent/proxy/custom client
-//! - **RSA-PSS authentication** — secure signing for private endpoints
+//! - **RSA-PSS and Ed25519 authentication** — secure signing for private endpoints
 //! - **Timed reader** (`timed-reader` feature) — timestamps WebSocket events
 //!   when they become available to the process
 //!
@@ -87,7 +87,7 @@
 //!
 //! ## Authentication
 //!
-//! Private endpoints (portfolio, orders, WebSocket fills) require RSA-PSS signing.
+//! Private endpoints (portfolio, orders, WebSocket fills) require RSA-PSS or Ed25519 signing.
 //! Load your key with [`KalshiAuth::from_pem_file`] or [`KalshiAuth::from_pem_str`]:
 //!
 //! ```no_run
@@ -105,7 +105,7 @@
 //!
 //! Environment variables used by the examples:
 //! - `KALSHI_KEY_ID` — your API key ID
-//! - `KALSHI_PRIVATE_KEY_PATH` — path to your RSA private key (PEM format)
+//! - `KALSHI_PRIVATE_KEY_PATH` — path to your RSA or Ed25519 private key (PEM format)
 //!
 //! ## Pagination
 //!
