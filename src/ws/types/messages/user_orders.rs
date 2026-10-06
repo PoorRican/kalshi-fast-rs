@@ -3,6 +3,25 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// `last_update_reason` on `user_order` messages. Unrecognised values map to `Unknown`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum WsLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    ReduceOnlyCancel,
+    SettlementBoundsCancel,
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
@@ -50,6 +69,9 @@ pub struct WsUserOrder {
     pub created_ts_ms: Option<i64>,
     #[serde(default)]
     pub last_update_time: Option<String>,
+    /// Reason for the most recent update, if applicable.
+    #[serde(default)]
+    pub last_update_reason: Option<WsLastUpdateReason>,
     #[serde(default)]
     pub last_updated_ts_ms: Option<i64>,
     #[serde(default)]

@@ -342,8 +342,26 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    /// Which settlement bounds apply (`default` = none). Required by the spec since 2026-09-28;
+    /// `Option` so older payloads still parse.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES side can settle at; only present when `settlement_bounds_type` is
+    /// `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// `Market.settlement_bounds_type`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    Default,
+    Floor,
+    #[serde(other)]
+    Unknown,
 }
 
 /// GET /markets query params and constraints

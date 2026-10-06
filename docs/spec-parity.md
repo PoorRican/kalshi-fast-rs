@@ -91,6 +91,17 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- OpenAPI 3.32.0 (2026-10 refresh): `Market.settlement_bounds_type`, `MultivariateEventCollection.
+  price_level_structure`/`price_ranges`, `MarginMarket.market_version` and `WsUserOrder.
+  last_update_reason` are required in the YAML but modeled as `Option` so older payloads still
+  parse. `last_update_reason` uses `WsLastUpdateReason` with an `Unknown` catch-all; the perps
+  AsyncAPI enum (`MarginLastUpdateReason`) does not yet include `SettlementBoundsCancel`.
+- Known unmodeled spec properties: `exchange_index` on `Market`/`MultivariateEventCollection`
+  (lands in `extra`), `market_id` on `CreateMarginOrderRequest`, and the perps exit-trigger endpoints
+  (stop-loss/take-profit prices must be strictly positive; enforced server-side).
+- API keys may be RSA or Ed25519 (`api_key_type`); `KalshiAuth` selects the signature algorithm from
+  the PEM key type (RSA-PSS SHA-256 or Ed25519).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

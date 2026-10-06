@@ -124,6 +124,9 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Reject with HTTP 409 `market_version_mismatch` if the market's version differs. `0` skips.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -287,6 +290,10 @@ pub struct MarginMarket {
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    /// Current market version (bumps on corporate actions such as splits). Required by the spec;
+    /// `Option` so older payloads still parse.
+    #[serde(default)]
+    pub market_version: Option<i32>,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]

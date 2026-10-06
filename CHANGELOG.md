@@ -8,6 +8,63 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-06
+
+### Compatibility
+
+- Docs snapshot: 2026-10-06
+- OpenAPI: 3.32.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-05
+
+Version bump: **minor** (0.9.1 -> 0.10.0). Per `VERSIONING.md` (pre-1.0, "Minor releases are for any
+intentional breaking change to the public Rust API"), new public fields on the exhaustively
+constructible request structs `AmendOrderV2Request` and `CreateMarginOrderRequest` require
+downstream code changes.
+
+### Breaking
+
+- [Rust API] `AmendOrderV2Request` gains `expiration_time: Option<i64>` and
+  `CreateMarginOrderRequest` gains `market_version: Option<i32>`; struct literals must set them.
+
+### Added
+
+- [Upstream] `Market.settlement_bounds_type` (`SettlementBoundsType`) and
+  `Market.settlement_floor_dollars`.
+- [Upstream] `GetPositionsParams.settlement_status` (`PositionSettlementStatus`).
+- [Upstream] `WsUserOrder.last_update_reason` (`WsLastUpdateReason`, incl. `SettlementBoundsCancel`).
+- [Upstream] `MultivariateEventCollection.price_level_structure` / `price_ranges`.
+- [Upstream] `MarginMarket.market_version`.
+- [Rust API] `KalshiAuth` loads Ed25519 PKCS#8 private keys and signs with Ed25519 (RSA unchanged);
+  the RSA signing key is now built once at load time instead of cloned per request.
+- [Docs] `GetFillsParams.ticker` documents comma-separated lists (up to 100).
+
+**Changelog entries since the 2026-09-28 watermark and disposition:**
+
+| Entry | Action |
+|---|---|
+| Price level structures on multivariate collections (2026-10-05) | Added fields to `MultivariateEventCollection` |
+| `rfq_deleted` to all subscribers (2026-10-05) | No change: delivery behavior; `WsRfqDeleted` matches the AsyncAPI required set |
+| Disable automatic order transfers on App/Web (2026-10-02) | No change: UI behavior |
+| `market_version` on margin markets/orders (2026-10-02) | Added to `MarginMarket` and `CreateMarginOrderRequest` |
+| Trade IDs on FIX market data (2026-10-01) | No change: FIX not in crate |
+| Filter fills across multiple markets (2026-10-01) | Doc update; `ticker` is already a free-form `String` |
+| Stop losses past liquidation rejected (2026-09-30) | No change: server-side validation; exit-trigger endpoints not modeled |
+| Read settled positions (2026-09-30) | Added `settlement_status` |
+| Web Sockets Sending Ts (2026-09-29) | No change: `sending_ts_ms` already handled by the envelope |
+| Amend order expiry (2026-09-29) | Added `expiration_time` to `AmendOrderV2Request` |
+| Exit trigger prices must be positive (2026-09-28) | No change: server-side; exit triggers not modeled |
+| Settlement bounds on markets (2026-09-28) | Added `Market` fields |
+| SETTLEMENT_BOUNDS_CANCEL on FIX ExecutionReports (2026-09-28) | No change: FIX not in crate |
+| SettlementBoundsCancel update reason (2026-09-30) | Added `WsLastUpdateReason`; margin enum unchanged (perps AsyncAPI lacks it) |
+| Ed25519 API keys by default (2026-10-01) | `KalshiAuth::from_pem_str` now accepts Ed25519 PKCS#8 keys (new `ed25519-dalek` dep) |
+
+### Tests
+
+- [Tests] Added parsing/serialization tests for all of the above.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed
