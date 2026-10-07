@@ -24,6 +24,8 @@ pub use envelope::*;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MarketPositionRef<'a> {
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(borrow)]
     pub ticker: Cow<'a, str>,
     #[serde(borrow)]
@@ -45,6 +47,7 @@ pub struct MarketPositionRef<'a> {
 impl<'a> MarketPositionRef<'a> {
     pub fn into_owned(self) -> MarketPosition {
         MarketPosition {
+            exchange_index: self.exchange_index,
             ticker: self.ticker.into_owned(),
             total_traded_dollars: self.total_traded_dollars.into_owned(),
             position_fp: self.position_fp.into_owned(),

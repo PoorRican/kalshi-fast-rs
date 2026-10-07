@@ -6,7 +6,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::trades::GetHistoricalMarketsParams;
 use crate::types::{
-    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter,
+    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter, SettlementBoundsType,
     deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
@@ -167,6 +167,9 @@ pub struct PriceRange {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Market {
+    /// Exchange shard index (optional in the schema).
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     #[serde(default)]
     pub event_ticker: Option<String>,
@@ -342,6 +345,14 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    /// Which settlement bounds apply (`default` | `floor`). Required by the OpenAPI `Market`
+    /// schema; modeled as `Option` like every other `Market` field.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES side can settle at. Only present when
+    /// `settlement_bounds_type` is `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

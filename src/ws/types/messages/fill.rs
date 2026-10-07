@@ -5,6 +5,10 @@ use std::borrow::Cow;
 /// Fill channel message (type: "fill")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsFill {
+    /// Exchange shard index. Required by the OpenAPI/AsyncAPI schema once exchange sharding rolled
+    /// out; `Option` so payloads predating sharding still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub trade_id: String,
     pub order_id: String,
     #[serde(default)]
@@ -41,6 +45,8 @@ pub struct WsFill {
 /// Fill channel message (type: "fill")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsFillRef<'a> {
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(borrow)]
     pub trade_id: Cow<'a, str>,
     #[serde(borrow)]
@@ -82,6 +88,7 @@ pub struct WsFillRef<'a> {
 impl<'a> WsFillRef<'a> {
     pub fn into_owned(self) -> WsFill {
         WsFill {
+            exchange_index: self.exchange_index,
             trade_id: self.trade_id.into_owned(),
             order_id: self.order_id.into_owned(),
             client_order_id: self.client_order_id.map(Cow::into_owned),

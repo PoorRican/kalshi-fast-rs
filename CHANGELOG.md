@@ -8,6 +8,77 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-07
+
+### Compatibility
+
+- Docs snapshot: 2026-10-07
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-06
+
+### Breaking
+
+- [Rust API] `CreateMarginOrderRequest` gains `market_version: Option<i32>`; downstream struct
+  literals must add the field (`None` keeps the old behavior).
+- [Rust API] `AmendOrderV2Request` gains `expiration_time: Option<i64>`; downstream struct
+  literals must add the field.
+- [Rust API] `MarginMarket` gains `market_version: i32` (defaults to `0` when absent).
+- [Rust API] Public response structs gain `exchange_index` (see Added). Exhaustive struct literals
+  or patterns without `..` must be updated.
+
+### Added
+
+- [Upstream] `Market.settlement_bounds_type` (`SettlementBoundsType`: `default` | `floor`) and
+  `Market.settlement_floor_dollars` (2026-09-28).
+- [Upstream] `MultivariateEventCollection.price_level_structure` / `price_ranges` (2026-10-05).
+- [Upstream] `GetPositionsParams.settlement_status` (`PositionSettlementStatus`:
+  `unsettled` | `settled` | `all`) (2026-09-30).
+- [Upstream] `GetFillsParams.ticker` documented as a comma-separated list of up to 100 tickers
+  (2026-10-01).
+- [Upstream] `WsUserOrder.last_update_reason` (`WsLastUpdateReason`) including
+  `SettlementBoundsCancel` (2026-09-30).
+- [Upstream] `AmendOrderV2Request.expiration_time` (2026-09-29).
+- [Upstream] Margin `market_version` on markets and on order creation (2026-10-02).
+- [Upstream] Exchange-shard fields now present in the specs: `exchange_index` on `Order`, `Fill`,
+  `MarketPosition`, `Settlement`, `Series`, `EventData`, `Market`, `MultivariateEventCollection`,
+  `OrderGroup` responses, subaccount balance/transfer/netting objects, and the `WsFill`,
+  `WsUserOrder`, `WsMarketLifecycleV2` and `WsEventLifecycle` payloads; `exchange_index` filters on
+  `GetOrdersParams`, `GetPositionsParams` and `GetFillsParams`;
+  `GetExchangeStatusResponse.intra_exchange_transfers_active` / `exchange_index_statuses`;
+  `GetBalanceResponse.balance_breakdown`.
+
+### Changelog entries since the 2026-09-28 watermark and disposition
+
+- 2026-10-06 FIX accepts trade-scoped API keys: no change needed (FIX is not part of this crate).
+- 2026-10-05 Price level structures on multivariate collections: `MultivariateEventCollection`.
+- 2026-10-05 `rfq_deleted` sent to all subscribers after execution: no change needed (server
+  behavior; `rfq_deleted` payload shape unchanged in AsyncAPI).
+- 2026-10-02 Disable automatic order transfers (Kalshi App/Web setting): no change needed.
+- 2026-10-02 `market_version` on margin markets/orders: `MarginMarket`, `CreateMarginOrderRequest`.
+- 2026-10-01 Trade IDs on FIX market data: no change needed (FIX).
+- 2026-10-01 Filter fills across multiple markets: `GetFillsParams.ticker` docs.
+- 2026-09-30 Stop losses past liquidation rejected / 2026-09-28 exit trigger prices positive:
+  server-side validation on margin exit-trigger endpoints, which this crate does not wrap yet
+  (see `docs/spec-parity.md`); no change needed to existing code.
+- 2026-09-30 Read settled positions before archival: `GetPositionsParams.settlement_status`.
+- 2026-09-30 `SettlementBoundsCancel` order update reason: `WsLastUpdateReason`.
+- 2026-09-29 WebSocket `sending_ts_ms`: additive envelope field, ignored by serde today; not
+  surfaced yet (see `docs/spec-parity.md`).
+- 2026-09-29 Amend order expiry: margin `AmendMarginOrderRequest.expiration_time` already present;
+  added `AmendOrderV2Request.expiration_time`; FIX portion not applicable.
+- 2026-09-28 Settlement bounds on markets: `Market`.
+- 2026-09-28 `SETTLEMENT_BOUNDS_CANCEL` on FIX ExecutionReports: no change needed (FIX).
+
+### Known gaps (not yet modeled)
+
+- [Upstream] OpenAPI endpoints with no wrapper yet: intra-exchange instance transfers, deposits,
+  withdrawals, block-trade proposals, API usage level upgrade/volume progress, weather index live
+  data, FCM subtraders / daily cap / blocked categories, target balance allocation; perps exit
+  triggers, FCM risk controls and FCM notional risk limit. See `docs/spec-parity.md`.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

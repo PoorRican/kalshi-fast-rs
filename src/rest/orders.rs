@@ -46,6 +46,9 @@ pub struct GetOrdersParams {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter by exchange shard. Omit to return results from all shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetOrdersParams {
@@ -77,6 +80,9 @@ impl GetOrdersParams {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Order {
+    /// Exchange shard index (optional in the schema).
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub order_id: String,
     pub user_id: String,
     pub client_order_id: String,
@@ -396,6 +402,9 @@ pub struct GetOrderGroupsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OrderGroup {
+    /// Exchange shard index (optional in the schema).
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub id: String,
     #[serde(default)]
     pub contracts_limit: Option<i64>,
@@ -418,6 +427,9 @@ pub struct CreateOrderGroupRequest {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateOrderGroupResponse {
+    /// Exchange shard index (optional in the schema).
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub order_group_id: String,
     /// 0 = primary account, 1–32 = subaccount. Added 2026-05-07.
     #[serde(default)]
@@ -426,6 +438,9 @@ pub struct CreateOrderGroupResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetOrderGroupResponse {
+    /// Exchange shard index (optional in the schema).
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub is_auto_cancel_enabled: bool,
     #[serde(default)]
     pub contracts_limit: Option<i64>,
@@ -586,6 +601,11 @@ pub struct AmendOrderV2Request {
     pub updated_client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_index: Option<u32>,
+    /// New Unix expiration timestamp in seconds. `None` preserves the current expiry, `Some(0)`
+    /// clears it (good-till-canceled); a nonzero value must be in the future. For an expiry-only
+    /// amendment send the current price and total count (queue priority is preserved).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

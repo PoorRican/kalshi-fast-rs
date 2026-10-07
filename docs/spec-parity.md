@@ -97,3 +97,29 @@ examples are ambiguous.
   `tests/ws_parsing.rs`, `tests/ws_command_behavior.rs`
 - Live contract checks: `tests/rest_public.rs`, `tests/rest_auth.rs`,
   `tests/ws_public.rs`, `tests/ws_auth.rs`
+
+- Exchange sharding (`exchange_index`): the specs now mark `exchange_index` required on many
+  response objects (`Fill`, `MarketPosition`, `Settlement`, `WsFill`, `WsUserOrder`, ...). It is
+  modeled as `Option<u32>` with `#[serde(default)]` so pre-sharding payloads still parse. Order
+  group mutation endpoints and `GET /portfolio/balance` accept an `exchange_index` query parameter
+  that is not yet exposed (their method signatures would change).
+
+- `Market.settlement_bounds_type` is required in the OpenAPI `Market` schema but modeled as
+  `Option`, like every other `Market` field. `settlement_floor_dollars` is only present for
+  `floor` markets. `MultivariateEventCollection.price_level_structure` / `price_ranges` are
+  required upstream (2026-10-05) but `Option` here for older payloads.
+
+- `MarginMarket.market_version` is required upstream; it is `#[serde(default)] i32`, so `0` means
+  "absent". `0` is also the "skip the check" value accepted by `CreateMarginOrderRequest`.
+
+- WebSocket `sending_ts_ms` (2026-09-29) is an envelope-level field on every message. It is not
+  surfaced: adding it would change every `WsMessageV2`/`WsMessageRef` variant. serde ignores it.
+
+- Not yet wrapped (tracked drift, spec 3.34.0): intra-exchange instance transfers, deposits,
+  withdrawals, block-trade proposals, API usage level upgrade and volume progress, weather index
+  endpoints, FCM subtrader/daily-cap/blocked-category endpoints, target balance allocation; perps
+  exit-trigger endpoints (including the 2026-09-28/30 price validation rules), FCM subtrader risk
+  controls and FCM notional risk limit. Also not yet modeled: new fields on `ApiKey`,
+  `RFQ`/`Quote` (`target_cost_excludes_fees`, `creator_subaccount`), `EventData` fee overrides,
+  `Deposit`/`Withdrawal` and `GetHistoricalCutoffResponse.market_positions_last_updated_ts`.
+

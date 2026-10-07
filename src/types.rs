@@ -142,6 +142,20 @@ pub enum FeeType {
     Unknown,
 }
 
+// --- Settlement Bounds ---
+
+/// Which settlement bounds apply to a market (`Market.settlement_bounds_type`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    /// The market has no settlement bounds.
+    Default,
+    /// The YES side cannot settle below `Market.settlement_floor_dollars`.
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
 /// --- Event Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -243,6 +257,22 @@ impl Serialize for MveFilter {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())
     }
+}
+
+// --- Position Settlement Status ---
+
+/// `settlement_status` query filter for `GET /portfolio/positions`.
+///
+/// The server default (when the parameter is omitted) is `unsettled`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    /// Unsettled positions only (server default).
+    Unsettled,
+    /// Settled positions that have not yet moved to `GET /historical/positions`.
+    Settled,
+    /// Both live states.
+    All,
 }
 
 /// --- Position Count Filter ---

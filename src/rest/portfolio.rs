@@ -8,8 +8,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter,
+    PositionSettlementStatus, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -23,6 +23,15 @@ pub struct GetBalanceResponse {
     /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
     #[serde(default)]
     pub balance_dollars: Option<FixedPointDollars>,
+    /// Per-exchange-index balance breakdown. Omitted when using a subaccount-restricted API key.
+    #[serde(default)]
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: u32,
+    pub balance: FixedPointDollars,
 }
 
 /// GET /portfolio/positions query params
@@ -54,6 +63,14 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Defaults to `unsettled` server-side. Use `Settled` for settled positions not yet
+    /// archived to `GET /historical/positions`, or `All` for both live states.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
+    /// Filter by exchange shard. Omit to return results from all shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetPositionsParams {
@@ -85,6 +102,10 @@ impl GetPositionsParams {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
+    /// Exchange shard index. Required by the OpenAPI/AsyncAPI schema once exchange sharding rolled
+    /// out; `Option` so payloads predating sharding still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
@@ -133,6 +154,10 @@ impl From<GetPositionsResponse> for PositionsPage {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
+    /// Exchange shard index. Required by the OpenAPI/AsyncAPI schema once exchange sharding rolled
+    /// out; `Option` so payloads predating sharding still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     pub event_ticker: String,
     pub market_result: String,
@@ -175,6 +200,10 @@ pub struct GetSettlementsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
+    /// Exchange shard index. Required by the OpenAPI/AsyncAPI schema once exchange sharding rolled
+    /// out; `Option` so payloads predating sharding still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub fill_id: String,
     pub order_id: String,
     pub trade_id: String,
@@ -217,12 +246,17 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// Market ticker filter. Accepts a comma-separated list of up to 100 tickers
+    /// (e.g. `"MARKET-A,MARKET-B"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Filter by exchange shard. Omit to return results from all shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

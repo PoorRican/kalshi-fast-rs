@@ -78,6 +78,10 @@ pub struct CreateSubaccountResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
+    /// Exchange shard index. Required by the OpenAPI/AsyncAPI schema once exchange sharding rolled
+    /// out; `Option` so payloads predating sharding still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub subaccount_number: u32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
@@ -103,6 +107,10 @@ pub struct ApplySubaccountTransferResponse {}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountTransfer {
+    /// Exchange shard index. Required by the OpenAPI/AsyncAPI schema once exchange sharding rolled
+    /// out; `Option` so payloads predating sharding still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub transfer_id: String,
     pub from_subaccount: u32,
     pub to_subaccount: u32,
@@ -200,6 +208,10 @@ pub struct UpdateSubaccountNettingRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubaccountNettingConfig {
+    /// Exchange shard index. Required by the OpenAPI/AsyncAPI schema once exchange sharding rolled
+    /// out; `Option` so payloads predating sharding still parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub subaccount_number: u32,
     pub enabled: bool,
 }
