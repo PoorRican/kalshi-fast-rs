@@ -321,6 +321,14 @@ pub struct AmendOrderRequest {
     pub count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub count_fp: Option<FixedPointCount>,
+    /// New Unix expiry in seconds. `None` preserves the current expiry, `Some(0)`
+    /// clears it (good-till-canceled); a nonzero value must be in the future.
+    /// For an expiry-only amendment send the current price and total count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
+    /// Exchange shard index; currently only 0 is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

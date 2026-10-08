@@ -124,6 +124,10 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Reject with HTTP 409 `market_version_mismatch` if the market's current
+    /// version differs. `None` or `0` skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -287,6 +291,11 @@ pub struct MarginMarket {
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    /// Starts at 1; increases when trading resumes after a corporate action.
+    /// Pass it as `CreateMarginOrderRequest::market_version` to guard against
+    /// ordering into a changed market.
+    #[serde(default)]
+    pub market_version: Option<i32>,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -1198,7 +1207,55 @@ impl KalshiRestClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{GetMarginOrderGroupResponse, MarginPosition};
+    use super::{
+        BookSide, CreateMarginOrderRequest, GetMarginOrderGroupResponse, MarginMarket,
+        MarginPosition, MarginSelfTradePreventionType, MarginTimeInForce,
+    };
+
+    #[test]
+    fn margin_market_deserializes_market_version() {
+        let market: MarginMarket = serde_json::from_value(serde_json::json!({
+            "ticker": "KXBTC-26JUN",
+            "status": "active",
+            "title": "BTC",
+            "contract_size": "1",
+            "underlying_multiplier": "1",
+            "tick_size": "0.01",
+            "fractional_trading_enabled": true,
+            "exchange_index": 0,
+            "market_version": 3
+        }))
+        .unwrap();
+        assert_eq!(market.market_version, Some(3));
+    }
+
+    #[test]
+    fn create_margin_order_serializes_market_version_only_when_set() {
+        let mut req = CreateMarginOrderRequest {
+            ticker: "KXBTC-26JUN".into(),
+            client_order_id: "c1".into(),
+            side: BookSide::Bid,
+            count: "1".into(),
+            price: "100".into(),
+            time_in_force: MarginTimeInForce::GoodTillCanceled,
+            self_trade_prevention_type: MarginSelfTradePreventionType::Maker,
+            expiration_time: None,
+            post_only: None,
+            cancel_order_on_pause: None,
+            reduce_only: None,
+            subaccount: None,
+            order_group_id: None,
+            market_version: None,
+        };
+        assert!(
+            serde_json::to_value(&req)
+                .unwrap()
+                .get("market_version")
+                .is_none()
+        );
+        req.market_version = Some(2);
+        assert_eq!(serde_json::to_value(&req).unwrap()["market_version"], 2);
+    }
 
     #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {

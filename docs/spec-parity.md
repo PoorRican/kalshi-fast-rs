@@ -91,6 +91,17 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market.settlement_bounds_type` is required in the OpenAPI but modeled as `Option` so historical
+  and pre-2026-09-28 payloads still parse; `settlement_floor_dollars` is only present for `floor`
+  markets. `MarginMarket.market_version` (required in the perps spec) is likewise `Option<i32>`.
+  `CreateMarginOrderRequest.market_version` of `None`/`0` skips the server-side version check.
+- `sending_ts_ms` (added 2026-09-29) is an optional AsyncAPI envelope field carrying the time
+  Kalshi queued the frame. It is intentionally not surfaced on `WsMessageV2`/`WsDataMessageV2`:
+  adding it to every variant would be a wide breaking change on the hot path. Unknown fields are
+  ignored by the deserializers; use `WsRawEvent` if the value is needed.
+- `GET /portfolio/fills` accepts a comma-separated `ticker` (up to 100); the crate passes the
+  string through unvalidated.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

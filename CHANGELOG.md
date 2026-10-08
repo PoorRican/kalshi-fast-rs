@@ -8,6 +8,65 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-08
+
+### Compatibility
+
+- Docs snapshot: 2026-10-08
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-15 (newest RSS anchor; item published 2026-10-08)
+
+### Breaking
+
+Per `VERSIONING.md` ("Minor releases are for any intentional breaking change to the public Rust
+API, or any change likely to require downstream code changes"), this is a minor bump because new
+public fields break exhaustive struct literals:
+
+- [Rust API] `CreateMarginOrderRequest` gains `market_version: Option<i32>`.
+- [Rust API] `AmendOrderRequest` gains `expiration_time` and `exchange_index` (both `Option`).
+- [Rust API] `GetPositionsParams` gains `settlement_status`.
+
+### Added
+
+- [Upstream] `Market.settlement_bounds_type` (`SettlementBoundsType`: `default` | `floor`, with an
+  `Unknown` catch-all) and `Market.settlement_floor_dollars` (2026-09-28 changelog).
+- [Upstream] `MarginMarket.market_version`; `CreateMarginOrderRequest.market_version` rejects the
+  order with HTTP 409 `market_version_mismatch` when the market version changed.
+- [Upstream] `AmendOrderRequest.expiration_time` (Unix seconds; omit to preserve, `0` to clear).
+  `AmendMarginOrderRequest` already carried it.
+- [Upstream] `GetPositionsParams.settlement_status` (`PositionSettlementStatus`: `unsettled` |
+  `settled` | `all`).
+- [Upstream] `MultivariateEventCollection.price_level_structure` and `price_ranges`.
+- [Docs] `GetFillsParams.ticker` documents the new comma-separated list (up to 100 tickers).
+
+### Changelog Reconciliation
+
+Every RSS entry after the 2026-09-28 watermark, and its mapping:
+
+- Subaccount-restricted keys can trade perps: server-side authorization; no change needed.
+- FIX accepts trade-scoped keys / FIX TradeID / FIX `SETTLEMENT_BOUNDS_CANCEL` / FIX replace expiry:
+  FIX is not implemented by this crate; no change needed.
+- Multivariate collection price levels: `price_level_structure`, `price_ranges` added.
+- `rfq_deleted` sent to all subscribers: delivery behavior only; `WsRfqDeleted` shape unchanged
+  in AsyncAPI; no change needed.
+- Disable automatic order transfers: account setting in the Kalshi app; no change needed.
+- `market_version` on margin markets and orders: added.
+- Multi-ticker fills filter: `ticker` is already a free-form string; documented.
+- Stop loss past liquidation / exit trigger prices must be positive: server-side validation
+  (`stop_loss_past_liquidation`, HTTP 400); request shapes unchanged; no change needed.
+- Settled positions before archival: `settlement_status` added.
+- WebSocket `sending_ts_ms`: optional envelope field (not in any `required` list); ignored by the
+  deserializers by design, see `docs/spec-parity.md`; test added that frames carrying it parse.
+- Amend order expiry: `expiration_time` added to Predictions amend.
+- Settlement bounds on markets: added.
+
+### Tests
+
+- [Tests] Added deserialization/serialization tests for each of the above.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

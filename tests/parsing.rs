@@ -12,7 +12,8 @@ use kalshi_fast::{
     GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
     GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
     MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
-    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
+    PositionCountFilter, PositionSettlementStatus, PriceRange, SelfTradePreventionType,
+    SettlementBoundsType, TimeInForce, TradeTakerSide, YesNo,
 };
 
 // ============================================================================
@@ -2026,4 +2027,121 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+// ============================================================================
+// Spec refresh (OpenAPI 3.34.0) tests
+// ============================================================================
+
+#[test]
+fn market_deserializes_settlement_bounds() {
+    let market: kalshi_fast::Market = serde_json::from_value(serde_json::json!({
+        "ticker": "MKT-1",
+        "settlement_bounds_type": "floor",
+        "settlement_floor_dollars": "0.2500"
+    }))
+    .unwrap();
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(SettlementBoundsType::Floor)
+    );
+    assert_eq!(market.settlement_floor_dollars.as_deref(), Some("0.2500"));
+
+    let market: kalshi_fast::Market = serde_json::from_value(serde_json::json!({
+        "ticker": "MKT-2",
+        "settlement_bounds_type": "default",
+        "settlement_floor_dollars": null
+    }))
+    .unwrap();
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(SettlementBoundsType::Default)
+    );
+    assert_eq!(market.settlement_floor_dollars, None);
+
+    let market: kalshi_fast::Market = serde_json::from_value(serde_json::json!({
+        "ticker": "MKT-3",
+        "settlement_bounds_type": "ceiling"
+    }))
+    .unwrap();
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(SettlementBoundsType::Unknown)
+    );
+}
+
+#[test]
+fn multivariate_collection_deserializes_price_level_fields() {
+    let c: kalshi_fast::MultivariateEventCollection = serde_json::from_value(serde_json::json!({
+        "collection_ticker": "COL-1",
+        "series_ticker": "SER",
+        "title": "t",
+        "description": "d",
+        "open_date": "2026-01-01T00:00:00Z",
+        "close_date": "2026-02-01T00:00:00Z",
+        "associated_events": [],
+        "associated_event_tickers": [],
+        "is_ordered": false,
+        "is_single_market_per_event": true,
+        "is_all_yes": false,
+        "size_min": 1,
+        "size_max": 3,
+        "functional_description": "f",
+        "price_level_structure": "linear_cent",
+        "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}]
+    }))
+    .unwrap();
+    assert_eq!(c.price_level_structure.as_deref(), Some("linear_cent"));
+    assert_eq!(c.price_ranges.unwrap()[0].step, "0.0100");
+}
+
+#[test]
+fn get_positions_params_serializes_settlement_status() {
+    let params = GetPositionsParams {
+        settlement_status: Some(PositionSettlementStatus::All),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&params).unwrap()["settlement_status"],
+        "all"
+    );
+    let json = serde_json::to_value(GetPositionsParams::default()).unwrap();
+    assert!(json.get("settlement_status").is_none());
+}
+
+#[test]
+fn get_fills_params_serializes_multi_ticker_csv() {
+    let params = GetFillsParams {
+        ticker: Some("MKT-A,MKT-B".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&params).unwrap()["ticker"],
+        "MKT-A,MKT-B"
+    );
+}
+
+#[test]
+fn amend_order_request_serializes_expiration_time() {
+    let mut req = kalshi_fast::AmendOrderRequest {
+        ticker: "MKT-1".into(),
+        side: YesNo::Yes,
+        action: BuySell::Buy,
+        ..Default::default()
+    };
+    assert!(
+        serde_json::to_value(&req)
+            .unwrap()
+            .get("expiration_time")
+            .is_none()
+    );
+    req.expiration_time = Some(0);
+    assert_eq!(serde_json::to_value(&req).unwrap()["expiration_time"], 0);
+}
+
+#[test]
+fn ws_message_with_sending_ts_ms_still_parses() {
+    let raw = br#"{"id":1,"type":"subscribed","sending_ts_ms":1669149841234,"msg":{"channel":"orderbook_delta","sid":1}}"#;
+    let msg = kalshi_fast::WsMessageV2::from_bytes(raw).unwrap();
+    assert!(matches!(msg, kalshi_fast::WsMessageV2::Subscribed { .. }));
 }

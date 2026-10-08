@@ -142,6 +142,30 @@ pub enum FeeType {
     Unknown,
 }
 
+/// Which settlement bounds apply to a market (`Market.settlement_bounds_type`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    /// No settlement bounds.
+    Default,
+    /// The YES side cannot settle below `settlement_floor_dollars`.
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
+/// `settlement_status` filter for `GET /portfolio/positions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    /// Unsettled positions only (server default).
+    Unsettled,
+    /// Settled positions not yet archived to `GET /historical/positions`.
+    Settled,
+    /// Both live states.
+    All,
+}
+
 /// --- Event Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize)]
