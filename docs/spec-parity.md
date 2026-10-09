@@ -91,6 +91,19 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Changelog 2026-09-29 → 2026-10-08 reconciliation notes:
+  - `sending_ts_ms` (AsyncAPI `sendingTimestampMs`, optional on every message envelope) is not
+    modeled; serde ignores it, so parsing is unaffected. Model it only if a consumer needs
+    server-queue latency.
+  - `MarginMarket.schedule` is `required` in the perps OpenAPI but kept `Option` for tolerance.
+    `MarginMarket.market_version` is required and plain `i32`.
+  - `POST /portfolio/intra_exchange_instance_transfer` (new optional `client_transfer_id`) is not
+    exposed by the crate yet; no change was made for it.
+  - `MultivariateEventCollection.associated_event_tickers`, `is_single_market_per_event` and
+    `is_all_yes` are marked `[DEPRECATED]` upstream but still required; they stay as plain fields.
+  - `GET /margin/trades` `ticker` became optional, so `GetMarginTradesParams.ticker` is now
+    `Option<String>`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

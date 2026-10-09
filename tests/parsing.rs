@@ -1822,13 +1822,23 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}]
         }]
     }"#;
 
     let resp: kalshi_fast::GetMultivariateEventCollectionsResponse =
         serde_json::from_str(json).unwrap();
     assert_eq!(resp.multivariate_contracts.len(), 1);
+    assert_eq!(
+        resp.multivariate_contracts[0].price_level_structure,
+        "linear_cent"
+    );
+    assert_eq!(
+        resp.multivariate_contracts[0].price_ranges[0].step,
+        "0.0100"
+    );
     assert_eq!(
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
@@ -2026,4 +2036,52 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn get_positions_params_serializes_settlement_status() {
+    let params = GetPositionsParams {
+        settlement_status: Some(kalshi_fast::PositionSettlementStatus::Settled),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&params).unwrap();
+    assert_eq!(json["settlement_status"], "settled");
+    let json = serde_json::to_value(GetPositionsParams::default()).unwrap();
+    assert!(json.get("settlement_status").is_none());
+}
+
+#[test]
+fn amend_order_v2_request_serializes_expiration_time() {
+    let req = kalshi_fast::AmendOrderV2Request {
+        ticker: "T".into(),
+        side: kalshi_fast::BookSide::Bid,
+        price: "0.5700".into(),
+        count: "8.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        exchange_index: None,
+        expiration_time: Some(0),
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["expiration_time"], 0);
+}
+
+#[test]
+fn margin_market_parses_market_version_and_top_of_book_sizes() {
+    let json = r#"{
+        "ticker": "BTC-PERP", "status": "active", "title": "BTC", "contract_size": "1.000000",
+        "underlying_multiplier": "1", "tick_size": "0.0100", "fractional_trading_enabled": true,
+        "schedule": {"is_open": true}, "exchange_index": 1, "market_version": 2,
+        "bid": "1.0000", "bid_size_fp": "3.00", "ask": "1.0100", "ask_size_fp": "4.00"
+    }"#;
+    let m: kalshi_fast::MarginMarket = serde_json::from_str(json).unwrap();
+    assert_eq!(m.market_version, 2);
+    assert_eq!(m.bid_size_fp.as_deref(), Some("3.00"));
+    assert_eq!(m.ask_size_fp.as_deref(), Some("4.00"));
+}
+
+#[test]
+fn margin_trades_params_ticker_is_optional() {
+    let json = serde_json::to_value(kalshi_fast::GetMarginTradesParams::default()).unwrap();
+    assert!(json.get("ticker").is_none());
 }

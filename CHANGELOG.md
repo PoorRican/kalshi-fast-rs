@@ -8,6 +8,49 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-09
+
+### Compatibility
+
+- Docs snapshot: 2026-10-09
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-08
+
+### Breaking
+
+- [Rust API] `GetMarginTradesParams.ticker` is now `Option<String>` (upstream made it optional).
+- [Rust API] `MarginMarket` gains required `market_version`; `CreateMarginOrderRequest` gains
+  `market_version`; `MultivariateEventCollection` gains required `price_level_structure` and
+  `price_ranges`; `AmendOrderV2Request` gains `expiration_time`; `GetPositionsParams` gains
+  `settlement_status`. Exhaustive struct literals must add the new fields.
+
+### Added
+
+- [Upstream] `GET /portfolio/positions` `settlement_status` filter (`PositionSettlementStatus`).
+- [Upstream] Amend Order V2 `expiration_time` (expiry-only amend keeps queue priority).
+- [Upstream] Margin `market_version` on markets/orders, `bid_size_fp`/`ask_size_fp` on margin markets.
+- [Upstream] Price level structure and ranges on multivariate event collections.
+- [Docs] `GetFillsParams.ticker` accepts up to 100 comma-separated tickers.
+
+### Reconciliation (changelog entries since 2026-09-28)
+
+- 09-29 Amend order expiry: `AmendOrderV2Request.expiration_time`.
+- 09-29 WebSocket sending ts: `sending_ts_ms` is optional envelope metadata; no change needed (ignored by serde, see `docs/spec-parity.md`).
+- 09-30 Settled positions: `GetPositionsParams.settlement_status`.
+- 09-30 Stop losses past liquidation rejected: server behavior only; no change needed.
+- 10-01 Fills across multiple markets: doc-only (`ticker` is already a free-form string).
+- 10-01 / 10-06 FIX changes: FIX is out of scope; no change needed.
+- 10-02 Automatic order transfers disabled: app/web behavior; no change needed.
+- 10-02 `market_version` on margin markets/orders: added.
+- 10-05 `rfq_deleted` to all subscribers: delivery behavior; `rfq_deleted` already modeled.
+- 10-05 Price level structures on MVE collections: added.
+- 10-08 Subaccount-restricted perps keys: authorization behavior; no change needed.
+- 10-08 Margin top-of-book sizes: added. `/margin/trades` ticker optional: added (breaking).
+- 10-08 `client_transfer_id` on intra-account transfer: endpoint not exposed by the crate; no change needed.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

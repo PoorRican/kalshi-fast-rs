@@ -245,7 +245,21 @@ impl Serialize for MveFilter {
     }
 }
 
-/// --- Position Count Filter ---
+// --- Position Settlement Status ---
+
+/// `settlement_status` filter for `GET /portfolio/positions` (added 2026-09-30).
+///
+/// The server defaults to `unsettled` when omitted. Settled positions are only
+/// visible here until their event is archived to `GET /historical/positions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    Settled,
+    All,
+}
+
+// --- Position Count Filter ---
 
 #[derive(Debug, Clone, Copy)]
 pub enum PositionCountFilter {

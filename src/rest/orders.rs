@@ -586,6 +586,11 @@ pub struct AmendOrderV2Request {
     pub updated_client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_index: Option<u32>,
+    /// New Unix expiration timestamp in seconds. Omit to keep the current expiry,
+    /// `0` to remove it. Send the current price and total count for an expiry-only
+    /// amend, which preserves queue position.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
