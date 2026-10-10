@@ -8,6 +8,64 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-10
+
+### Compatibility
+
+- Docs snapshot: 2026-10-10
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-09
+
+Version bump: minor (0.9.1 -> 0.10.0). Per `VERSIONING.md`, pre-1.0 releases bump `minor` for any
+intentional breaking Rust API change; `GetMarginTradesParams::ticker` changed type and new public
+fields on exhaustively-constructible structs may require downstream code changes.
+
+### Breaking
+
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (was `String`); `GET
+  /margin/trades` accepts an omitted ticker to return trades across all margin markets.
+- [Rust API] `CreateMarginOrderRequest` gains `market_version: Option<i32>` and `GetPositionsParams`
+  gains `settlement_status`; exhaustive struct literals must add the fields (or `..Default::default()`
+  where available).
+
+### Added
+
+- [Upstream] `MarginMarket`: `market_version`, `funding_deadband`, `funding_cap`,
+  `funding_limit_unit` (`MarginFundingLimitUnit`), `bid_size_fp`, `ask_size_fp`.
+- [Upstream] `CreateMarginOrderRequest::market_version` (409 `market_version_mismatch` on drift).
+- [Upstream] `GetPositionsParams::settlement_status` (`PositionSettlementStatus`: unsettled | settled | all).
+- [Upstream] `MultivariateEventCollection`: `price_level_structure`, `price_ranges`.
+- [Upstream] Intra-account transfer endpoints: `intra_exchange_instance_transfer` (with optional
+  `client_transfer_id`), `get_intra_exchange_instance_transfers`, `get_intra_exchange_instance_transfer`.
+- [Docs] `GetFillsParams::ticker` documents comma-separated lists of up to 100 tickers.
+
+### Changelog coverage (2026-09-28 -> 2026-10-09)
+
+| Upstream entry | Disposition |
+| --- | --- |
+| Funding configuration on margin markets (10-09) | `MarginMarket` funding fields |
+| `client_transfer_id` on intra-account transfers (10-08) | New transfer endpoints + request field |
+| `GET /margin/trades` ticker optional (10-08) | `GetMarginTradesParams::ticker` -> `Option` |
+| Top-of-book sizes on margin markets (10-08) | `bid_size_fp` / `ask_size_fp` |
+| Subaccount-restricted keys can trade perps (10-08) | No change: server-side authorization; crate already passes `subaccount` |
+| FIX accepts trade-scoped keys (10-06) | No change: FIX not implemented |
+| Price level structures on multivariate collections (10-05) | New typed fields |
+| `rfq_deleted` sent to all subscribers (10-05) | No change: server-side fan-out; `rfq_deleted` message already modeled |
+| Disable automatic order transfers (10-02) | No change: account setting on kalshi.com |
+| `market_version` on margin markets/orders (10-02) | Market field + order request field |
+| Trade IDs on FIX market data (10-01) | No change: FIX not implemented |
+| Fills ticker filter, up to 100 tickers (10-01) | Doc only; `ticker` is already a string |
+| Stop loss past liquidation rejected (09-30) | No change: server error code; exit triggers not modeled |
+| `settlement_status` on positions (09-30) | `GetPositionsParams::settlement_status` |
+| `sending_ts_ms` on WebSocket messages (09-29) | No change: optional on every payload, ignored by envelope parsing (test added) |
+
+### Tests
+
+- [Tests] Added `tests/spec_refresh_2026_10.rs` and a `sending_ts_ms` envelope test.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

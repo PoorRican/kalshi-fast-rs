@@ -6,7 +6,7 @@
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
-use crate::rest::markets::Market;
+use crate::rest::markets::{Market, PriceRange};
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{YesNo, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
@@ -73,6 +73,13 @@ pub struct MultivariateEventCollection {
     pub size_min: i32,
     pub size_max: i32,
     pub functional_description: String,
+    /// Price level structure for new markets in this collection. Spec-required; `Option` so
+    /// payloads predating the field still parse.
+    #[serde(default)]
+    pub price_level_structure: Option<String>,
+    /// Price bands/tick sizes for new markets in this collection. Spec-required; see above.
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

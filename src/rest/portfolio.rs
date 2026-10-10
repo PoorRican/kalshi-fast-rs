@@ -54,6 +54,21 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Defaults to `unsettled` server-side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
+}
+
+/// `settlement_status` filter for `GET /portfolio/positions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    /// Settled positions not yet moved to `GET /historical/positions`.
+    Settled,
+    /// Both live states.
+    All,
 }
 
 impl GetPositionsParams {
@@ -217,6 +232,7 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// Market ticker filter; a comma-separated list of up to 100 tickers is accepted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

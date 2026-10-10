@@ -51,7 +51,9 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    /// Restrict to one margin market. Omit to retrieve trades across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,6 +126,10 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Expected `market_version`. If set and the market has moved to a different version the
+    /// order is rejected with HTTP 409 `market_version_mismatch`; `0`/`None` skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -287,6 +293,17 @@ pub struct MarginMarket {
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    /// Spec-required, modeled as `Option` so payloads predating the field still parse.
+    #[serde(default)]
+    pub market_version: Option<i32>,
+    /// Funding deadband configured at creation, in `funding_limit_unit`. Spec-required.
+    #[serde(default)]
+    pub funding_deadband: Option<f64>,
+    /// Funding cap configured at creation, in `funding_limit_unit`. Spec-required.
+    #[serde(default)]
+    pub funding_cap: Option<f64>,
+    #[serde(default)]
+    pub funding_limit_unit: Option<MarginFundingLimitUnit>,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -311,8 +328,14 @@ pub struct MarginMarket {
     pub volume_24h_notional_value_dollars: Option<String>,
     #[serde(default)]
     pub bid: Option<String>,
+    /// Contracts resting at the best bid (`"0.00"` when empty); omitted without market stats.
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
     #[serde(default)]
     pub ask: Option<String>,
+    /// Contracts resting at the best ask (`"0.00"` when empty); omitted without market stats.
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
     #[serde(default)]
     pub settlement_mark_price: Option<TickerPrice>,
     #[serde(default)]
@@ -323,6 +346,16 @@ pub struct MarginMarket {
     pub asset_class: Option<String>,
     #[serde(default)]
     pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+/// Unit of `funding_deadband` / `funding_cap` on a margin market.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

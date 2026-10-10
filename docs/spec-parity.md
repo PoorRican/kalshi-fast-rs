@@ -91,6 +91,17 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- 2026-10 refresh: `market_version`, `funding_deadband`, `funding_cap`, `funding_limit_unit` on
+  `MarginMarket` and `price_level_structure` / `price_ranges` on `MultivariateEventCollection` are
+  `required` in the YAML but modeled as `Option` (with `#[serde(default)]`) so payloads from before
+  the rollout, or fixtures omitting them, still parse. `bid_size_fp` / `ask_size_fp` are genuinely
+  optional (omitted when market stats are unavailable). `funding_limit_unit` is a non-exhaustive
+  enum (`#[serde(other)] Unknown`).
+- `sending_ts_ms` (queued-at timestamp) appears optionally on every AsyncAPI payload. It is accepted
+  and ignored by the envelope parser; it is not yet surfaced on `WsMessageV2`.
+- `POST /portfolio/intra_exchange_instance_transfer` `amount` is in centicents, while the transfer
+  objects return `amount` as a dollar string. `client_transfer_id` is primary-account only.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

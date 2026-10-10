@@ -1138,6 +1138,21 @@ mod tests {
     }
 
     #[test]
+    fn ws_envelope_tolerates_sending_ts_ms() {
+        // `sending_ts_ms` is on every AsyncAPI payload (2026-09-29); unknown to the envelope,
+        // it must be ignored without failing the parse.
+        let json = r#"{"type":"subscribed","id":1,"sending_ts_ms":1669149841234,"msg":{"channel":"ticker","sid":5}}"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        match env.into_message().unwrap() {
+            WsMessageV2::Subscribed { id, sid, .. } => {
+                assert_eq!(id, Some(1));
+                assert_eq!(sid, Some(5));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
     fn ws_envelope_into_message_event_fee_update() {
         // Delivered on the market_lifecycle_v2 channel; both overrides set.
         let json = r#"{
