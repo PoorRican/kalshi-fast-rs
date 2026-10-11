@@ -51,7 +51,9 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    /// Market ticker. Omit to retrieve trades across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,6 +126,11 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Expected `MarginMarket::market_version`. If set and the market has moved to a
+    /// different version the order is rejected with HTTP 409 `market_version_mismatch`
+    /// (re-read the market before resubmitting). `None` or `0` skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -287,6 +294,23 @@ pub struct MarginMarket {
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    /// Starts at 1; increases when trading resumes after a corporate action (e.g. a split).
+    /// May briefly lag right after trading resumes.
+    pub market_version: i32,
+    /// Funding deadband configured at creation, in `funding_limit_unit`. Does not reflect
+    /// later clearing configuration changes.
+    pub funding_deadband: f64,
+    /// Funding cap configured at creation, in `funding_limit_unit`.
+    pub funding_cap: f64,
+    pub funding_limit_unit: MarginFundingLimitUnit,
+    /// Contracts resting at the best bid (fixed-point string; `"0.00"` when empty).
+    /// Omitted when market stats are unavailable.
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
+    /// Contracts resting at the best ask (fixed-point string; `"0.00"` when empty).
+    /// Omitted when market stats are unavailable.
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -323,6 +347,16 @@ pub struct MarginMarket {
     pub asset_class: Option<String>,
     #[serde(default)]
     pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+/// Unit for `funding_deadband` / `funding_cap` on a margin market.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1198,7 +1232,92 @@ impl KalshiRestClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{GetMarginOrderGroupResponse, MarginPosition};
+    use super::{
+        CreateMarginOrderRequest, GetMarginOrderGroupResponse, GetMarginTradesParams,
+        MarginFundingLimitUnit, MarginMarket, MarginPosition, MarginSelfTradePreventionType,
+        MarginTimeInForce,
+    };
+    use crate::types::BookSide;
+
+    fn market_json() -> serde_json::Value {
+        serde_json::json!({
+            "ticker": "KXBTC-26JUN",
+            "status": "active",
+            "title": "BTC perp",
+            "contract_size": "1",
+            "underlying_multiplier": "1",
+            "tick_size": "0.01",
+            "fractional_trading_enabled": true,
+            "schedule": null,
+            "exchange_index": 3,
+            "market_version": 2,
+            "funding_deadband": 0.0005,
+            "funding_cap": 0.01,
+            "funding_limit_unit": "percentage"
+        })
+    }
+
+    #[test]
+    fn margin_market_deserializes_version_funding_and_top_of_book() {
+        let mut v = market_json();
+        let m: MarginMarket = serde_json::from_value(v.clone()).unwrap();
+        assert_eq!(m.market_version, 2);
+        assert_eq!(m.funding_limit_unit, MarginFundingLimitUnit::Percentage);
+        assert_eq!(m.funding_cap, 0.01);
+        assert!(m.bid_size_fp.is_none() && m.ask_size_fp.is_none());
+
+        v["bid_size_fp"] = "12.50".into();
+        v["ask_size_fp"] = "0.00".into();
+        v["funding_limit_unit"] = "dollar".into();
+        let m: MarginMarket = serde_json::from_value(v.clone()).unwrap();
+        assert_eq!(m.bid_size_fp.as_deref(), Some("12.50"));
+        assert_eq!(m.ask_size_fp.as_deref(), Some("0.00"));
+        assert_eq!(m.funding_limit_unit, MarginFundingLimitUnit::Dollar);
+
+        v["funding_limit_unit"] = "bps".into();
+        let m: MarginMarket = serde_json::from_value(v).unwrap();
+        assert_eq!(m.funding_limit_unit, MarginFundingLimitUnit::Unknown);
+    }
+
+    #[test]
+    fn margin_trades_ticker_is_optional() {
+        let json = serde_json::to_value(GetMarginTradesParams::default()).unwrap();
+        assert!(json.get("ticker").is_none());
+        let json = serde_json::to_value(GetMarginTradesParams {
+            ticker: Some("KXBTC-26JUN".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(json["ticker"], "KXBTC-26JUN");
+    }
+
+    #[test]
+    fn create_margin_order_serializes_market_version_only_when_set() {
+        let mut req = CreateMarginOrderRequest {
+            ticker: "KXBTC-26JUN".into(),
+            client_order_id: "c1".into(),
+            side: BookSide::Bid,
+            count: "1".into(),
+            price: "100".into(),
+            time_in_force: MarginTimeInForce::GoodTillCanceled,
+            self_trade_prevention_type: MarginSelfTradePreventionType::TakerAtCross,
+            expiration_time: None,
+            post_only: None,
+            cancel_order_on_pause: None,
+            reduce_only: None,
+            subaccount: None,
+            order_group_id: None,
+            market_version: None,
+        };
+        assert!(
+            serde_json::to_value(&req)
+                .unwrap()
+                .get("market_version")
+                .is_none()
+        );
+        req.market_version = Some(2);
+        assert_eq!(serde_json::to_value(&req).unwrap()["market_version"], 2);
+    }
 
     #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {

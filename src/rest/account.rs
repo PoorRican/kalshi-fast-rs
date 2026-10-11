@@ -38,6 +38,86 @@ pub struct ApiUsageLevelGrant {
     pub source: String,
 }
 
+/// Exchange instance type used as source/destination of an intra-account transfer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+}
+
+/// `POST /portfolio/intra_exchange_instance_transfer` request body.
+///
+/// `amount` is in centicents. Shard indices default to 0 and must be `0..=100`;
+/// subaccount fields default to 0 and are only supported for event-contract to
+/// event-contract transfers.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    pub amount: i64,
+    /// UUID for duplicate prevention; reuse only for identical retries. Scoped to the user
+    /// and both exchange instances/shards. Primary accounts only: transfers involving
+    /// numbered subaccounts reject this field. If omitted each request creates a new transfer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_transfer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+impl IntraExchangeInstanceTransferRequest {
+    pub fn new(source: ExchangeInstance, destination: ExchangeInstance, amount: i64) -> Self {
+        Self {
+            source,
+            destination,
+            amount,
+            client_transfer_id: None,
+            source_exchange_shard: None,
+            destination_exchange_shard: None,
+            source_subaccount: None,
+            destination_subaccount: None,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        for (name, shard) in [
+            ("source_exchange_shard", self.source_exchange_shard),
+            (
+                "destination_exchange_shard",
+                self.destination_exchange_shard,
+            ),
+        ] {
+            if shard.is_some_and(|s| s > 100) {
+                return Err(KalshiError::InvalidParams(format!(
+                    "POST /portfolio/intra_exchange_instance_transfer: {name} must be 0..=100"
+                )));
+            }
+        }
+        let numbered_subaccount = self.source_subaccount.is_some_and(|s| s != 0)
+            || self.destination_subaccount.is_some_and(|s| s != 0);
+        if self.client_transfer_id.is_some() && numbered_subaccount {
+            return Err(KalshiError::InvalidParams(
+                "POST /portfolio/intra_exchange_instance_transfer: client_transfer_id is not \
+                 supported for transfers involving numbered subaccounts"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    /// ID of the created transfer (processed asynchronously).
+    pub transfer_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetAccountApiLimitsResponse {
     pub usage_tier: String,
@@ -284,6 +364,20 @@ impl KalshiRestClient {
     ) -> Result<ApplySubaccountTransferResponse, KalshiError> {
         let path = Self::full_path("/portfolio/subaccounts/transfer");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Transfer funds between exchange instances (event contract / margined) within the
+    /// same account. Accepted requests are processed asynchronously.
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: &IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        body.validate()?;
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
             .await
     }
 

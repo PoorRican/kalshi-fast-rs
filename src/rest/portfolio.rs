@@ -8,8 +8,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter,
+    PositionSettlementStatus, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -40,6 +40,11 @@ pub struct GetPositionsParams {
         serialize_with = "serialize_csv_opt"
     )]
     pub count_filter: Option<Vec<PositionCountFilter>>,
+
+    /// `unsettled` (server default), `settled` (settled but not yet archived to
+    /// `GET /historical/positions`), or `all` (both live states).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
@@ -217,6 +222,8 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// Market ticker filter. Accepts a comma-separated list of up to 100 tickers
+    /// (e.g. `"MARKET-A,MARKET-B"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

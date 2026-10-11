@@ -91,6 +91,27 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Margin (perps) `MarginMarket` gained `market_version`, `funding_deadband`, `funding_cap` and
+  `funding_limit_unit` (all `required` in the perps OpenAPI) plus `bid_size_fp` / `ask_size_fp`
+  (optional: omitted when market stats are unavailable). `funding_limit_unit` is the
+  `MarginFundingLimitUnit` enum with an `#[serde(other)] Unknown` catch-all. The funding values are
+  creation-time config and do not track later clearing changes. `market_version` on
+  `CreateMarginOrderRequest` is optional (`None`/`0` skips the server check; mismatch is HTTP 409
+  `market_version_mismatch`). `GetMarginTradesParams::ticker` is now `Option<String>`.
+- `MultivariateEventCollection.price_level_structure` / `price_ranges` are `required` in the OpenAPI
+  and modeled as non-optional (`price_ranges` tolerates `null`). They describe *new* markets in the
+  collection only.
+- `POST /portfolio/intra_exchange_instance_transfer` is shared by the main and perps OpenAPI
+  documents. `client_transfer_id` is optional and rejected by the server for numbered subaccounts;
+  `IntraExchangeInstanceTransferRequest::validate` enforces that plus the 0..=100 shard bound
+  locally.
+- WebSocket frames gained an envelope-level `sending_ts_ms` (Kalshi queue time, ms). It is additive
+  and ignored by deserialization; it is intentionally not surfaced on `WsMessageV2` because doing so
+  would reshape every message variant.
+- Known unresolved drift: `GET /portfolio/positions` documents `event_ticker` as a single ticker,
+  whereas `GetPositionsParams::event_ticker` accepts up to 10 (CSV); margin exit-trigger endpoints
+  and `exchange_index` filters on `/portfolio/fills` and `/portfolio/positions` are not modeled.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -1822,13 +1822,23 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}]
         }]
     }"#;
 
     let resp: kalshi_fast::GetMultivariateEventCollectionsResponse =
         serde_json::from_str(json).unwrap();
     assert_eq!(resp.multivariate_contracts.len(), 1);
+    assert_eq!(
+        resp.multivariate_contracts[0].price_level_structure,
+        "linear_cent"
+    );
+    assert_eq!(
+        resp.multivariate_contracts[0].price_ranges[0].step,
+        "0.0100"
+    );
     assert_eq!(
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
@@ -2026,4 +2036,82 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn get_positions_params_serializes_settlement_status() {
+    use kalshi_fast::PositionSettlementStatus;
+    for (status, wire) in [
+        (PositionSettlementStatus::Unsettled, "unsettled"),
+        (PositionSettlementStatus::Settled, "settled"),
+        (PositionSettlementStatus::All, "all"),
+    ] {
+        let params = GetPositionsParams {
+            settlement_status: Some(status),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&params).unwrap()["settlement_status"],
+            wire
+        );
+    }
+    let json = serde_json::to_value(GetPositionsParams::default()).unwrap();
+    assert!(json.get("settlement_status").is_none());
+}
+
+#[test]
+fn get_fills_params_passes_csv_tickers_through() {
+    let params = GetFillsParams {
+        ticker: Some("MARKET-A,MARKET-B".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&params).unwrap()["ticker"],
+        "MARKET-A,MARKET-B"
+    );
+}
+
+#[test]
+fn intra_exchange_transfer_request_serializes_and_validates() {
+    use kalshi_fast::{ExchangeInstance, IntraExchangeInstanceTransferRequest};
+
+    let mut req = IntraExchangeInstanceTransferRequest::new(
+        ExchangeInstance::EventContract,
+        ExchangeInstance::Margined,
+        50_000,
+    );
+    assert_eq!(
+        serde_json::to_value(&req).unwrap(),
+        serde_json::json!({"source": "event_contract", "destination": "margined", "amount": 50000})
+    );
+    req.validate().unwrap();
+
+    req.client_transfer_id = Some("3f1c1a64-6c0e-4a39-9f0a-0b7d2f6e8c11".into());
+    req.validate().unwrap();
+    assert_eq!(
+        serde_json::to_value(&req).unwrap()["client_transfer_id"],
+        "3f1c1a64-6c0e-4a39-9f0a-0b7d2f6e8c11"
+    );
+
+    req.source_subaccount = Some(2);
+    assert!(
+        req.validate().is_err(),
+        "client_transfer_id + numbered subaccount"
+    );
+    req.client_transfer_id = None;
+    req.validate().unwrap();
+
+    req.destination_exchange_shard = Some(101);
+    assert!(req.validate().is_err());
+
+    let resp: kalshi_fast::IntraExchangeInstanceTransferResponse =
+        serde_json::from_str(r#"{"transfer_id":"t-1"}"#).unwrap();
+    assert_eq!(resp.transfer_id, "t-1");
+}
+
+#[test]
+fn ws_messages_tolerate_sending_ts_ms_envelope_field() {
+    let raw = r#"{"id":1,"type":"subscribed","sending_ts_ms":1669149841234,"msg":{"channel":"ticker","sid":7}}"#;
+    let env: kalshi_fast::WsEnvelope = serde_json::from_str(raw).unwrap();
+    assert!(env.into_message().is_ok());
 }
