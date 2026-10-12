@@ -51,7 +51,9 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    /// Market ticker. Omit to retrieve trades across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,6 +126,11 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Expected market version. If set (non-zero) and the market has moved to a different
+    /// version, the order is rejected with HTTP 409 `market_version_mismatch`; re-read the
+    /// market before resubmitting. Omit or send 0 to skip the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -323,6 +330,30 @@ pub struct MarginMarket {
     pub asset_class: Option<String>,
     #[serde(default)]
     pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Current market version; starts at 1 and increases when trading resumes after a corporate
+    /// action. Pass it as [`CreateMarginOrderRequest::market_version`] to guard an order.
+    pub market_version: i32,
+    /// Total contracts resting at the best bid. `None` when market stats are unavailable.
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
+    /// Total contracts resting at the best ask. `None` when market stats are unavailable.
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
+    /// Funding deadband configured at market creation, in `funding_limit_unit`. Does not reflect
+    /// later clearing configuration changes.
+    pub funding_deadband: f64,
+    /// Funding cap configured at market creation, in `funding_limit_unit`.
+    pub funding_cap: f64,
+    pub funding_limit_unit: MarginFundingLimitUnit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

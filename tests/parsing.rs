@@ -1822,13 +1822,20 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start": "0.00", "end": "1.00", "step": "0.01"}]
         }]
     }"#;
 
     let resp: kalshi_fast::GetMultivariateEventCollectionsResponse =
         serde_json::from_str(json).unwrap();
     assert_eq!(resp.multivariate_contracts.len(), 1);
+    assert_eq!(
+        resp.multivariate_contracts[0].price_level_structure,
+        "linear_cent"
+    );
+    assert_eq!(resp.multivariate_contracts[0].price_ranges[0].step, "0.01");
     assert_eq!(
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
@@ -2026,4 +2033,110 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn margin_market_parses_version_sizes_and_funding_limits() {
+    let json = r#"{"markets": [{
+        "ticker": "BTC-PERP",
+        "status": "active",
+        "title": "Bitcoin",
+        "contract_size": "1.000000",
+        "underlying_multiplier": "1",
+        "tick_size": "0.01",
+        "fractional_trading_enabled": true,
+        "exchange_index": 1,
+        "market_version": 2,
+        "bid_size_fp": "12.00",
+        "ask_size_fp": "0.00",
+        "funding_deadband": 0.25,
+        "funding_cap": 1.5,
+        "funding_limit_unit": "percentage"
+    }, {
+        "ticker": "ETH-PERP",
+        "status": "active",
+        "title": "Ether",
+        "contract_size": "1.000000",
+        "underlying_multiplier": "1",
+        "tick_size": "0.01",
+        "fractional_trading_enabled": false,
+        "exchange_index": 1,
+        "market_version": 1,
+        "funding_deadband": 5.0,
+        "funding_cap": 10.0,
+        "funding_limit_unit": "dollar"
+    }]}"#;
+    let resp: kalshi_fast::GetMarginMarketsResponse = serde_json::from_str(json).unwrap();
+    let btc = &resp.markets[0];
+    assert_eq!(btc.market_version, 2);
+    assert_eq!(btc.bid_size_fp.as_deref(), Some("12.00"));
+    assert_eq!(btc.ask_size_fp.as_deref(), Some("0.00"));
+    assert_eq!(btc.funding_deadband, 0.25);
+    assert_eq!(btc.funding_cap, 1.5);
+    assert_eq!(
+        btc.funding_limit_unit,
+        kalshi_fast::MarginFundingLimitUnit::Percentage
+    );
+    let eth = &resp.markets[1];
+    assert!(eth.bid_size_fp.is_none() && eth.ask_size_fp.is_none());
+    assert_eq!(
+        eth.funding_limit_unit,
+        kalshi_fast::MarginFundingLimitUnit::Dollar
+    );
+}
+
+#[test]
+fn margin_request_params_serialize_new_fields() {
+    let order = kalshi_fast::CreateMarginOrderRequest {
+        ticker: "BTC-PERP".into(),
+        client_order_id: "c1".into(),
+        side: kalshi_fast::BookSide::Bid,
+        count: "1.00".into(),
+        price: "0.50".into(),
+        time_in_force: kalshi_fast::MarginTimeInForce::GoodTillCanceled,
+        self_trade_prevention_type: kalshi_fast::MarginSelfTradePreventionType::Maker,
+        expiration_time: None,
+        post_only: None,
+        cancel_order_on_pause: None,
+        reduce_only: None,
+        subaccount: None,
+        order_group_id: None,
+        market_version: Some(3),
+    };
+    assert_eq!(serde_json::to_value(&order).unwrap()["market_version"], 3);
+
+    // Omitted `ticker` retrieves trades across all margin markets.
+    let all = serde_json::to_value(kalshi_fast::GetMarginTradesParams::default()).unwrap();
+    assert!(all.get("ticker").is_none());
+    let one = serde_json::to_value(kalshi_fast::GetMarginTradesParams {
+        ticker: Some("BTC-PERP".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(one["ticker"], "BTC-PERP");
+}
+
+#[test]
+fn positions_params_serialize_settlement_status() {
+    let params = kalshi_fast::GetPositionsParams {
+        settlement_status: Some(kalshi_fast::PositionSettlementStatus::All),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&params).unwrap()["settlement_status"],
+        "all"
+    );
+    let default = serde_json::to_value(kalshi_fast::GetPositionsParams::default()).unwrap();
+    assert!(default.get("settlement_status").is_none());
+}
+
+#[test]
+fn ws_frames_with_sending_ts_ms_still_parse() {
+    let ok = r#"{"id":1,"type":"ok","sending_ts_ms":1760000000000}"#;
+    assert!(kalshi_fast::WsMessageV2::from_bytes(ok.as_bytes()).is_ok());
+    let sub = r#"{"id":2,"type":"subscribed","sending_ts_ms":1760000000000,"msg":{"channel":"ticker","sid":7}}"#;
+    assert!(matches!(
+        kalshi_fast::WsMessageV2::from_bytes(sub.as_bytes()).unwrap(),
+        kalshi_fast::WsMessageV2::Subscribed { sid: Some(7), .. }
+    ));
 }

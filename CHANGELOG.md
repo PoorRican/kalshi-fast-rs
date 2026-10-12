@@ -8,6 +8,67 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-12
+
+### Compatibility
+
+- Docs snapshot: 2026-10-12
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-09
+
+### Breaking
+
+- [Rust API] `MarginMarket` gains required `market_version`, `funding_deadband`, `funding_cap`, and
+  `funding_limit_unit` (new `MarginFundingLimitUnit` enum with an `Unknown` catch-all), matching the
+  perps OpenAPI `required` set. Payloads lacking them no longer deserialize.
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>`; omit it to list trades across all
+  margin markets.
+- [Rust API] `CreateMarginOrderRequest`, `GetPositionsParams`, and `MultivariateEventCollection` gain
+  fields (see Added); exhaustive struct literals must add them or use `..Default::default()` where
+  available.
+
+### Added
+
+- [Upstream] `MarginMarket::bid_size_fp` / `ask_size_fp` (optional; omitted upstream when stats are unavailable).
+- [Upstream] `CreateMarginOrderRequest::market_version` (optional guard; HTTP 409 `market_version_mismatch`).
+- [Upstream] `GetPositionsParams::settlement_status` with the `PositionSettlementStatus` enum
+  (`unsettled` | `settled` | `all`).
+- [Upstream] `MultivariateEventCollection::price_level_structure` and `price_ranges` (previously only in `extra`).
+- [Docs] `GetFillsParams::ticker` documents comma-separated lists of up to 100 market tickers.
+
+### Fixed
+
+- [Tests] `tests/rest_auth.rs` live test updated for the nested `GetAccountApiLimitsResponse` shape so
+  `--features live-tests` compiles again.
+
+### Tests
+
+- [Tests] Added parsing/serialization coverage for the new margin market fields, order `market_version`,
+  optional margin trades ticker, positions `settlement_status`, multivariate price levels, and
+  WebSocket frames carrying `sending_ts_ms`.
+
+### Changelog Reconciliation (2026-09-29 .. 2026-10-09)
+
+- Funding configuration on margin markets: implemented (`MarginMarket`).
+- `client_transfer_id` on intra-account transfers: no change; the crate does not implement
+  `POST /portfolio/intra_exchange_instance_transfer` (existing gap, see `docs/spec-parity.md`).
+- `GET /margin/trades` ticker optional: implemented.
+- Top-of-book sizes on margin markets: implemented.
+- Subaccount-restricted keys can trade perps: no change; server-side authorization only.
+- FIX trade-scoped keys / FIX `TradeID`: no change; FIX is out of scope.
+- Multivariate collection price levels: implemented.
+- `rfq_deleted` to all subscribers: no change; server delivery behavior, message shape unchanged.
+- Disable automatic order transfers: no change; account setting on the Kalshi app/web.
+- `market_version` on margin markets/orders: implemented.
+- Fills multi-ticker filter: documented on `GetFillsParams::ticker` (already a free-form string).
+- Stop losses past liquidation rejected: no change; the crate has no margin exit-trigger endpoints (existing gap).
+- `settlement_status` on positions: implemented.
+- WebSocket `sending_ts_ms`: no change to typed messages; optional envelope field, ignored by
+  deserialization (covered by a test). See `docs/spec-parity.md`.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

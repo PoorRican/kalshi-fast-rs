@@ -91,6 +91,20 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Perps `MarginMarket` is modeled with the YAML `required` set as non-optional (`market_version`,
+  `funding_deadband`, `funding_cap`, `funding_limit_unit`) except `schedule`, which the YAML requires
+  but the crate keeps `Option` (pre-existing). `bid_size_fp` / `ask_size_fp` are `Option` because
+  upstream omits them when market stats are unavailable. `MarginFundingLimitUnit` has an `Unknown`
+  catch-all for future units.
+- WebSocket `sending_ts_ms` (Kalshi's network-layer queue time, optional on every frame, added
+  2026-09-29) is not surfaced on typed messages; serde ignores it. Use receive-side timestamps or
+  parse the raw frame if you need it.
+- Known unimplemented upstream surface (tracked, not yet modeled): `POST
+  /portfolio/intra_exchange_instance_transfer` (incl. `client_transfer_id`), margin exit-trigger
+  endpoints, margin `fee_tier_rates` / `premium_index`, FCM subtrader/risk-control endpoints,
+  `market_id` on `CreateMarginOrderRequest`, and several newer OpenAPI response fields (balance and
+  resting-order breakdowns, weather index, block trades).
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,
