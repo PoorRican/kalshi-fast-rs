@@ -51,6 +51,7 @@ impl<'a> MarketPositionRef<'a> {
             market_exposure_dollars: self.market_exposure_dollars.into_owned(),
             realized_pnl_dollars: self.realized_pnl_dollars.into_owned(),
             resting_orders_count: self.resting_orders_count,
+            exchange_index: None,
             fees_paid_dollars: self.fees_paid_dollars.into_owned(),
             last_updated_ts: self.last_updated_ts.into_owned(),
         }

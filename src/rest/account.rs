@@ -101,6 +101,42 @@ pub struct ApplySubaccountTransferRequest {
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
 pub struct ApplySubaccountTransferResponse {}
 
+/// Exchange instance a funds transfer moves between.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+}
+
+/// Body for `POST /portfolio/intra_exchange_instance_transfer`.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    /// UUID for duplicate prevention; reuse only for identical retries. Primary accounts
+    /// only: transfers involving numbered subaccounts reject this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_transfer_id: Option<String>,
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    /// Amount to transfer in centicents.
+    pub amount: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<u32>,
+    /// Source subaccount (default 0). Event-contract to event-contract transfers only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    /// Destination subaccount (default 0). Event-contract to event-contract transfers only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountTransfer {
     pub transfer_id: String,
@@ -283,6 +319,19 @@ impl KalshiRestClient {
         body: ApplySubaccountTransferRequest,
     ) -> Result<ApplySubaccountTransferResponse, KalshiError> {
         let path = Self::full_path("/portfolio/subaccounts/transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Transfer funds between exchange instances (event contracts <-> margined) within the
+    /// same account. Processed asynchronously.
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
     }

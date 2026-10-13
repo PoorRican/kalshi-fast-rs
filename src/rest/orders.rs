@@ -77,6 +77,9 @@ impl GetOrdersParams {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Order {
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub order_id: String,
     pub user_id: String,
     pub client_order_id: String,
@@ -584,6 +587,10 @@ pub struct AmendOrderV2Request {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// Omit to preserve expiry, `0` to clear it, or a future Unix timestamp (seconds).
+    /// Send the current price and count for an expiry-only amend to keep queue priority.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_index: Option<u32>,
 }

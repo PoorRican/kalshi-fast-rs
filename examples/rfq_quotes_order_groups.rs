@@ -47,6 +47,8 @@ async fn main() -> anyhow::Result<()> {
             replace_existing: None,
             subtrader_id: None,
             subaccount: None,
+            obscure_creator_id: None,
+            target_cost_excludes_fees: None,
         })
         .await?;
     println!("created rfq_id={}", rfq.id);
@@ -58,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
             no_bid: "0.4800".to_string(),
             rest_remainder: true,
             subaccount: None,
+            post_only: None,
         })
         .await?;
     println!("created quote_id={}", quote.id);

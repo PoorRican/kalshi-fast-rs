@@ -53,6 +53,9 @@ pub struct EventMetadata {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Series {
     pub ticker: String,
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub frequency: Option<String>,
     #[serde(default)]

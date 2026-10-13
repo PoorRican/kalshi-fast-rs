@@ -70,6 +70,9 @@ pub struct WsEnvelope {
     pub msg: Option<Box<RawValue>>,
     #[serde(default)]
     pub subscriptions: Option<Vec<WsSubscriptionInfo>>,
+    /// Unix ms when Kalshi queued the message at the network layer (added 2026-10-01).
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 impl WsEnvelope {
@@ -101,6 +104,7 @@ impl WsEnvelope {
             seq,
             msg,
             subscriptions,
+            sending_ts_ms: _,
         } = self;
 
         match msg_type {
@@ -297,6 +301,9 @@ pub struct WsEnvelopeRef<'a> {
     pub msg: Option<&'a RawValue>,
     #[serde(default, borrow)]
     pub subscriptions: Option<Vec<WsSubscriptionInfoRef<'a>>>,
+    /// Unix ms when Kalshi queued the message at the network layer (added 2026-10-01).
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 fn parse_borrowed_msg<'a, T: Deserialize<'a>>(
@@ -326,6 +333,7 @@ impl<'a> WsEnvelopeRef<'a> {
             seq,
             msg,
             subscriptions,
+            sending_ts_ms: _,
         } = self;
         match msg_type {
             WsMsgType::Subscribed => {
@@ -1102,6 +1110,7 @@ impl<'a> WsMessageRef<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::subscription::{WsSubscriptionParamsV2, WsUserFilter};
     use super::*;
     use bytes::Bytes;
 
@@ -1396,5 +1405,49 @@ mod tests {
             msg,
             WsMessageRef::Data(WsDataMessageRef::Ticker { .. })
         ));
+    }
+
+    #[test]
+    fn ws_envelope_exposes_sending_ts_ms() {
+        let json = r#"{"type":"unsubscribed","sid":1,"seq":2,"sending_ts_ms":1669149841234}"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        assert_eq!(env.sending_ts_ms, Some(1669149841234));
+        let env: WsEnvelope = serde_json::from_str(r#"{"type":"unsubscribed","sid":1}"#).unwrap();
+        assert_eq!(env.sending_ts_ms, None);
+    }
+
+    #[test]
+    fn ws_user_order_parses_last_update_reason_including_unknown() {
+        for (reason, expected) in [
+            (
+                "SettlementBoundsCancel",
+                WsLastUpdateReason::SettlementBoundsCancel,
+            ),
+            ("ReduceOnlyCancel", WsLastUpdateReason::ReduceOnlyCancel),
+            ("SomethingNew", WsLastUpdateReason::Unknown),
+        ] {
+            let json = format!(
+                r#"{{"type":"user_order","sid":3,"seq":4,"msg":{{"order_id":"o","user_id":"u","ticker":"T","last_update_reason":"{reason}"}}}}"#
+            );
+            let env: WsEnvelope = serde_json::from_str(&json).unwrap();
+            match env.into_message().unwrap() {
+                WsMessageV2::Data(WsDataMessageV2::UserOrder { msg, .. }) => {
+                    assert_eq!(msg.last_update_reason, Some(expected));
+                }
+                other => panic!("unexpected message: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn communications_user_filter_serializes() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Communications],
+            user_filter: Some(WsUserFilter::SelfOnly),
+            ..Default::default()
+        };
+        let v = serde_json::to_value(&params).unwrap();
+        assert_eq!(v["user_filter"], "self");
+        assert_eq!(serde_json::to_value(WsUserFilter::All).unwrap(), "");
     }
 }

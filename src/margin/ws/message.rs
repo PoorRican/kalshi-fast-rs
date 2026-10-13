@@ -186,6 +186,9 @@ pub struct MarginEnvelope<T> {
     #[serde(default)]
     pub seq: Option<u64>,
     pub msg: T,
+    /// Unix ms when Kalshi queued the message at the network layer (added 2026-10-01).
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,6 +198,8 @@ struct SequencedMarginEnvelope<T> {
     sid: u64,
     seq: u64,
     msg: T,
+    #[serde(default)]
+    sending_ts_ms: Option<i64>,
 }
 
 impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
@@ -204,6 +209,7 @@ impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
             sid: envelope.sid,
             seq: Some(envelope.seq),
             msg: envelope.msg,
+            sending_ts_ms: envelope.sending_ts_ms,
         }
     }
 }

@@ -8,6 +8,87 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-13
+
+Version bump: **minor** (0.9.1 -> 0.10.0). Per `VERSIONING.md`, while below `1.0.0` a minor release is
+used for any breaking Rust API change or change likely to require downstream code changes; this
+release removes `Market::liquidity_dollars`, changes `GetMarginTradesParams::ticker` to `Option`, adds
+required fields to `MarginMarket` / `MultivariateEventCollection`, and adds public fields to request
+structs that are commonly built with struct literals.
+
+### Compatibility
+
+- Docs snapshot: 2026-10-13
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-15
+
+### Breaking
+
+- [Rust API] [Upstream] Removed `Market::liquidity_dollars` (removed from all market responses in the
+  2026-10-01 release; it always returned `"0.0000"`). Use `yes_bid_size_fp` / `yes_ask_size_fp`.
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>`; omit it to list trades across all
+  margin markets.
+- [Rust API] `MarginMarket` gains required `market_version`, `funding_deadband`, `funding_cap`,
+  `funding_limit_unit`, and `funding_invalid_premium_handling` (OpenAPI marks them required).
+- [Rust API] `MultivariateEventCollection` gains required `price_level_structure` and `price_ranges`.
+- [Rust API] New public fields on request structs built via struct literals:
+  `CreateMarginOrderRequest::market_version`, `AmendOrderV2Request::expiration_time`,
+  `CreateRFQRequest::{obscure_creator_id, target_cost_excludes_fees}`,
+  `CreateQuoteRequest::post_only`, `GetPositionsParams::settlement_status`,
+  `WsSubscriptionParamsV2::user_filter`. Add `..Default::default()` (where `Default` exists) or the
+  new `None` fields. `WsEnvelope`, `WsEnvelopeRef`, `MarginEnvelope` gain `sending_ts_ms`.
+
+### Added
+
+- [Rust API] `get_margin_market_orderbooks` (`GET /margin/markets/orderbooks`, up to 100 tickers).
+- [Rust API] `get_margin_premium_index` (`GET /margin/funding_rates/premium_index`);
+  `premium_index` / `premium_index_ts` on the funding-rate estimate response.
+- [Rust API] `intra_exchange_instance_transfer` (`POST /portfolio/intra_exchange_instance_transfer`)
+  with optional `client_transfer_id` for duplicate prevention.
+- [Rust API] `MarginMarket`: `market_id`, `bid_size_fp`, `ask_size_fp`, and `MarginFundingLimitUnit` /
+  `MarginFundingInvalidPremiumHandling` enums (with `Unknown` catch-all).
+- [Rust API] `Market`: `settlement_bounds_type` (`SettlementBoundsType`), `settlement_floor_dollars`.
+- [Rust API] `exchange_index` (Option) on `Market`, `Order`, `Fill`, `MarketPosition`, `Settlement`,
+  `Series`, `EventData`, `MultivariateEventCollection`.
+- [Rust API] `GetPositionsParams::settlement_status` (`PositionSettlementStatus`: unsettled/settled/all).
+- [Rust API] Amend order V2 `expiration_time` (omit = preserve, `0` = clear, future ts = set).
+- [WebSocket] `sending_ts_ms` on envelopes; `WsUserOrder::last_update_reason` (`WsLastUpdateReason`,
+  includes `ReduceOnlyCancel` and `SettlementBoundsCancel`, `Unknown` catch-all);
+  `user_filter` (`WsUserFilter`) for the `communications` channel.
+
+### Changed
+
+- [Docs] `GetFillsParams::ticker` documents comma-separated lists of up to 100 tickers.
+
+### Tests
+
+- [Tests] Parsing/serialization coverage for every new field above, unknown-enum tolerance for the
+  margin funding enums and `WsLastUpdateReason`, and envelope `sending_ts_ms`.
+
+### Changelog reconciliation (entries after the 2026-09-28 watermark)
+
+No-change entries: combo `invalid_parameters` message text (REST error text only); subaccount-restricted
+keys can trade perps (server-side authorization); FIX entries (no FIX client in this crate);
+`rfq_deleted` fan-out to all subscribers (delivery behavior; payload unchanged); disabling automatic
+order transfers (web setting); exit-trigger price validation / `stop_loss_past_liquidation` (exit-trigger
+endpoints are not implemented, see Unresolved drift); reduce-only/ClearingBusinessDate (FIX only);
+margin `ticker` WS `reference_price` (already modeled).
+
+### Unresolved drift (not addressed in this release)
+
+- Ed25519 API keys (announced 2026-09-24, web default since 2026-10-01): `KalshiAuth` is RSA-PSS only.
+- REST operations in the live specs with no crate coverage, including: block-trade proposals, RFQ quote
+  get/delete/accept/confirm, deposits/withdrawals, target balance allocation, FCM endpoints, margin
+  exit triggers, `GET /margin/fee_tier_rates`, `GET /events/fee_changes`, `GET /historical/positions`,
+  live-data weather/event endpoints, API usage level upgrade/volume progress, and the
+  `perps_scm_openapi.yaml` surface.
+- Pre-existing field drift: `exchange_index` on API-key/subaccount/order-group request-response structs,
+  `market_id` as an alternative to `ticker` on margin order requests, `Market` legacy cent fields no
+  longer in the schema, `balance_breakdown`, API key `key_type`/`warning`, `fee_*_override` on events.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

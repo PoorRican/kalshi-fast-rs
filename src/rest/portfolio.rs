@@ -54,6 +54,20 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// `unsettled` (server default), `settled` (settled but not yet archived to
+    /// `GET /historical/positions`), or `all`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
+}
+
+/// `settlement_status` filter for `GET /portfolio/positions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    Settled,
+    All,
 }
 
 impl GetPositionsParams {
@@ -85,6 +99,9 @@ impl GetPositionsParams {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketPosition {
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     pub total_traded_dollars: FixedPointDollars,
     pub position_fp: FixedPointCount,
@@ -133,6 +150,9 @@ impl From<GetPositionsResponse> for PositionsPage {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Settlement {
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub ticker: String,
     pub event_ticker: String,
     pub market_result: String,
@@ -175,6 +195,9 @@ pub struct GetSettlementsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     pub fill_id: String,
     pub order_id: String,
     pub trade_id: String,
@@ -217,6 +240,7 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// Market ticker filter; accepts a comma-separated list of up to 100 tickers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

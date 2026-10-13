@@ -91,6 +91,21 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Margin/Market fields added 2026-10 (`market_version`, `funding_*`) are modeled as required on
+  `MarginMarket` because the perps OpenAPI lists them in `required`; the two funding enums carry an
+  `#[serde(other)] Unknown` variant so a new upstream value never fails a market list parse.
+  `bid_size_fp` / `ask_size_fp` are `Option` because the spec says they are omitted when market
+  stats are unavailable. `MarginMarket::schedule` stays `Option` (spec: required but `nullable`).
+- `Market` (predictions) remains all-`Option` by design even where OpenAPI marks fields required
+  (e.g. `settlement_bounds_type`, `exchange_index`), to decouple from upstream schema churn.
+  `liquidity_dollars` was removed upstream on 2026-10-01 and is no longer modeled.
+- `exchange_index` is `Option<u32>` on response structs where OpenAPI lists it as required, so
+  payloads from before the sharding rollout still parse. `MultivariateEventCollection::price_*` are
+  required, matching the spec.
+- `ExchangeInstance` (`event_contract` | `margined`) is a typed enum on the intra-exchange transfer
+  request only; `ApiUsageLevelGrant.exchange_instance` intentionally stays a `String` (see above).
+  `client_transfer_id` is rejected by the server for transfers involving numbered subaccounts.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

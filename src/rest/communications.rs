@@ -140,6 +140,9 @@ pub struct CreateQuoteRequest {
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Cancel the quote creator's resting order rather than cross if it would take liquidity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -201,6 +204,13 @@ pub struct CreateRFQRequest {
     pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Hide the creator's public communications ID from other users until execution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
+    /// Size quotes against the target cost as principal only, with taker fees charged on top.
+    /// Only valid together with a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

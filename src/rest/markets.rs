@@ -165,6 +165,16 @@ pub struct PriceRange {
     pub step: String,
 }
 
+/// Which settlement bounds apply to a market.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    Default,
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Market {
     pub ticker: String,
@@ -304,8 +314,15 @@ pub struct Market {
     pub liquidity: Option<i64>,
     #[serde(default)]
     pub liquidity_fp: Option<String>,
+    /// `default` or `floor`. Added 2026-10-01.
     #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES side can settle at; only set when `settlement_bounds_type` is `floor`.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]

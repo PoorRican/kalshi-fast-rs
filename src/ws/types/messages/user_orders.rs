@@ -3,6 +3,30 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// Reason for the most recent `user_orders` update.
+///
+/// Unrecognised reasons deserialize to [`WsLastUpdateReason::Unknown`] so new upstream
+/// values never fail message parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum WsLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    /// `reduce_only` capped the order at placement (no position to reduce).
+    ReduceOnlyCancel,
+    /// A settlement bounds update put the resting order out of bounds.
+    SettlementBoundsCancel,
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
@@ -58,4 +82,6 @@ pub struct WsUserOrder {
     pub expiration_ts_ms: Option<i64>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
+    #[serde(default)]
+    pub last_update_reason: Option<WsLastUpdateReason>,
 }

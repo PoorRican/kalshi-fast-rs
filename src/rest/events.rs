@@ -90,6 +90,9 @@ pub struct Milestone {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EventData {
     pub event_ticker: String,
+    /// Exchange shard identifier.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub series_ticker: Option<String>,
     #[serde(default)]
