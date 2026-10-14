@@ -8,6 +8,74 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-14
+
+### Compatibility
+
+- Docs snapshot: 2026-10-14
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-15
+
+### Version Bump
+
+- Minor (0.9.1 -> 0.10.0), per `VERSIONING.md`: while below 1.0, any intentional breaking public
+  Rust API change (removed `Market::liquidity_dollars`, required `MarginMarket` fields, changed
+  `GetMarginTradesParams::ticker` type, new public struct fields) is a minor bump.
+
+### Breaking
+
+- [Upstream] [Rust API] `Market::liquidity_dollars` removed (removed upstream 2026-10-01).
+  Use `yes_bid_size_fp` / `yes_ask_size_fp` for top-of-book size.
+- [Rust API] `MarginMarket` gains required `market_version`, `funding_deadband`, `funding_cap`,
+  `funding_limit_unit`, and `funding_invalid_premium_handling`; `GetMarginTradesParams::ticker`
+  is now `Option<String>`.
+- [Rust API] New public fields on existing structs break exhaustive literals: `CreateMarginOrderRequest::market_version`,
+  `GenerateApiKeyRequest::key_type`, `AmendOrderV2Request::expiration_time`,
+  `GetPositionsParams` / `GetFillsParams` `exchange_index`, `GetPositionsParams::settlement_status`,
+  `GetEventParams::exclude_markets`, `WsSubscriptionParamsV2::user_filter`, and `MarketPositionRef`
+  / `MarketPosition` / `Fill` `exchange_index`. Use `..Default::default()` where available.
+
+### Added
+
+- [Rust API] Ed25519 API key support: `KalshiAuth` detects RSA vs Ed25519 (PKCS#8) from the PEM and
+  signs REST/WebSocket handshakes accordingly. `GenerateApiKeyRequest::key_type` and
+  `ApiKeyType` added (new `ed25519-dalek` dependency).
+- [Upstream] `Market::settlement_bounds_type` / `settlement_floor_dollars`; `exchange_index` on `Market`.
+- [Upstream] `GET /portfolio/positions` `settlement_status` filter (`PositionSettlementStatus`).
+- [Upstream] `GET /portfolio/fills` documents up to 100 comma-separated tickers in `ticker`.
+- [Upstream] `AmendOrderV2Request::expiration_time` (`0` clears, omit preserves).
+- [Upstream] RFQ `obscure_creator_id`, `target_cost_excludes_fees`; quote `post_only`; related response fields.
+- [Upstream] `WsOrderUpdateReason` (incl. `SettlementBoundsCancel`) and `exchange_index` on `WsUserOrder`.
+- [Upstream] `communications` subscription `user_filter` (`WsUserFilter`).
+- [Upstream] `MultivariateEventCollection::price_level_structure` / `price_ranges`.
+- [Upstream] `GET /events/{event_ticker}` `exclude_markets` via `get_event_with_params`.
+- [Upstream] `POST /portfolio/intra_exchange_instance_transfer` (`transfer_intra_exchange_instance`)
+  with idempotent `client_transfer_id`.
+- [Upstream] Margin: `get_margin_market_orderbooks` (batch, max 100), `get_margin_premium_index`,
+  `premium_index` / `premium_index_ts` on the funding-rate estimate, `bid_size_fp` / `ask_size_fp`,
+  `market_id`, and `market_version` on orders.
+
+### Changelog Mapping (2026-10-01 .. 2026-10-15)
+
+- Oct 1 stop-loss past liquidation / positive exit-trigger prices: no change needed (server-side
+  validation; the crate has no exit-trigger endpoints).
+- Oct 1 `sending_ts_ms`: no change needed; optional diagnostic field, see `docs/spec-parity.md`.
+- Oct 1 FIX entries (reduce-only, `ClearingBusinessDate`, `SETTLEMENT_BOUNDS_CANCEL`, RFQ/quote
+  `TransactTime`, `TradeID`, trade-scoped keys): no change needed; FIX is out of scope.
+- Oct 1 web app Ed25519 default / Sept 24 Ed25519 keys: implemented (auth + `key_type`).
+- Oct 1 margin ticker `reference_price` for Pyth perps: no change needed; already `Option<TickerPrice>`.
+- Oct 1 `user_orders.last_update_reason`: implemented for Predictions; Margin already modeled.
+- Oct 8 `rfq_deleted` to all subscribers, Oct 15 combo `invalid_parameters` messages, Oct 8 app
+  auto-transfer setting, Oct 15 MCP OAuth grants, Oct 15 subaccount-restricted perps keys: no
+  change needed (behavioral/server-side; no request or response shape change).
+
+### Tests
+
+- [Tests] Added `tests/spec_refresh_2026_10.rs`, Ed25519 signing, and `user_filter` validation tests.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

@@ -98,7 +98,7 @@ The `timed-reader` Cargo feature is disabled by default. Enable it when a backgr
 reader needs the process-local availability time captured before its bounded handoff:
 
 ```toml
-kalshi-fast-rs = { version = "0.7.1", features = ["timed-reader"] }
+kalshi-fast-rs = { version = "0.10", features = ["timed-reader"] }
 ```
 
 The feature adds an owned WebSocket event delivery API that includes this availability timestamp.

@@ -176,14 +176,67 @@ pub struct GenerateApiKeyRequest {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Defaults to `rsa` server-side when omitted. `ed25519` returns a PKCS#8 private key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
+}
+
+/// Signature algorithm of an API key pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyType {
+    Rsa,
+    Ed25519,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateApiKeyResponse {
     pub api_key_id: String,
     pub private_key: String,
+    /// Required by the spec; `Option` so older payloads still parse.
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
+    #[serde(default)]
+    pub warning: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// Exchange instance type for intra-exchange-instance transfers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+}
+
+/// POST /portfolio/intra_exchange_instance_transfer body.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    /// Optional UUID for primary accounts. Reuse it only for identical retries so a retry cannot
+    /// create a duplicate transfer. Not supported for transfers involving numbered subaccounts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_transfer_id: Option<String>,
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    /// Amount in centicents.
+    pub amount: i64,
+    /// Source exchange shard index (server default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<u32>,
+    /// Destination exchange shard index (server default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<u32>,
+    /// Event-contract to event-contract transfers only (server default 0, the primary account).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -283,6 +336,20 @@ impl KalshiRestClient {
         body: ApplySubaccountTransferRequest,
     ) -> Result<ApplySubaccountTransferResponse, KalshiError> {
         let path = Self::full_path("/portfolio/subaccounts/transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
+            .await
+    }
+
+    /// Transfer funds between exchange instances (e.g. event contracts to margin).
+    ///
+    /// Set `client_transfer_id` to make retries idempotent.
+    ///
+    /// **Requires auth.**
+    pub async fn transfer_intra_exchange_instance(
+        &self,
+        body: IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
         self.send(Method::POST, &path, Option::<&()>::None, Some(&body), true)
             .await
     }

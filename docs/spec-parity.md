@@ -91,6 +91,43 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `sending_ts_ms` (added to every WebSocket frame on 2026-10-01) is intentionally not surfaced.
+  It is an optional diagnostic timestamp; serde ignores it, and threading it through every
+  message variant (owned, borrowed, and raw paths) would burden the hot path for little value.
+  Use the `timed-reader` feature for client-side receive timing.
+
+- Settlement-bounds markets: `settlement_bounds_type` (`default` | `floor`) is required by the spec
+  and `settlement_floor_dollars` is present only for `floor` markets. Both are `Option` on
+  `Market`. The deprecated-then-removed `liquidity_dollars` (removed 2026-10-01; it always
+  returned `"0.0000"`) is gone from `Market`; stray occurrences land in `Market::extra`.
+
+- `MultivariateEventCollection::price_level_structure` / `price_ranges` are required by the spec
+  (added 2026-10-08) but kept `Option` so older payloads and fixtures still parse.
+
+- `exchange_index` is required by the specs on `MarketPosition`, `Fill`, `WsUserOrder`, and `Market`
+  responses but is modeled as `Option<u32>` so payloads from before the sharding rollout parse.
+
+- `MarginMarket` now requires `market_version`, `funding_deadband`, `funding_cap`,
+  `funding_limit_unit`, and `funding_invalid_premium_handling` (all required in the perps
+  OpenAPI). `bid_size_fp` / `ask_size_fp` are `Option` because they are omitted when market
+  stats are unavailable. `market_version` can briefly lag right after trading resumes.
+  `GET /margin/trades` takes an optional `ticker`; `GetMarginTradesParams::ticker` is `Option`.
+
+- `GET /events/{event_ticker}?exclude_markets=true` cannot be combined with
+  `with_nested_markets=true`; `get_event_with_params` rejects the combination locally.
+
+- Ed25519 API keys (2026-09-24): `KalshiAuth::from_pem_str` detects RSA (PKCS#1/PKCS#8) vs
+  Ed25519 (PKCS#8) from the PEM. Both sign the same pre-sign text with the same headers.
+  `GenerateApiKeyResponse::key_type` is `Option` for payloads predating it.
+
+- `user_filter` (communications subscription) is the `WsUserFilter` enum: `All` serializes as the
+  empty string `""` and `SelfOnly` as `"self"`. It is rejected on non-communications channels.
+
+- Known unmodeled surface (pre-existing, not changelog-driven): `exchange_index` on most
+  Predictions WebSocket messages and several REST objects, FCM/SCM endpoint families, block-trade
+  proposals, `GET /portfolio/intra_exchange_instance_transfers`, the margin exit-trigger
+  endpoints, and `market_id` as an alternative to `ticker` on margin order requests.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

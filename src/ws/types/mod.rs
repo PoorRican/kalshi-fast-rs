@@ -40,6 +40,8 @@ pub struct MarketPositionRef<'a> {
     pub fees_paid_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
     pub last_updated_ts: Cow<'a, str>,
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
 }
 
 impl<'a> MarketPositionRef<'a> {
@@ -53,6 +55,7 @@ impl<'a> MarketPositionRef<'a> {
             resting_orders_count: self.resting_orders_count,
             fees_paid_dollars: self.fees_paid_dollars.into_owned(),
             last_updated_ts: self.last_updated_ts.into_owned(),
+            exchange_index: self.exchange_index,
         }
     }
 }

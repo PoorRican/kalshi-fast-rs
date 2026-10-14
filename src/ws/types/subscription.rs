@@ -3,6 +3,19 @@ use crate::error::KalshiError;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+/// `user_filter` for the `communications` channel.
+///
+/// Quote notifications are unaffected by this filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsUserFilter {
+    /// Receive `rfq_created` / `rfq_deleted` for RFQs from all users (the default; wire value `""`).
+    #[serde(rename = "")]
+    All,
+    /// Receive `rfq_created` / `rfq_deleted` only for RFQs you created (wire value `"self"`).
+    #[serde(rename = "self")]
+    SelfOnly,
+}
+
 /// Subscription parameters for WebSocket channels.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WsSubscriptionParamsV2 {
@@ -29,6 +42,9 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `communications` channel only: restrict RFQ events to your own RFQs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<WsUserFilter>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -381,6 +397,12 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
         ));
     }
 
+    if params.user_filter.is_some() && !has_communications {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: user_filter only allowed for communications".to_string(),
+        ));
+    }
+
     Ok(())
 }
 
@@ -450,6 +472,28 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_subscription(&params).is_ok());
+    }
+
+    #[test]
+    fn validate_subscription_user_filter_requires_communications() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            user_filter: Some(WsUserFilter::SelfOnly),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_err());
+
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Communications],
+            user_filter: Some(WsUserFilter::SelfOnly),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["user_filter"], "self");
+
+        let all = serde_json::to_value(WsUserFilter::All).unwrap();
+        assert_eq!(all, "");
     }
 
     #[test]
