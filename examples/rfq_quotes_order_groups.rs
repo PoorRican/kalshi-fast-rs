@@ -47,6 +47,7 @@ async fn main() -> anyhow::Result<()> {
             replace_existing: None,
             subtrader_id: None,
             subaccount: None,
+            ..Default::default()
         })
         .await?;
     println!("created rfq_id={}", rfq.id);

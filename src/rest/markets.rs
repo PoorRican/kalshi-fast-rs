@@ -305,8 +305,6 @@ pub struct Market {
     #[serde(default)]
     pub liquidity_fp: Option<String>,
     #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]
     pub occurrence_datetime: Option<String>,
@@ -318,6 +316,12 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// `default` or `floor` (required by the spec; `Option` so older payloads still parse).
+    #[serde(default)]
+    pub settlement_bounds_type: Option<String>,
+    /// Lowest value the YES side can settle at; present only for `floor` markets.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

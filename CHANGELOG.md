@@ -8,6 +8,79 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-15
+
+### Compatibility
+
+- Docs snapshot: 2026-10-15
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-22
+
+**Changelog entries since the 2026-09-28 watermark and disposition:**
+
+| Entry | Action |
+|---|---|
+| Funding averages premium over bars (10-22) | No code change — server semantics; `premium_index`/`premium_index_ts` added to the estimate response (see 10-01 premium index) |
+| MCP `read::mcp_portfolio` OAuth grants (10-15) | No change needed — OAuth/MCP grants are not a crate auth mode |
+| `GET /events/{event_ticker}` `exclude_markets` (10-15) | Added `GetEventParams::exclude_markets`, `get_event_with_params` |
+| Batch margin orderbooks (10-15) | Added `get_margin_market_orderbooks`, `GetMarginMarketOrderbooksResponse`, `MarginMarketOrderbook` |
+| Combo creation `invalid_parameters` messages (10-15) | No change needed — error message text only; status/code unchanged |
+| `funding_invalid_premium_handling` on margin markets (10-15) | Added `MarginMarket::funding_invalid_premium_handling` (`MarginFundingInvalidPremiumHandling`) |
+| Funding config on margin markets (10-15) | Added `funding_deadband`, `funding_cap`, `funding_limit_unit` (`MarginFundingLimitUnit`) |
+| `client_transfer_id` on intra-exchange transfer (10-15) | No change needed — `POST /portfolio/intra_exchange_instance_transfer` is not implemented in the crate |
+| `GET /margin/trades` `ticker` optional (10-15) | **Breaking** — `GetMarginTradesParams::ticker` is now `Option<String>` |
+| `bid_size_fp` / `ask_size_fp` on margin markets (10-15) | Added to `MarginMarket` (`Option`, omitted when stats unavailable) |
+| Subaccount-restricted keys can trade perps (10-15) | No change needed — server authorization behavior |
+| FIX trade-scoped keys / `TradeID` / reduce-only / `SETTLEMENT_BOUNDS_CANCEL` / `ClearingBusinessDate` / `TransactTime` / `ObscureCreatorId` (10-01..10-08) | No change needed — FIX is not implemented in the crate |
+| Price level structures on multivariate collections (10-08) | Added `price_level_structure`, `price_ranges` to `MultivariateEventCollection` |
+| `rfq_deleted` sent to all subscribers (10-08) | No change needed — message shape unchanged |
+| Disable automatic order transfers (10-08) | No change needed — account setting, no API surface |
+| `market_version` on margin markets/orders (10-08) | **Breaking** — `MarginMarket::market_version` (required); added `CreateMarginOrderRequest::market_version` |
+| `GET /portfolio/fills` multi-ticker (10-08) | Docs only — `GetFillsParams::ticker` is already a free-form string; documented CSV (max 100) |
+| Stop loss past liquidation rejected / exit-trigger prices positive (10-01) | No change needed — exit-trigger endpoints are not in the crate |
+| `settlement_status` on `GET /portfolio/positions` (10-01) | Added `GetPositionsParams::settlement_status` (`PositionSettlementStatus`) |
+| WebSocket `sending_ts_ms` (10-01) | Added `WsEnvelope::sending_ts_ms` (raw/low-level envelope only) |
+| Amend order expiry (10-01) | Added `AmendOrderV2Request::expiration_time`; margin amend already had it; legacy `AmendOrderRequest` is absent from the spec change, left as is |
+| Settlement bounds on markets (10-01) | Added `settlement_bounds_type`, `settlement_floor_dollars` to `Market` |
+| `SettlementBoundsCancel` order update reason (10-01) | Added `WsLastUpdateReason` and `WsUserOrder::last_update_reason` |
+| Ed25519 API keys default in web app (10-01) | No change needed for this entry; see **Known gaps** (Ed25519 signing was never implemented) |
+| RFQ `obscure_creator_id` (10-01) | Added `CreateRFQRequest::obscure_creator_id`; REST/WS response shapes unchanged (`creator_id` only gains a placeholder value) |
+| Informational premium index (10-01) | Added `get_margin_premium_index`, `GetMarginPremiumIndexResponse`; estimate gains `premium_index`, `premium_index_ts` |
+| `user_orders` `last_update_reason` incl. `ReduceOnlyCancel` (10-01) | Predictions: added (above). Margin: already modeled |
+| Communications `user_filter` (10-01) | Added `WsSubscriptionParamsV2::user_filter` (`WsUserFilter`), validated communications-only |
+| `liquidity_dollars` removed from market responses (10-01) | **Breaking** — removed `Market::liquidity_dollars` |
+| Margin ticker `reference_price` for Pyth perps (10-01) | No change needed — `TickerMsg::reference_price` is already `Option<TickerPrice>` |
+
+### Breaking
+
+- [Rust API] Removed `Market::liquidity_dollars` (removed upstream 2026-10-01).
+- [Rust API] `MarginMarket` gains required `market_version`, `funding_deadband`, `funding_cap`,
+  `funding_limit_unit`, `funding_invalid_premium_handling`; `GetMarginTradesParams::ticker` is now
+  `Option<String>`.
+- [Rust API] New public fields on `CreateMarginOrderRequest` (`market_version`),
+  `AmendOrderV2Request` (`expiration_time`), `CreateRFQRequest` (`obscure_creator_id`),
+  `WsEnvelope` (`sending_ts_ms`) and `WsSubscriptionParamsV2` (`user_filter`) break exhaustive struct
+  literals. `CreateRFQRequest` now derives `Default`.
+
+### Added
+
+- [Upstream] Settlement bounds, `exclude_markets`, `settlement_status`, collection price structures,
+  amend expiry, RFQ creator obscuring, communications `user_filter`, `sending_ts_ms`,
+  `SettlementBoundsCancel`, margin market funding/top-of-book/version fields, batch margin
+  orderbooks and premium-index endpoints (see table).
+
+### Tests
+
+- [Tests] Added parsing/serialization/validation coverage for each new field and endpoint payload.
+
+### Known gaps
+
+- [Upstream] Predating this refresh, the crate does not implement Ed25519 request signing
+  (2026-09-24), the Pyth value channel, or the `cfbenchmarks_value_5hz` channel. Not addressed here.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

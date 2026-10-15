@@ -67,6 +67,9 @@ pub struct WsEnvelope {
     pub msg_type: WsMsgType,
     pub sid: Option<u64>,
     pub seq: Option<u64>,
+    /// Unix ms at which Kalshi queued the message at the network layer.
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
     pub msg: Option<Box<RawValue>>,
     #[serde(default)]
     pub subscriptions: Option<Vec<WsSubscriptionInfo>>,
@@ -99,6 +102,7 @@ impl WsEnvelope {
             msg_type,
             sid,
             seq,
+            sending_ts_ms: _,
             msg,
             subscriptions,
         } = self;
@@ -1232,6 +1236,43 @@ mod tests {
             msg,
             WsMessageV2::Data(WsDataMessageV2::Ticker { .. })
         ));
+    }
+
+    #[test]
+    fn user_order_parses_last_update_reason_including_settlement_bounds_cancel() {
+        let make = |reason: &str| {
+            format!(
+                r#"{{"type":"user_order","sid":1,"seq":2,"sending_ts_ms":1669149841234,"msg":{{
+                "order_id":"o1","user_id":"u1","ticker":"T-1","last_update_reason":"{reason}"}}}}"#
+            )
+        };
+        for (raw, expected) in [
+            (
+                "SettlementBoundsCancel",
+                WsLastUpdateReason::SettlementBoundsCancel,
+            ),
+            ("ReduceOnlyCancel", WsLastUpdateReason::ReduceOnlyCancel),
+            ("SomethingNew", WsLastUpdateReason::Unknown),
+        ] {
+            let msg = WsMessageV2::from_bytes(make(raw).as_bytes()).unwrap();
+            match msg {
+                WsMessageV2::Data(WsDataMessageV2::UserOrder { msg, .. }) => {
+                    assert_eq!(msg.last_update_reason, Some(expected));
+                }
+                other => panic!("unexpected message: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn envelope_exposes_sending_ts_ms() {
+        let json = r#"{"id":1,"type":"subscribed","sending_ts_ms":1669149841234,
+            "msg":{"channel":"ticker","sid":9}}"#;
+        let env: WsEnvelope = serde_json::from_str(json).unwrap();
+        assert_eq!(env.sending_ts_ms, Some(1669149841234));
+        let env: WsEnvelope =
+            serde_json::from_str(r#"{"type":"unsubscribed","sid":1,"seq":3}"#).unwrap();
+        assert_eq!(env.sending_ts_ms, None);
     }
 
     #[test]

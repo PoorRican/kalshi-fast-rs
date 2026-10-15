@@ -268,6 +268,40 @@ impl fmt::Display for PositionCountFilter {
     }
 }
 
+// --- Position Settlement Status ---
+
+/// `settlement_status` filter for `GET /portfolio/positions` (server default: `unsettled`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    /// Settled positions not yet moved to `GET /historical/positions`.
+    Settled,
+    /// Both live states.
+    All,
+}
+
+impl PositionSettlementStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PositionSettlementStatus::Unsettled => "unsettled",
+            PositionSettlementStatus::Settled => "settled",
+            PositionSettlementStatus::All => "all",
+        }
+    }
+}
+
+impl fmt::Display for PositionSettlementStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for PositionSettlementStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
 /// --- Order Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]

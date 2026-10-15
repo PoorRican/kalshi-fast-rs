@@ -91,6 +91,24 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Margin market fields `market_version`, `funding_deadband`, `funding_cap`, `funding_limit_unit` and
+  `funding_invalid_premium_handling` are spec-required and modeled as required; the two funding enums
+  carry `#[serde(other)] Unknown`. `bid_size_fp`/`ask_size_fp` are `Option` (omitted when market stats
+  are unavailable). `schedule` is spec-required but remains `Option` (pre-existing leniency).
+- `MultivariateEventCollection::price_level_structure` is spec-required since 2026-10-08 but modeled
+  as `Option` so payloads from before the rollout still parse; `price_ranges` defaults to empty.
+- `Market::settlement_bounds_type` is spec-required but `Option` for the same reason;
+  `settlement_floor_dollars` is only present for `floor` markets. `liquidity_dollars` was removed
+  upstream (2026-10-01) and now only surfaces via `Market::extra` if ever sent.
+- `AmendOrderRequest` (legacy REST amend) has no `expiration_time` in the OpenAPI despite the
+  2026-10-01 changelog saying "REST amend requests"; only the V2 amend (`AmendOrderV2Request`) and
+  margin amend carry it. YAML wins for shape.
+- `sending_ts_ms` is spec-optional on every WebSocket frame and only exposed on `WsEnvelope`
+  (low-level/raw readers), not on the typed message variants.
+- `WsLastUpdateReason` has an `Unknown` catch-all so new reasons never fail `user_orders` parsing.
+- Known unimplemented upstream surface (predates the 2026-10 refresh): Ed25519 signing, the Pyth
+  channel, `cfbenchmarks_value_5hz`, margin exit-trigger endpoints, intra-exchange transfers.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

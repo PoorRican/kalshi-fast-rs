@@ -3,6 +3,41 @@ use crate::error::KalshiError;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+/// `user_filter` for the `communications` channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WsUserFilter {
+    /// Receive RFQ events from all users (same as omitting the filter).
+    All,
+    /// Receive `rfq_created` / `rfq_deleted` only for RFQs you created.
+    SelfOnly,
+}
+
+impl WsUserFilter {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WsUserFilter::All => "",
+            WsUserFilter::SelfOnly => "self",
+        }
+    }
+}
+
+impl Serialize for WsUserFilter {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for WsUserFilter {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = <&str>::deserialize(deserializer)?;
+        match raw {
+            "" => Ok(WsUserFilter::All),
+            "self" => Ok(WsUserFilter::SelfOnly),
+            other => Err(serde::de::Error::unknown_variant(other, &["", "self"])),
+        }
+    }
+}
+
 /// Subscription parameters for WebSocket channels.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WsSubscriptionParamsV2 {
@@ -29,6 +64,9 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `communications` only: `SelfOnly` limits RFQ events to RFQs you created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<WsUserFilter>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -381,12 +419,42 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
         ));
     }
 
+    if params.user_filter.is_some() && !has_communications {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: user_filter only allowed for communications".to_string(),
+        ));
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_filter_only_allowed_for_communications_and_serializes() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Communications],
+            user_filter: Some(WsUserFilter::SelfOnly),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["user_filter"], "self");
+
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            user_filter: Some(WsUserFilter::All),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_err());
+        assert_eq!(serde_json::to_value(WsUserFilter::All).unwrap(), "");
+        assert_eq!(
+            serde_json::from_str::<WsUserFilter>("\"self\"").unwrap(),
+            WsUserFilter::SelfOnly
+        );
+    }
 
     #[test]
     fn validate_subscription_requires_market_tickers_for_orderbook_delta() {
