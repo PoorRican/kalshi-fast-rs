@@ -485,6 +485,7 @@ fn historical_params_serialize_correctly() {
 fn get_balance_response_deserializes() {
     let json = r#"{
         "balance": 100000,
+        "balance_dollars": "1000.0000",
         "portfolio_value": 50000,
         "updated_ts": 1700000000
     }"#;
@@ -1822,13 +1823,20 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start": "0.00", "end": "1.00", "step": "0.01"}]
         }]
     }"#;
 
     let resp: kalshi_fast::GetMultivariateEventCollectionsResponse =
         serde_json::from_str(json).unwrap();
     assert_eq!(resp.multivariate_contracts.len(), 1);
+    assert_eq!(
+        resp.multivariate_contracts[0].price_level_structure,
+        "linear_cent"
+    );
+    assert_eq!(resp.multivariate_contracts[0].price_ranges.len(), 1);
     assert_eq!(
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
@@ -2026,4 +2034,129 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn margin_market_funding_and_top_of_book_fields_deserialize() {
+    let json = r#"{
+        "ticker": "BTC-PERP",
+        "status": "active",
+        "title": "BTC",
+        "contract_size": "1.000000",
+        "underlying_multiplier": "1",
+        "tick_size": "0.01",
+        "fractional_trading_enabled": true,
+        "schedule": {"is_open": true},
+        "exchange_index": 0,
+        "market_version": 2,
+        "funding_deadband": 0.05,
+        "funding_cap": 1.5,
+        "funding_limit_unit": "percentage",
+        "funding_invalid_premium_handling": "dampen",
+        "bid_size_fp": "12.00",
+        "ask_size_fp": "0.00"
+    }"#;
+    let m: kalshi_fast::MarginMarket = serde_json::from_str(json).unwrap();
+    assert_eq!(m.market_version, 2);
+    assert_eq!(
+        m.funding_limit_unit,
+        kalshi_fast::MarginFundingLimitUnit::Percentage
+    );
+    assert_eq!(
+        m.funding_invalid_premium_handling,
+        kalshi_fast::MarginFundingInvalidPremiumHandling::Dampen
+    );
+    assert_eq!(m.bid_size_fp.as_deref(), Some("12.00"));
+    assert!(m.market_id.is_none());
+
+    let unknown = json.replace("\"dampen\"", "\"future_mode\"");
+    let m: kalshi_fast::MarginMarket = serde_json::from_str(&unknown).unwrap();
+    assert_eq!(
+        m.funding_invalid_premium_handling,
+        kalshi_fast::MarginFundingInvalidPremiumHandling::Unknown
+    );
+}
+
+#[test]
+fn margin_market_orderbooks_response_deserializes() {
+    let json = r#"{"orderbooks": [
+        {"ticker": "A", "orderbook": {"bids": [["0.50", "3.00"]], "asks": []}},
+        {"ticker": "B", "orderbook": {"bids": null, "asks": [["0.60", "1.00"]]}}
+    ]}"#;
+    let r: kalshi_fast::GetMarginMarketOrderbooksResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(r.orderbooks[0].ticker, "A");
+    assert!(r.orderbooks[1].orderbook.bids.is_empty());
+}
+
+#[test]
+fn margin_trades_ticker_is_optional_in_query() {
+    let p = kalshi_fast::GetMarginTradesParams::default();
+    assert_eq!(serde_json::to_value(&p).unwrap(), serde_json::json!({}));
+    let p = kalshi_fast::GetMarginTradesParams {
+        ticker: Some("BTC-PERP".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&p).unwrap(),
+        serde_json::json!({"ticker": "BTC-PERP"})
+    );
+}
+
+#[test]
+fn get_event_params_reject_exclude_markets_with_nested_markets() {
+    let bad = kalshi_fast::GetEventParams {
+        with_nested_markets: Some(true),
+        exclude_markets: Some(true),
+    };
+    assert!(bad.validate().is_err());
+    let ok = kalshi_fast::GetEventParams {
+        with_nested_markets: Some(false),
+        exclude_markets: Some(true),
+    };
+    assert!(ok.validate().is_ok());
+    assert_eq!(
+        serde_json::to_value(&ok).unwrap(),
+        serde_json::json!({"with_nested_markets": false, "exclude_markets": true})
+    );
+}
+
+#[test]
+fn intra_exchange_instance_transfer_types_round_trip() {
+    let req = kalshi_fast::IntraExchangeInstanceTransferRequest {
+        client_transfer_id: Some("123e4567-e89b-12d3-a456-426614174000".into()),
+        source: kalshi_fast::ExchangeInstance::EventContract,
+        destination: kalshi_fast::ExchangeInstance::Margined,
+        amount: 10_000,
+        source_exchange_shard: None,
+        destination_exchange_shard: None,
+        source_subaccount: None,
+        destination_subaccount: None,
+    };
+    let v = serde_json::to_value(&req).unwrap();
+    assert_eq!(v["source"], "event_contract");
+    assert_eq!(v["destination"], "margined");
+    assert_eq!(
+        v["client_transfer_id"],
+        "123e4567-e89b-12d3-a456-426614174000"
+    );
+    assert!(v.get("source_subaccount").is_none());
+
+    let json = r#"{"transfer": {
+        "transfer_id": "t-1", "source": "event_contract", "destination": "margined",
+        "source_exchange_shard": 0, "destination_exchange_shard": 0,
+        "amount": "1.0000", "status": "pending", "created_ts": 1700000000
+    }}"#;
+    let r: kalshi_fast::GetIntraExchangeInstanceTransferResponse =
+        serde_json::from_str(json).unwrap();
+    assert_eq!(r.transfer.status, "pending");
+}
+
+#[test]
+fn get_balance_response_parses_breakdown() {
+    let json = r#"{
+        "balance": 100, "balance_dollars": "1.0000", "portfolio_value": 5, "updated_ts": 1,
+        "balance_breakdown": [{"exchange_index": 0, "balance": "1.0000"}]
+    }"#;
+    let r: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(r.balance_breakdown.unwrap()[0].exchange_index, 0);
 }

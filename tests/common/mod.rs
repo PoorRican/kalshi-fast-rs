@@ -70,6 +70,7 @@ pub fn rest_client(env: KalshiEnvironment) -> KalshiRestClient {
         .with_rate_limit_config(RateLimitConfig {
             read_rps: 4,
             write_rps: 2,
+            ..Default::default()
         })
         .with_retry_config(RetryConfig {
             max_retries: 5,
@@ -99,6 +100,7 @@ pub fn demo_auth_client(auth: KalshiAuth) -> KalshiRestClient {
         .with_rate_limit_config(RateLimitConfig {
             read_rps: 4,
             write_rps: 2,
+            ..Default::default()
         })
         .with_retry_config(RetryConfig {
             max_retries: 5,

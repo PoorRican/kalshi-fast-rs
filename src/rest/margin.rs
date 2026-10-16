@@ -51,7 +51,9 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    /// Optional market ticker filter; omit to retrieve trades across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -240,6 +242,28 @@ pub enum MarginMarketStatus {
     Closed,
 }
 
+/// Unit of `funding_deadband` / `funding_cap` on a margin market.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+    #[serde(other)]
+    Unknown,
+}
+
+/// How funding averages a bar that has no premium.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingInvalidPremiumHandling {
+    /// Count the bar as a premium of 0.
+    Dampen,
+    /// Leave the bar out of the average.
+    Exclude,
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MarginOrderReason {
@@ -286,7 +310,18 @@ pub struct MarginMarket {
     pub fractional_trading_enabled: bool,
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
+    /// Stable market UUID; unchanged when the ticker is renamed.
+    #[serde(default)]
+    pub market_id: Option<String>,
     pub exchange_index: u32,
+    /// Starts at 1 and increases when trading resumes after a corporate action.
+    pub market_version: i32,
+    /// Funding deadband configured at market creation, in `funding_limit_unit`.
+    pub funding_deadband: f64,
+    /// Funding cap configured at market creation, in `funding_limit_unit`.
+    pub funding_cap: f64,
+    pub funding_limit_unit: MarginFundingLimitUnit,
+    pub funding_invalid_premium_handling: MarginFundingInvalidPremiumHandling,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -313,6 +348,12 @@ pub struct MarginMarket {
     pub bid: Option<String>,
     #[serde(default)]
     pub ask: Option<String>,
+    /// Contracts resting at the best bid; omitted when market stats are unavailable.
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
+    /// Contracts resting at the best ask; omitted when market stats are unavailable.
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
     #[serde(default)]
     pub settlement_mark_price: Option<TickerPrice>,
     #[serde(default)]
@@ -357,6 +398,19 @@ pub struct MarginOrderbookCount {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub asks: Vec<Vec<String>>,
+}
+
+/// One entry of [`GetMarginMarketOrderbooksResponse`].
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginMarketOrderbook {
+    pub ticker: String,
+    pub orderbook: MarginOrderbookCount,
+}
+
+/// Response of `GET /margin/markets/orderbooks`: one entry per requested ticker, in request order.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginMarketOrderbooksResponse {
+    pub orderbooks: Vec<MarginMarketOrderbook>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -755,6 +809,34 @@ impl KalshiRestClient {
             false,
         )
         .await
+    }
+
+    /// Get the orderbooks of up to 100 margin markets in one request.
+    ///
+    /// A ticker that is not a margin market yields a `404`.
+    pub async fn get_margin_market_orderbooks<S: AsRef<str>>(
+        &self,
+        tickers: &[S],
+    ) -> Result<GetMarginMarketOrderbooksResponse, KalshiError> {
+        if tickers.is_empty() || tickers.len() > 100 {
+            return Err(KalshiError::InvalidParams(
+                "tickers must contain between 1 and 100 entries".to_string(),
+            ));
+        }
+        #[derive(Serialize)]
+        struct Query {
+            tickers: String,
+        }
+        let query = Query {
+            tickers: tickers
+                .iter()
+                .map(AsRef::as_ref)
+                .collect::<Vec<_>>()
+                .join(","),
+        };
+        let path = Self::full_path("/margin/markets/orderbooks");
+        self.send(Method::GET, &path, Some(&query), Option::<&()>::None, false)
+            .await
     }
 
     pub async fn get_margin_market_candlesticks(

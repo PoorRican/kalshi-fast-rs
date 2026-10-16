@@ -8,6 +8,7 @@ async fn main() -> anyhow::Result<()> {
         .with_rate_limit_config(RateLimitConfig {
             read_rps: 30,
             write_rps: 15,
+            ..Default::default()
         })
         .with_retry_config(RetryConfig {
             max_retries: 4,

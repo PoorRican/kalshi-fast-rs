@@ -8,6 +8,80 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-16
+
+### Compatibility
+
+- Docs snapshot: 2026-10-16
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-16
+
+Version bump: **minor** (0.9.1 -> 0.10.0). Per `VERSIONING.md`, pre-1.0 "minor releases are for any
+intentional breaking change to the public Rust API"; this release changes public field types and
+adds required fields to public structs (see Breaking).
+
+### Breaking
+
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (upstream made `ticker` optional on
+  `GET /margin/trades`; omit it for trades across all margin markets).
+- [Rust API] `MarginMarket` gains required `market_version`, `funding_deadband`, `funding_cap`,
+  `funding_limit_unit`, and `funding_invalid_premium_handling` (all `required` in the perps OpenAPI).
+- [Rust API] `MultivariateEventCollection` gains required `price_level_structure` and `price_ranges`.
+- [Rust API] `GetBalanceResponse::balance_dollars` is now `FixedPointDollars` (was `Option`); the OpenAPI
+  marks it required.
+- [Rust API] `GetEventParams` gains `exclude_markets`; `RateLimitConfig` gains `balance_rps`
+  (default 1). Exhaustive struct literals must add the field or `..Default::default()`.
+
+### Added
+
+- [Rust API] `get_margin_market_orderbooks` (`GET /margin/markets/orderbooks`, up to 100 tickers).
+- [Rust API] `MarginMarket::{market_id, bid_size_fp, ask_size_fp}` and the `MarginFundingLimitUnit` /
+  `MarginFundingInvalidPremiumHandling` enums (each with a `#[serde(other)] Unknown` catch-all).
+- [Rust API] `get_event_with_params` and `GetEventParams::exclude_markets` (rejected client-side with
+  `with_nested_markets=true`, as the spec forbids the combination).
+- [Rust API] `intra_exchange_instance_transfer` with optional `client_transfer_id`, plus
+  `get_intra_exchange_instance_transfers` / `get_intra_exchange_instance_transfer`.
+- [Rust API] `GetBalanceResponse::balance_breakdown` and `IndexedBalance`.
+
+### Changed
+
+- [Upstream] `GET /portfolio/balance` is throttled in its own client-side bucket (`balance_rps`) instead
+  of the read budget, matching Kalshi's new separate balance rate limit.
+
+### Upstream changelog reconciliation (since 2026-09-28)
+
+- 2026-10-15 balance own rate-limit bucket -> `balance_rps` bucket.
+- 2026-10-16 funding averages premium over bars -> docs-only (semantics of `premium_index`); no change.
+- 2026-10-16 FIX per-market mass cancel -> FIX is not implemented in this crate; no change.
+- 2026-10-14 MCP portfolio grants / `exclude_markets` -> `exclude_markets` implemented; MCP OAuth scopes
+  are server-side auth grants with no request/response shape; no change.
+- 2026-10-13 batch margin orderbooks -> `get_margin_market_orderbooks`.
+- 2026-10-12 combo `invalid_parameters` messages -> message text only, error shape unchanged; no change.
+- 2026-10-12 `funding_invalid_premium_handling` -> `MarginMarket`.
+- 2026-10-09 funding deadband/cap/limit unit -> `MarginMarket`.
+- 2026-10-08 `client_transfer_id` on intra-account transfer -> new transfer endpoints.
+- 2026-10-08 `GET /margin/trades` optional ticker -> `GetMarginTradesParams::ticker` optional.
+- 2026-10-08 `bid_size_fp` / `ask_size_fp` -> `MarginMarket`.
+- 2026-10-08 subaccount-restricted keys can trade perps -> server-side authorization; no change.
+- 2026-10-06 FIX trade-scoped keys -> FIX not implemented; no change.
+- 2026-10-05 multivariate collection price levels -> `MultivariateEventCollection`.
+- 2026-10-05 `rfq_deleted` to all subscribers -> message type already modeled; no change.
+
+### Known gaps (pre-existing, not part of this refresh)
+
+- Institutional FCM / perps SCM endpoints (`/fcm/*`, `/margin/fcm/*`, `/margin/obligations*`, etc.),
+  block-trade proposals, deposits/withdrawals, `events/fee_changes`, `live_data/*` additions,
+  margin exit-trigger and `fee_tier_rates`/`premium_index` endpoints are not yet implemented.
+
+### Tests
+
+- [Tests] Added parsing/serialization coverage for the new margin market fields, batch orderbooks,
+  optional margin trades ticker, `exclude_markets` validation, intra-account transfers, and balance
+  breakdown.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

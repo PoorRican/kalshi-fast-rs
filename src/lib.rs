@@ -30,7 +30,7 @@
 //!
 //! # async fn run() -> Result<(), kalshi_fast::KalshiError> {
 //! let client = KalshiRestClient::builder(KalshiEnvironment::demo())
-//!     .with_rate_limit_config(RateLimitConfig { read_rps: 30, write_rps: 15 })
+//!     .with_rate_limit_config(RateLimitConfig { read_rps: 30, write_rps: 15, ..Default::default() })
 //!     .with_retry_config(RetryConfig {
 //!         max_retries: 4,
 //!         base_delay: Duration::from_millis(200),

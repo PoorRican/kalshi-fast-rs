@@ -20,9 +20,18 @@ pub struct GetBalanceResponse {
     pub balance: i64,
     pub portfolio_value: i64,
     pub updated_ts: i64,
-    /// Centi-cent precision dollar balance (direct members only). Added 2026-05-28.
+    /// Centi-cent precision dollar balance. Required by the OpenAPI spec since 2026-05-28.
+    pub balance_dollars: FixedPointDollars,
+    /// Per-exchange-index balance breakdown; omitted for subaccount-restricted API keys.
     #[serde(default)]
-    pub balance_dollars: Option<FixedPointDollars>,
+    pub balance_breakdown: Option<Vec<IndexedBalance>>,
+}
+
+/// Balance for a single exchange index (see [`GetBalanceResponse::balance_breakdown`]).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IndexedBalance {
+    pub exchange_index: u32,
+    pub balance: FixedPointDollars,
 }
 
 /// GET /portfolio/positions query params

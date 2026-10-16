@@ -91,6 +91,15 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `GET /events/{event_ticker}` rejects `exclude_markets=true` together with `with_nested_markets=true`
+  client-side (the spec states they cannot be combined).
+- `GET /portfolio/balance` has its own rate-limit bucket (1/s Basic/Advanced, 5/s higher tiers, no burst).
+  The crate throttles it via `RateLimitConfig::balance_rps` (default 1); raise it on higher tiers.
+- Intra-account transfer responses keep `source`/`destination`/`status` as raw strings so new values
+  round-trip; the request side uses the closed `ExchangeInstance` enum.
+- `MarginFundingLimitUnit` and `MarginFundingInvalidPremiumHandling` carry `#[serde(other)] Unknown`
+  because the perps spec is young and enums there are likely to grow.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

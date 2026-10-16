@@ -159,6 +159,7 @@ impl KalshiRestClientBuilder {
 ///     .with_rate_limit_config(kalshi_fast::RateLimitConfig {
 ///         read_rps: 10,
 ///         write_rps: 5,
+///         ..Default::default()
 ///     });
 /// # Ok(())
 /// # }
@@ -296,7 +297,9 @@ impl KalshiRestClient {
                 Self::insert_auth_headers(&mut headers, auth, &method, full_path)?;
             }
 
-            self.rate_limiter.wait(rate_limit_kind(&method)).await;
+            self.rate_limiter
+                .wait(rate_limit_kind(&method, full_path))
+                .await;
 
             let mut req = self
                 .http
@@ -911,6 +914,7 @@ mod tests {
         let limiter = RateLimiter::new(RateLimitConfig {
             read_rps: 0,
             write_rps: 0,
+            balance_rps: 0,
         });
 
         timeout(Duration::from_millis(10), limiter.wait(RateLimitKind::Read))

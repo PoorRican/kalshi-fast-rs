@@ -9,13 +9,18 @@ use tokio::time::{Duration, Instant};
 ///
 /// # Default
 ///
-/// The default matches the **Basic** tier: 20 read RPS, 10 write RPS.
+/// The default matches the **Basic** tier: 20 read RPS, 10 write RPS, 1 balance RPS.
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimitConfig {
     /// Maximum GET requests per second (0 = unlimited).
     pub read_rps: u32,
     /// Maximum POST/DELETE requests per second (0 = unlimited).
     pub write_rps: u32,
+    /// Maximum `GET /portfolio/balance` requests per second (0 = unlimited).
+    ///
+    /// The balance endpoint has its own bucket, separate from the read budget: 1/s on Basic and
+    /// Advanced, 5/s on higher tiers, with no burst.
+    pub balance_rps: u32,
 }
 
 impl Default for RateLimitConfig {
@@ -24,6 +29,7 @@ impl Default for RateLimitConfig {
         Self {
             read_rps: 20,
             write_rps: 10,
+            balance_rps: 1,
         }
     }
 }
@@ -33,7 +39,7 @@ impl Default for RateLimitConfig {
 /// Pass to [`crate::KalshiRestClient::with_rate_limit_tier`] for quick configuration.
 #[derive(Debug, Clone, Copy)]
 pub enum RateLimitTier {
-    /// 20 read RPS, 10 write RPS.
+    /// 20 read RPS, 10 write RPS, 1 balance RPS.
     Basic,
 }
 
@@ -49,11 +55,16 @@ impl RateLimitTier {
 pub(crate) enum RateLimitKind {
     Read,
     Write,
+    Balance,
 }
 
-pub(crate) fn rate_limit_kind(method: &Method) -> RateLimitKind {
+pub(crate) fn rate_limit_kind(method: &Method, full_path: &str) -> RateLimitKind {
     if *method == Method::GET {
-        RateLimitKind::Read
+        if full_path.ends_with("/portfolio/balance") {
+            RateLimitKind::Balance
+        } else {
+            RateLimitKind::Read
+        }
     } else {
         RateLimitKind::Write
     }
@@ -63,8 +74,10 @@ pub(crate) fn rate_limit_kind(method: &Method) -> RateLimitKind {
 pub(crate) struct RateLimiter {
     read: Mutex<Instant>,
     write: Mutex<Instant>,
+    balance: Mutex<Instant>,
     read_interval: Duration,
     write_interval: Duration,
+    balance_interval: Duration,
 }
 
 impl RateLimiter {
@@ -80,12 +93,20 @@ impl RateLimiter {
             Duration::from_secs_f64(1.0 / config.write_rps as f64)
         };
 
+        let balance_interval = if config.balance_rps == 0 {
+            Duration::from_secs(0)
+        } else {
+            Duration::from_secs_f64(1.0 / config.balance_rps as f64)
+        };
+
         let now = Instant::now();
         Self {
             read: Mutex::new(now - read_interval),
             write: Mutex::new(now - write_interval),
+            balance: Mutex::new(now - balance_interval),
             read_interval,
             write_interval,
+            balance_interval,
         }
     }
 
@@ -93,6 +114,7 @@ impl RateLimiter {
         let (lock, interval) = match kind {
             RateLimitKind::Read => (&self.read, self.read_interval),
             RateLimitKind::Write => (&self.write, self.write_interval),
+            RateLimitKind::Balance => (&self.balance, self.balance_interval),
         };
 
         if interval.is_zero() {
