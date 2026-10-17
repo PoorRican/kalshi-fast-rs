@@ -268,6 +268,46 @@ impl fmt::Display for PositionCountFilter {
     }
 }
 
+// --- Position Settlement Status ---
+
+/// `settlement_status` filter for `GET /portfolio/positions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    Settled,
+    All,
+}
+
+impl PositionSettlementStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PositionSettlementStatus::Unsettled => "unsettled",
+            PositionSettlementStatus::Settled => "settled",
+            PositionSettlementStatus::All => "all",
+        }
+    }
+}
+
+impl fmt::Display for PositionSettlementStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for PositionSettlementStatus {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+/// Signature algorithm of an API key pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyType {
+    Rsa,
+    Ed25519,
+}
+
 /// --- Order Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]

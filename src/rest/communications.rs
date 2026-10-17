@@ -195,6 +195,9 @@ pub struct CreateRFQRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
     pub rest_remainder: bool,
+    /// Hide the requester's public communications ID from other users until a quote executes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

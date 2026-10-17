@@ -8,6 +8,75 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-17
+
+### Compatibility
+
+- Docs snapshot: 2026-10-17
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-22
+
+Version bump: minor (0.9.1 → 0.10.0). `VERSIONING.md`, pre-1.0: "Minor releases are for any
+intentional breaking change to the public Rust API" and refreshes bump minor "if deprecated or
+removed upstream fields/endpoints force a breaking Rust API change". `Market.liquidity_dollars`
+was removed upstream and `GetMarginTradesParams.ticker` became optional, so downstream code must
+change.
+
+### Breaking
+
+- [Upstream] [Rust API] Removed `Market::liquidity_dollars` (removed from all market responses on
+  2026-10-01; it had returned `"0.0000"` since February). Use `yes_bid_size_fp` / `yes_ask_size_fp`.
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (omit for trades across all
+  margin markets, 2026-10-08).
+- [Rust API] New public fields on exhaustively-constructed types: `GetEventParams::exclude_markets`,
+  `GetPositionsParams::settlement_status`, `GenerateApiKeyRequest::key_type`,
+  `CreateRFQRequest::obscure_creator_id`, `AmendOrderV2Request::expiration_time`,
+  `CreateMarginOrderRequest::market_version`, `WsSubscriptionParamsV2::user_filter`. Add
+  `..Default::default()` or the new `None` fields to struct literals.
+- [Rust API] Positions `subaccount` validation now allows `0..=63` (was `0..=32`).
+
+### Added
+
+- [Upstream] Ed25519 API keys (web app default since 2026-10-01): `KalshiAuth::from_pem_str` /
+  `from_pem_file` accept PKCS#8 Ed25519 private keys in addition to RSA; same headers and pre-sign
+  text. `ApiKeyType` + `key_type` on key generation request/response. The RSA-PSS signing key is now
+  built once at load time instead of cloned per request.
+- [Upstream] Markets: `settlement_bounds_type`, `settlement_floor_dollars`, `exchange_index`.
+- [Upstream] `GET /events/{ticker}?exclude_markets=true` (`get_event_with_params`);
+  `GET /portfolio/positions?settlement_status=unsettled|settled|all` (`PositionSettlementStatus`);
+  `GET /portfolio/fills` `ticker` accepts up to 100 comma-separated tickers (docs only).
+- [Upstream] Multivariate collections: `price_level_structure`, `price_ranges`, `exchange_index`.
+- [Upstream] RFQs: `obscure_creator_id` on create; WS `rfq_creator_id` / `subaccount` on
+  `quote_created` / `quote_accepted` and `subaccount` on `quote_executed`.
+- [Upstream] V2 amend: `expiration_time` (omit = preserve, `0` = clear).
+- [Upstream] WebSocket: `sending_ts_ms` on `WsEnvelope`, `WsEnvelopeRef`, `MarginEnvelope`;
+  `user_filter` (`WsUserFilter`) on communications subscribe; `user_order.last_update_reason`
+  (`WsOrderUpdateReason`, includes `SettlementBoundsCancel`) and `exchange_index`.
+- [Upstream] Margin: market `market_version`, `bid_size_fp`, `ask_size_fp`, `funding_deadband`,
+  `funding_cap`, `funding_limit_unit`, `funding_invalid_premium_handling`; order `market_version`;
+  `get_margin_market_orderbooks` (`GET /margin/markets/orderbooks`); `get_margin_premium_index`
+  (`GET /margin/funding_rates/premium_index`); `premium_index` / `premium_index_ts` on the funding
+  rate estimate.
+
+### Changed
+
+- [Docs] `docs/spec-parity.md` records the new `Option` modeling and known unmodeled surface.
+
+### Known gaps
+
+- [Upstream] Not yet modeled (pre-date the previous watermark, left from earlier refreshes):
+  `cfbenchmarks_value_5hz` and `pyth_value` WebSocket channels, `exchange_index` / `is_block_trade` /
+  `price_ranges` on several event-contract WS payloads, margin exit-trigger / FCM / fee-tier
+  endpoints, and `POST /portfolio/intra_exchange_instance_transfer` (including the new
+  `client_transfer_id`).
+
+### Tests
+
+- [Tests] Added `tests/spec_refresh_2026_10.rs` and an Ed25519 signing round-trip test.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

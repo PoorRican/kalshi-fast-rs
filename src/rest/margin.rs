@@ -51,7 +51,9 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    /// Omit to retrieve trades across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,6 +126,10 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Reject the order (HTTP 409 `market_version_mismatch`) if the market's version differs.
+    /// `0` or omitted skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -323,6 +329,46 @@ pub struct MarginMarket {
     pub asset_class: Option<String>,
     #[serde(default)]
     pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Starts at 1; increases when trading resumes after a corporate action (e.g. a split).
+    /// Spec-required; `Option` so payloads predating the field still parse.
+    #[serde(default)]
+    pub market_version: Option<i32>,
+    /// Contracts resting at the best bid; omitted when market stats are unavailable.
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
+    /// Contracts resting at the best ask; omitted when market stats are unavailable.
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
+    /// Funding deadband configured at market creation, in `funding_limit_unit`.
+    #[serde(default)]
+    pub funding_deadband: Option<f64>,
+    /// Funding cap configured at market creation, in `funding_limit_unit`.
+    #[serde(default)]
+    pub funding_cap: Option<f64>,
+    #[serde(default)]
+    pub funding_limit_unit: Option<MarginFundingLimitUnit>,
+    #[serde(default)]
+    pub funding_invalid_premium_handling: Option<MarginFundingInvalidPremiumHandling>,
+}
+
+/// Unit for `funding_deadband` / `funding_cap`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+    #[serde(other)]
+    Unknown,
+}
+
+/// How funding averages a bar with no premium: `dampen` counts it as 0, `exclude` omits it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingInvalidPremiumHandling {
+    Dampen,
+    Exclude,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -343,6 +389,38 @@ pub struct TickerPrice {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginOrderbookResponse {
     pub orderbook: MarginOrderbookCount,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginMarketOrderbook {
+    pub ticker: String,
+    pub orderbook: MarginOrderbookCount,
+}
+
+/// One entry per requested ticker, in request order.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginMarketOrderbooksResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub orderbooks: Vec<MarginMarketOrderbook>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginPremiumIndexPoint {
+    pub second_ts: String,
+    /// Signed decimal fraction of the index price; informational only.
+    pub premium_index: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginPremiumIndexResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub points: Vec<MarginPremiumIndexPoint>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -682,6 +760,12 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    /// Premium of the final bar evaluated; omitted when that bar has no available premium.
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    /// Last second of the final bar evaluated (can precede `computed_time`).
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -751,6 +835,33 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// GET /margin/markets/orderbooks — up to 100 tickers; a non-margin ticker returns 404.
+    pub async fn get_margin_market_orderbooks(
+        &self,
+        tickers: &[&str],
+    ) -> Result<GetMarginMarketOrderbooksResponse, KalshiError> {
+        if tickers.is_empty() || tickers.len() > 100 {
+            return Err(KalshiError::InvalidParams(
+                "GET /margin/markets/orderbooks: tickers must contain 1..=100 entries".to_string(),
+            ));
+        }
+        let path = Self::full_path("/margin/markets/orderbooks");
+        #[derive(Serialize)]
+        struct Q {
+            tickers: String,
+        }
+        self.send(
+            Method::GET,
+            &path,
+            Some(&Q {
+                tickers: tickers.join(","),
+            }),
             Option::<&()>::None,
             false,
         )
@@ -1007,6 +1118,34 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&Q { ticker }),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// GET /margin/funding_rates/premium_index — informational per-second premium (window ≤ 1h).
+    pub async fn get_margin_premium_index(
+        &self,
+        ticker: &str,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> Result<GetMarginPremiumIndexResponse, KalshiError> {
+        let path = Self::full_path("/margin/funding_rates/premium_index");
+        #[derive(Serialize)]
+        struct Q<'a> {
+            ticker: &'a str,
+            start_ts: i64,
+            end_ts: i64,
+        }
+        self.send(
+            Method::GET,
+            &path,
+            Some(&Q {
+                ticker,
+                start_ts,
+                end_ts,
+            }),
             Option::<&()>::None,
             false,
         )

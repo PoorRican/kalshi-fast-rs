@@ -8,7 +8,7 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
+    ApiKeyType, FixedPointDollars, deserialize_null_as_empty_vec, deserialize_string_or_number,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -174,6 +174,9 @@ pub struct CreateApiKeyResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
+    /// Defaults to `rsa` server-side when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
 }
@@ -181,6 +184,9 @@ pub struct GenerateApiKeyRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateApiKeyResponse {
     pub api_key_id: String,
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
+    /// PKCS#1 PEM for `rsa`, PKCS#8 PEM for `ed25519`.
     pub private_key: String,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,

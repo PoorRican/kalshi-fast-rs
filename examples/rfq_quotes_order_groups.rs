@@ -44,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
             target_cost_centi_cents: None,
             target_cost_dollars: None,
             rest_remainder: true,
+            obscure_creator_id: None,
             replace_existing: None,
             subtrader_id: None,
             subaccount: None,

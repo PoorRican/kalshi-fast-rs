@@ -584,6 +584,10 @@ pub struct AmendOrderV2Request {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// Unix seconds. Omit to preserve expiry, `0` to clear it, or a future timestamp.
+    /// Sending the current price and count amends expiry only and keeps queue priority.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_index: Option<u32>,
 }

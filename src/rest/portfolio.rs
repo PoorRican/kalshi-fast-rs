@@ -8,8 +8,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{
-    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter, YesNo,
-    deserialize_null_as_empty_vec, serialize_csv_opt,
+    BookSide, BuySell, FixedPointCount, FixedPointDollars, PositionCountFilter,
+    PositionSettlementStatus, YesNo, deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -41,6 +41,11 @@ pub struct GetPositionsParams {
     )]
     pub count_filter: Option<Vec<PositionCountFilter>>,
 
+    /// Defaults to `unsettled` server-side. `settled` returns settled positions not yet archived
+    /// to `GET /historical/positions`; `all` returns both live states.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
 
@@ -51,7 +56,7 @@ pub struct GetPositionsParams {
     )]
     pub event_ticker: Option<Vec<String>>,
 
-    /// 0..=32
+    /// 0..=63
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
 }
@@ -73,10 +78,10 @@ impl GetPositionsParams {
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -217,6 +222,7 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// One market ticker, or up to 100 comma-separated market tickers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

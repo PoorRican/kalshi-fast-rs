@@ -91,6 +91,26 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market.liquidity_dollars` was removed upstream (2026-10-01) and is removed from the crate rather
+  than kept as an `Option`. Newly spec-required market/collection/margin fields that older payloads
+  may lack (`settlement_bounds_type`, `price_level_structure`, `price_ranges`, `market_version`,
+  `funding_*`, `exchange_index`, `rfq_creator_id`) are modeled as `Option` (or an empty `Vec`) so
+  parsing never fails on their absence. `exchange_index` and `last_update_reason` on `user_order`
+  follow the same rule.
+- `sending_ts_ms` (2026-10-01) is optional in every AsyncAPI payload and sits on the envelope, not
+  in `msg`; it is exposed on the envelope types only.
+- `WsOrderUpdateReason`, `MarginFundingLimitUnit` and `MarginFundingInvalidPremiumHandling` carry a
+  `#[serde(other)] Unknown` variant so a new upstream value cannot fail a whole message. `Unknown`
+  must not be used when serializing.
+- `WsUserFilter` serializes as `""` (all users, the server default) or `"self"`; it is only valid on
+  `communications` subscriptions.
+- `KalshiAuth` accepts RSA (PKCS#1/PKCS#8) and Ed25519 (PKCS#8) PEM keys; signing text and headers
+  are identical, only the signature algorithm differs.
+- Positions `subaccount` is validated as `0..=63`; the OpenAPI query parameter only documents
+  `minimum: 0`, while key/subaccount schemas cap numbered subaccounts at 63.
+- Not yet modeled (tracked in `CHANGELOG.md` "Known gaps"): `cfbenchmarks_value_5hz`, `pyth_value`,
+  margin exit triggers / FCM / fee tiers, and `POST /portfolio/intra_exchange_instance_transfer`.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

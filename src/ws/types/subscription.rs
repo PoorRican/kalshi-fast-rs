@@ -3,6 +3,17 @@ use crate::error::KalshiError;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+/// `user_filter` for the `communications` channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsUserFilter {
+    /// Receive RFQ events from all users (the server default).
+    #[serde(rename = "")]
+    All,
+    /// Receive `rfq_created`/`rfq_deleted` only for RFQs you created.
+    #[serde(rename = "self")]
+    Own,
+}
+
 /// Subscription parameters for WebSocket channels.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WsSubscriptionParamsV2 {
@@ -25,6 +36,9 @@ pub struct WsSubscriptionParamsV2 {
     pub shard_factor: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard_key: Option<u32>,
+    /// Communications channel only: restrict RFQ events to your own RFQs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<WsUserFilter>,
     /// CF Benchmarks index IDs for `cfbenchmarks_value` subscriptions.
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -378,6 +392,12 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
     if (params.shard_factor.is_some() || params.shard_key.is_some()) && !has_communications {
         return Err(KalshiError::InvalidParams(
             "subscribe: shard_factor/shard_key only allowed for communications".to_string(),
+        ));
+    }
+
+    if params.user_filter.is_some() && !has_communications {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: user_filter only allowed for communications".to_string(),
         ));
     }
 
