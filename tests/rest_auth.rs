@@ -1,4 +1,5 @@
 #![cfg(feature = "live-tests")]
+#![allow(deprecated)] // live tests intentionally exercise deprecated-but-present params
 
 mod common;
 
