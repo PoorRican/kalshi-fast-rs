@@ -54,6 +54,20 @@ pub struct GetPositionsParams {
     /// 0..=32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Defaults to `unsettled` server-side. `settled` returns settled positions
+    /// not yet moved to `GET /historical/positions`; `all` returns both.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<PositionSettlementStatus>,
+}
+
+/// `settlement_status` filter for `GET /portfolio/positions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PositionSettlementStatus {
+    Unsettled,
+    Settled,
+    All,
 }
 
 impl GetPositionsParams {
@@ -217,8 +231,11 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// A single market ticker, or up to 100 comma-separated tickers
+    /// (e.g. `"MARKET-A,MARKET-B"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
+    #[deprecated(note = "not a parameter of `GET /portfolio/fills` in the current OpenAPI spec")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -240,6 +257,12 @@ pub struct GetPortfolioRestingOrderTotalValueResponse {
 
 impl KalshiRestClient {
     /// Get the account balance.
+    ///
+    /// Metered in its own server-side bucket (1 req/s on Basic and Advanced,
+    /// 5 req/s on higher tiers, no burst); calls above the rate return `429`.
+    /// The client-side [`RateLimitConfig`](crate::RateLimitConfig) still counts
+    /// this call against the read budget. Balance only changes on fills,
+    /// settlements and transfers, so prefer the `fill` WebSocket channel to polling.
     ///
     /// **Requires auth.**
     pub async fn get_balance(&self) -> Result<GetBalanceResponse, KalshiError> {

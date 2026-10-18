@@ -61,6 +61,14 @@ pub struct Quote {
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_contracts_fp: Option<FixedPointCount>,
+    #[serde(default)]
+    pub post_only: Option<bool>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -89,6 +97,10 @@ pub struct RFQ {
     pub cancelled_ts: Option<String>,
     #[serde(default)]
     pub updated_ts: Option<String>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -105,8 +117,10 @@ pub struct GetQuotesParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[deprecated(note = "deprecated upstream; use `user_filter: Some(\"self\")`")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote_creator_user_id: Option<String>,
+    #[deprecated(note = "deprecated upstream; use `rfq_user_filter: Some(\"self\")`")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_creator_user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +131,9 @@ pub struct GetQuotesParams {
     /// Pass `"self"` to enable. Added 2026-05-07.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rfq_user_filter: Option<String>,
+    /// Filter to quotes created by the authenticated user. Pass `"self"` to enable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -166,8 +183,12 @@ pub struct GetRFQsParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[deprecated(note = "deprecated upstream; use `user_filter: Some(\"self\")`")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub creator_user_id: Option<String>,
+    /// Pass `"self"` to list only RFQs created by the authenticated user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -183,17 +204,24 @@ pub struct GetRFQResponse {
     pub rfq: RFQ,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateRFQRequest {
     pub market_ticker: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_fp: Option<FixedPointCount>,
+    #[deprecated(note = "deprecated upstream; use `target_cost_dollars`")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Hide the requester's public communications ID from other users until a
+    /// quote executes (obscured fields show a shared placeholder hash).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,

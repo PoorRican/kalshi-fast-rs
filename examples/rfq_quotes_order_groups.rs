@@ -41,12 +41,8 @@ async fn main() -> anyhow::Result<()> {
             market_ticker,
             contracts: None,
             contracts_fp: Some("10.00".to_string()),
-            target_cost_centi_cents: None,
-            target_cost_dollars: None,
             rest_remainder: true,
-            replace_existing: None,
-            subtrader_id: None,
-            subaccount: None,
+            ..Default::default()
         })
         .await?;
     println!("created rfq_id={}", rfq.id);

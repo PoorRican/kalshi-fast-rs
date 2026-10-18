@@ -8,6 +8,116 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-18
+
+### Compatibility
+
+- Docs snapshot: 2026-10-18
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-22
+
+Version bump: **minor** (0.9.1 -> 0.10.0). Per `VERSIONING.md`, while below 1.0.0 "minor releases are
+for any intentional breaking change to the public Rust API" and the refresh rule "bump `minor` if
+deprecated or removed upstream fields/endpoints force a breaking Rust API change".
+
+### Breaking
+
+- [Rust API] `Market::liquidity`, `Market::liquidity_fp`, and `Market::liquidity_dollars` removed.
+  Upstream removed `liquidity_dollars` on 2026-10-01 and none of the three remain in the OpenAPI
+  `Market` schema. Use `yes_bid_size_fp` / `yes_ask_size_fp`. A stale payload that still carries them
+  lands in `Market::extra`.
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (upstream made `ticker` optional;
+  omit it for trades across all margin markets).
+- [Rust API] New public fields on constructible request/param structs: `CreateMarginOrderRequest::market_version`,
+  `AmendOrderV2Request::expiration_time`, `GetEventParams::exclude_markets`,
+  `GetPositionsParams::settlement_status`, `GetRFQsParams::user_filter`, `GetQuotesParams::user_filter`,
+  `WsSubscriptionParamsV2::user_filter`, `CreateRFQRequest::{target_cost_excludes_fees, obscure_creator_id}`.
+  Exhaustive struct literals must add the fields or use `..Default::default()` (`CreateRFQRequest` now
+  derives `Default`).
+- [Rust API] `GetExchangeStatusResponse` and `GetMarginExchangeStatusResponse` gain public fields.
+
+### Added
+
+- [Upstream] `Market::{settlement_bounds_type, settlement_floor_dollars, exchange_index}` and the
+  `SettlementBoundsType` enum (`default` | `floor`, with `Unknown` catch-all).
+- [Upstream] `WsUserOrder::{last_update_reason, exchange_index}` and `WsOrderUpdateReason`, including
+  `SettlementBoundsCancel` and `ReduceOnlyCancel`.
+- [Upstream] RFQ privacy and filters: `CreateRFQRequest::obscure_creator_id`, `user_filter` on RFQ/quote
+  listing and on the `communications` WebSocket subscription, `target_cost_excludes_fees` and subaccount
+  fields on `RFQ` / `Quote`, `Quote::post_only`.
+- [Upstream] `get_event_with_params` (`exclude_markets`), `GetPositionsParams::settlement_status`
+  (`PositionSettlementStatus`), `GetHistoricalCutoffResponse::market_positions_last_updated_ts`,
+  `MultivariateEventCollection::{price_level_structure, price_ranges, exchange_index}`,
+  `AmendOrderV2Request::expiration_time`.
+- [Upstream] Exchange status: `intra_exchange_transfers_active` and per-shard `ExchangeIndexStatus` on the
+  Predictions status; `exchange_estimated_resume_time` on the Margin status.
+- [Upstream] Margin: `MarginMarket::{market_version, funding_deadband, funding_cap, funding_limit_unit,
+  funding_invalid_premium_handling, bid_size_fp, ask_size_fp}`, `CreateMarginOrderRequest::market_version`,
+  `premium_index` / `premium_index_ts` on the funding-rate estimate, `get_margin_market_orderbooks`
+  (`GET /margin/markets/orderbooks`), and `get_margin_premium_index`
+  (`GET /margin/funding_rates/premium_index`).
+
+### Deprecated
+
+- [Rust API] `#[deprecated]` on fields the OpenAPI marks `deprecated: true` or no longer lists:
+  `GetRFQsParams::creator_user_id`, `GetQuotesParams::{quote_creator_user_id, rfq_creator_user_id}`
+  (use `user_filter` / `rfq_user_filter`), `CreateRFQRequest::target_cost_centi_cents`
+  (use `target_cost_dollars`), and `GetFillsParams::event_ticker` (not a parameter of
+  `GET /portfolio/fills`).
+
+### Changelog entries since the previous watermark (2026-09-28)
+
+Each upstream entry and its disposition:
+
+- 2026-10-22 REST schema corrections: Margin status `exchange_estimated_resume_time` added;
+  `intra_exchange_transfers_active` / `exchange_index_statuses` modeled as Predictions-only optionals;
+  the transfer-request schema notes and `subaccount` `minimum: 0` touch endpoints the crate does not
+  wrap (intra-exchange transfer) or are validation-only. No further change.
+- 2026-10-22 Funding averages premium over bars: server-side semantics; `premium_index(_ts)` fields added.
+- 2026-10-22 FIX per-market mass cancel: FIX is out of scope for this crate. No change needed.
+- 2026-10-15 `GET /portfolio/balance` own rate bucket: documented on `get_balance`; the client-side
+  limiter stays read/write only (see `docs/spec-parity.md`).
+- 2026-10-15 MCP read grants + `exclude_markets`: `exclude_markets` added; OAuth/MCP grants are
+  server-side. No change needed.
+- 2026-10-15 Batch margin orderbooks, funding invalid-premium handling, funding configuration, margin
+  trades `ticker` optional, top-of-book sizes: implemented as above.
+- 2026-10-15 Combo-creation `invalid_parameters` messages: message text only; error type unchanged.
+  No change needed.
+- 2026-10-15 `client_transfer_id` on intra-account transfers: endpoint not wrapped (deferred, below).
+- 2026-10-15 Subaccount-restricted keys can trade perps: server-side authorization. No change needed.
+- 2026-10-08 Multivariate `price_level_structure` / `price_ranges`, fills multi-ticker filter (doc),
+  `market_version` on margin markets/orders: implemented.
+- 2026-10-08 `rfq_deleted` sent to all subscribers, FIX trade-scoped keys, FIX `TradeID`, automatic
+  order-transfer setting: behavior/FIX/settings only. No change needed.
+- 2026-10-01 `liquidity_dollars` removal, settlement bounds, `SettlementBoundsCancel`, `settlement_status`,
+  amend `expiration_time`, `obscure_creator_id`, communications `user_filter`, `last_update_reason`,
+  premium index: implemented as above.
+- 2026-10-01 `sending_ts_ms` on every WebSocket message: additive envelope field. Unknown envelope keys
+  are ignored by the wire parsers (covered by a test), so no change was required; not yet surfaced.
+- 2026-10-01 Margin Pyth `reference_price` on the ticker channel: already modeled (`reference_price`).
+- 2026-10-01 Exit-trigger price validation, FIX reduce-only / `ClearingBusinessDate` / settlement-bounds
+  cancel text, RFQ/quote FIX timestamps, Ed25519 web default: exit-trigger endpoints are not wrapped
+  (deferred); the rest are FIX or server-side.
+
+### Known gaps (not addressed in this refresh)
+
+- Ed25519 API keys (2026-09-24, web default 2026-10-01): `auth.rs` signs RSA-PSS only and `ApiKey` /
+  generate types lack `key_type`. Ed25519 keys cannot be used with this crate yet.
+- Endpoint families the crate has never wrapped: margin exit triggers, `intra_exchange_instance_transfer`,
+  `target_balance_allocation` (`resting_margin_reservation: none`), FCM, block trades, deposits /
+  withdrawals, weather index, `historical/positions`, and the `cfbenchmarks_value_5hz` / `pyth_value`
+  WebSocket channels.
+- Legacy cent-denominated `Market` fields remain `Option`s although the live schema no longer lists
+  them (pre-existing).
+
+### Tests
+
+- [Tests] Added offline parsing/serialization coverage for every field above, `WsOrderUpdateReason`
+  (including unknown reasons and a `sending_ts_ms` envelope), and `user_filter` serialization.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

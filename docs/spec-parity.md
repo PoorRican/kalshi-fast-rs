@@ -91,6 +91,32 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `liquidity_dollars` was removed from market responses on 2026-10-01 (it had returned `"0.0000"`
+  since February 2026). The OpenAPI `Market` schema no longer lists `liquidity`, `liquidity_fp`, or
+  `liquidity_dollars`, so all three were removed from `Market`; stale payloads fall into `extra`.
+
+- Fields the YAML marks required but that the crate models as `Option` so a missing value never fails a
+  whole response: `Market::settlement_bounds_type`, `MultivariateEventCollection::{price_level_structure,
+  price_ranges}`, `MarginMarket::{market_version, funding_*}`, `WsUserOrder::exchange_index`.
+  `settlement_floor_dollars` is conditional (present only when `settlement_bounds_type` is `floor`).
+
+- Query parameters deprecated in the OpenAPI (`creator_user_id`, `quote_creator_user_id`,
+  `rfq_creator_user_id`) and the body field `CreateRFQRequest.target_cost_centi_cents` stay as
+  `#[deprecated]` fields; `user_filter` / `rfq_user_filter` / `target_cost_dollars` replace them.
+  `GetFillsParams::event_ticker` is no longer a documented `GET /portfolio/fills` parameter and is
+  `#[deprecated]` too.
+
+- `GET /portfolio/balance` has its own server-side rate bucket (1 req/s Basic and Advanced, 5 req/s
+  higher tiers, no burst). The client-side `RateLimitConfig` only models read and write budgets, so
+  balance calls are still counted as reads locally; callers should poll balance sparingly and prefer
+  the `fill` channel.
+
+- `exchange_index_statuses` / `intra_exchange_transfers_active` exist only on the Predictions exchange
+  status; the Margin status never includes them but does return `exchange_estimated_resume_time`.
+
+- `sending_ts_ms` (added to every WebSocket message on 2026-10-01) is not surfaced on the message types;
+  the wire parsers ignore the unknown key.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

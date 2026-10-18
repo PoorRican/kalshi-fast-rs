@@ -116,6 +116,8 @@ pub struct GetHistoricalCutoffResponse {
     pub market_settled_ts: String,
     pub trades_created_ts: String,
     pub orders_updated_ts: String,
+    #[serde(default)]
+    pub market_positions_last_updated_ts: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

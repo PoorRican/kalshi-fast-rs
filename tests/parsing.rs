@@ -629,8 +629,8 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "previous_yes_ask_dollars": "0.5500",
             "previous_price": 52,
             "previous_price_dollars": "0.5200",
-            "liquidity": 1000,
-            "liquidity_dollars": "10.0000",
+            "settlement_bounds_type": "floor",
+            "settlement_floor_dollars": "0.2500",
             "expiration_value": "123.4",
             "occurrence_datetime": "2026-04-16T18:30:00Z",
             "tick_size": 1,
@@ -658,8 +658,12 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
     assert_eq!(
-        resp.markets[0].liquidity_dollars.as_deref(),
-        Some("10.0000")
+        resp.markets[0].settlement_bounds_type,
+        Some(kalshi_fast::SettlementBoundsType::Floor)
+    );
+    assert_eq!(
+        resp.markets[0].settlement_floor_dollars.as_deref(),
+        Some("0.2500")
     );
     assert_eq!(
         resp.markets[0].occurrence_datetime.as_deref(),
@@ -1723,7 +1727,7 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
                 "volume_fp": "10.00",
                 "open_interest_fp": "10.00",
                 "notional_value_dollars": "1.0000",
-                "liquidity_dollars": "20.0000",
+                "settlement_bounds_type": "default",
                 "price_level_structure": "linear_cent",
                 "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
             }]
@@ -1737,7 +1741,11 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
     assert_eq!(market.yes_ask, None);
     assert_eq!(market.notional_value, None);
     assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
-    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(kalshi_fast::SettlementBoundsType::Default)
+    );
+    assert_eq!(market.settlement_floor_dollars, None);
 }
 
 #[test]
@@ -2026,4 +2034,275 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+// ---------------------------------------------------------------------------
+// Spec refresh: OpenAPI 3.34.0 / AsyncAPI 2.0.0 (changelog through 2026-10-22)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn market_settlement_bounds_unknown_variant_does_not_fail() {
+    let m: kalshi_fast::Market = serde_json::from_str(
+        r#"{"ticker":"M","settlement_bounds_type":"ceiling","liquidity_dollars":"0.0000"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        m.settlement_bounds_type,
+        Some(kalshi_fast::SettlementBoundsType::Unknown)
+    );
+    // Removed upstream; if a stale payload still carries it, it lands in `extra`.
+    assert!(m.extra.contains_key("liquidity_dollars"));
+}
+
+#[test]
+fn get_event_params_serializes_exclude_markets() {
+    let q = serde_json::to_value(kalshi_fast::GetEventParams {
+        with_nested_markets: None,
+        exclude_markets: Some(true),
+    })
+    .unwrap();
+    assert_eq!(q, serde_json::json!({"exclude_markets": true}));
+}
+
+#[test]
+fn get_positions_params_serializes_settlement_status() {
+    let q = serde_json::to_value(kalshi_fast::GetPositionsParams {
+        settlement_status: Some(kalshi_fast::PositionSettlementStatus::All),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(q, serde_json::json!({"settlement_status": "all"}));
+}
+
+#[test]
+fn rfq_user_filter_and_obscure_creator_serialize() {
+    let none = kalshi_fast::GetRFQsParams::default();
+    assert_eq!(serde_json::to_value(&none).unwrap(), serde_json::json!({}));
+    let q = serde_json::to_value(kalshi_fast::GetRFQsParams {
+        user_filter: Some("self".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(q, serde_json::json!({"user_filter": "self"}));
+    let q = serde_json::to_value(kalshi_fast::GetQuotesParams {
+        user_filter: Some("self".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(q, serde_json::json!({"user_filter": "self"}));
+
+    let body = serde_json::to_value(kalshi_fast::CreateRFQRequest {
+        market_ticker: "M".into(),
+        rest_remainder: true,
+        obscure_creator_id: Some(true),
+        target_cost_excludes_fees: Some(false),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(body["obscure_creator_id"], true);
+    assert_eq!(body["target_cost_excludes_fees"], false);
+}
+
+#[test]
+fn rfq_and_quote_parse_new_optional_fields() {
+    let rfq: kalshi_fast::RFQ = serde_json::from_str(
+        r#"{"id":"r","creator_id":"c","market_ticker":"M","contracts_fp":"1.00","status":"open",
+            "created_ts":"2026-10-01T00:00:00Z","target_cost_excludes_fees":true,"creator_subaccount":2}"#,
+    )
+    .unwrap();
+    assert_eq!(rfq.target_cost_excludes_fees, Some(true));
+    assert_eq!(rfq.creator_subaccount, Some(2));
+    let q: kalshi_fast::Quote = serde_json::from_str(
+        r#"{"id":"q","rfq_id":"r","creator_id":"c","rfq_creator_id":"d","market_ticker":"M",
+            "contracts_fp":"1.00","yes_bid_dollars":"0.5000","no_bid_dollars":"0.5000",
+            "created_ts":"t","updated_ts":"t","status":"open","target_cost_excludes_fees":false,
+            "creator_subaccount":1,"rfq_creator_subaccount":3}"#,
+    )
+    .unwrap();
+    assert_eq!(q.creator_subaccount, Some(1));
+    assert_eq!(q.rfq_creator_subaccount, Some(3));
+}
+
+#[test]
+fn historical_cutoff_parses_positions_cutoff() {
+    let r: kalshi_fast::GetHistoricalCutoffResponse = serde_json::from_str(
+        r#"{"market_settled_ts":"a","trades_created_ts":"b","orders_updated_ts":"c",
+            "market_positions_last_updated_ts":"d"}"#,
+    )
+    .unwrap();
+    assert_eq!(r.market_positions_last_updated_ts.as_deref(), Some("d"));
+}
+
+#[test]
+fn multivariate_collection_parses_price_structure() {
+    let c: kalshi_fast::MultivariateEventCollection = serde_json::from_str(
+        r#"{"collection_ticker":"C","series_ticker":"S","title":"t","description":"d",
+            "open_date":"a","close_date":"b","associated_events":[],"associated_event_tickers":[],
+            "is_ordered":false,"is_single_market_per_event":false,"is_all_yes":false,
+            "size_min":2,"size_max":5,"functional_description":"f",
+            "price_level_structure":"linear_cent",
+            "price_ranges":[{"start":"0.0000","end":"1.0000","step":"0.0100"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(c.price_level_structure.as_deref(), Some("linear_cent"));
+    assert_eq!(c.price_ranges.unwrap().len(), 1);
+}
+
+#[test]
+fn amend_order_v2_serializes_expiration_time() {
+    let body = serde_json::to_value(kalshi_fast::AmendOrderV2Request {
+        ticker: "M".into(),
+        side: kalshi_fast::BookSide::Bid,
+        price: "0.5000".into(),
+        count: "1.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        expiration_time: Some(0),
+        exchange_index: None,
+    })
+    .unwrap();
+    assert_eq!(body["expiration_time"], 0);
+}
+
+#[test]
+fn exchange_status_parses_shard_statuses() {
+    let r: kalshi_fast::GetExchangeStatusResponse = serde_json::from_str(
+        r#"{"exchange_active":true,"trading_active":true,"intra_exchange_transfers_active":false,
+            "exchange_index_statuses":[{"exchange_index":0,"description":"main","exchange_active":true,
+            "trading_active":true,"intra_exchange_transfers_active":false}]}"#,
+    )
+    .unwrap();
+    assert_eq!(r.intra_exchange_transfers_active, Some(false));
+    assert_eq!(r.exchange_index_statuses[0].exchange_index, 0);
+    let bare: kalshi_fast::GetExchangeStatusResponse =
+        serde_json::from_str(r#"{"exchange_active":true,"trading_active":true}"#).unwrap();
+    assert!(bare.exchange_index_statuses.is_empty());
+}
+
+#[test]
+fn margin_market_parses_funding_and_version_fields() {
+    let m: kalshi_fast::MarginMarket = serde_json::from_str(
+        r#"{"ticker":"KXBTCPERP","status":"active","title":"BTC","contract_size":"1",
+            "underlying_multiplier":"1","tick_size":"0.0100","fractional_trading_enabled":true,
+            "exchange_index":0,"market_version":2,"funding_deadband":0.0001,"funding_cap":0.01,
+            "funding_limit_unit":"percentage","funding_invalid_premium_handling":"exclude",
+            "bid_size_fp":"10.00","ask_size_fp":"0.00"}"#,
+    )
+    .unwrap();
+    assert_eq!(m.market_version, Some(2));
+    assert_eq!(
+        m.funding_limit_unit,
+        Some(kalshi_fast::MarginFundingLimitUnit::Percentage)
+    );
+    assert_eq!(
+        m.funding_invalid_premium_handling,
+        Some(kalshi_fast::MarginFundingInvalidPremiumHandling::Exclude)
+    );
+    assert_eq!(m.bid_size_fp.as_deref(), Some("10.00"));
+    assert_eq!(m.ask_size_fp.as_deref(), Some("0.00"));
+}
+
+#[test]
+fn margin_order_request_serializes_market_version() {
+    let body = serde_json::to_value(kalshi_fast::CreateMarginOrderRequest {
+        ticker: "T".into(),
+        client_order_id: "c".into(),
+        side: kalshi_fast::BookSide::Bid,
+        count: "1".into(),
+        price: "1".into(),
+        time_in_force: kalshi_fast::MarginTimeInForce::GoodTillCanceled,
+        self_trade_prevention_type: kalshi_fast::MarginSelfTradePreventionType::TakerAtCross,
+        expiration_time: None,
+        post_only: None,
+        cancel_order_on_pause: None,
+        reduce_only: None,
+        subaccount: None,
+        order_group_id: None,
+        market_version: Some(3),
+    })
+    .unwrap();
+    assert_eq!(body["market_version"], 3);
+}
+
+#[test]
+fn margin_trades_params_ticker_is_optional() {
+    let q = serde_json::to_value(kalshi_fast::GetMarginTradesParams::default()).unwrap();
+    assert_eq!(q, serde_json::json!({}));
+}
+
+#[test]
+fn margin_funding_estimate_and_premium_index_parse() {
+    let e: kalshi_fast::GetMarginFundingRateEstimateResponse = serde_json::from_str(
+        r#"{"next_funding_time":"t","premium_index":"0.0003","premium_index_ts":"t2"}"#,
+    )
+    .unwrap();
+    assert_eq!(e.premium_index.as_deref(), Some("0.0003"));
+    assert_eq!(e.premium_index_ts.as_deref(), Some("t2"));
+    let p: kalshi_fast::GetMarginPremiumIndexResponse =
+        serde_json::from_str(r#"{"points":[{"second_ts":"t","premium_index":"0"}]}"#).unwrap();
+    assert_eq!(p.points.len(), 1);
+    let none: kalshi_fast::GetMarginPremiumIndexResponse =
+        serde_json::from_str(r#"{"points":null}"#).unwrap();
+    assert!(none.points.is_empty());
+}
+
+#[test]
+fn margin_batch_orderbooks_parse() {
+    let r: kalshi_fast::GetMarginMarketOrderbooksResponse = serde_json::from_str(
+        r#"{"orderbooks":[{"ticker":"A","orderbook":{"bids":[["1.0","2"]],"asks":null}}]}"#,
+    )
+    .unwrap();
+    assert_eq!(r.orderbooks[0].ticker, "A");
+    assert!(r.orderbooks[0].orderbook.asks.is_empty());
+}
+
+#[test]
+fn margin_exchange_status_parses_resume_time() {
+    let r: kalshi_fast::GetMarginExchangeStatusResponse = serde_json::from_str(
+        r#"{"exchange_active":false,"trading_active":false,"exchange_estimated_resume_time":"t"}"#,
+    )
+    .unwrap();
+    assert_eq!(r.exchange_estimated_resume_time.as_deref(), Some("t"));
+}
+
+#[test]
+fn ws_user_order_parses_last_update_reason_and_tolerates_sending_ts_ms() {
+    for (reason, expect) in [
+        (
+            "SettlementBoundsCancel",
+            kalshi_fast::WsOrderUpdateReason::SettlementBoundsCancel,
+        ),
+        (
+            "ReduceOnlyCancel",
+            kalshi_fast::WsOrderUpdateReason::ReduceOnlyCancel,
+        ),
+        ("SomethingNew", kalshi_fast::WsOrderUpdateReason::Unknown),
+    ] {
+        let json = format!(
+            r#"{{"type":"user_order","sid":1,"sending_ts_ms":1669149841234,"msg":{{
+                "order_id":"o","user_id":"u","ticker":"T","exchange_index":0,
+                "last_update_reason":"{reason}"}}}}"#
+        );
+        match kalshi_fast::WsMessageV2::from_bytes(json.as_bytes()).unwrap() {
+            kalshi_fast::WsMessageV2::Data(kalshi_fast::WsDataMessageV2::UserOrder {
+                msg, ..
+            }) => {
+                assert_eq!(msg.last_update_reason, Some(expect));
+                assert_eq!(msg.exchange_index, Some(0));
+            }
+            other => panic!("expected UserOrder, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn ws_subscribe_params_serialize_user_filter() {
+    let v = serde_json::to_value(kalshi_fast::WsSubscriptionParamsV2 {
+        channels: vec![kalshi_fast::WsChannelV2::Communications],
+        user_filter: Some("self".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(v["user_filter"], "self");
+    assert_eq!(v["channels"][0], "communications");
 }

@@ -6,7 +6,7 @@
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
-use crate::rest::markets::Market;
+use crate::rest::markets::{Market, PriceRange};
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::types::{YesNo, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
@@ -73,6 +73,13 @@ pub struct MultivariateEventCollection {
     pub size_min: i32,
     pub size_max: i32,
     pub functional_description: String,
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
+    /// Required in the OpenAPI schema; `Option` so older payloads still parse.
+    #[serde(default)]
+    pub price_level_structure: Option<String>,
+    #[serde(default)]
+    pub price_ranges: Option<Vec<PriceRange>>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }

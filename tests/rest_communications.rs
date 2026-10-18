@@ -74,13 +74,8 @@ async fn test_rfq_lifecycle() {
             .create_rfq(CreateRFQRequest {
                 market_ticker: market_ticker.clone(),
                 contracts: Some(1),
-                contracts_fp: None,
-                target_cost_centi_cents: None,
-                target_cost_dollars: None,
                 rest_remainder: false,
-                replace_existing: None,
-                subtrader_id: None,
-                subaccount: None,
+                ..Default::default()
             })
             .await
     })
@@ -143,13 +138,8 @@ async fn test_quote_lifecycle() {
             .create_rfq(CreateRFQRequest {
                 market_ticker: market_ticker.clone(),
                 contracts: Some(1),
-                contracts_fp: None,
-                target_cost_centi_cents: None,
-                target_cost_dollars: None,
                 rest_remainder: false,
-                replace_existing: None,
-                subtrader_id: None,
-                subaccount: None,
+                ..Default::default()
             })
             .await
     })

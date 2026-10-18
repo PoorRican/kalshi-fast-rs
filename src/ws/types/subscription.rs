@@ -29,6 +29,11 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `communications` channel only: `"self"` delivers `rfq_created` /
+    /// `rfq_deleted` only for RFQs you created. Omit (or `""`) for all users;
+    /// quote notifications are unaffected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
 }
 
 impl WsSubscriptionParamsV2 {

@@ -17,6 +17,22 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Predictions exchange only; the Margin exchange never returns it.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per-shard status. Predictions exchange only.
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub exchange_index_statuses: Vec<ExchangeIndexStatus>,
+}
+
+/// Status of a single exchange shard.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: u32,
+    pub description: String,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
