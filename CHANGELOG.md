@@ -8,6 +8,58 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.10.0] - 2026-10-19
+
+### Compatibility
+
+- Docs snapshot: 2026-10-19
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-19
+
+### Breaking
+
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (was `String`); the upstream
+  `ticker` query parameter on `GET /margin/trades` is optional (2026-10-08).
+- [Rust API] `MarginMarket` gains public fields (`market_id`, `market_version`, `bid_size_fp`,
+  `ask_size_fp`, `funding_deadband`, `funding_cap`, `funding_limit_unit`,
+  `funding_invalid_premium_handling`); downstream exhaustive struct literals must provide them.
+
+### Added
+
+- [Rust API] `get_margin_market_orderbooks(&[&str])` for `GET /margin/markets/orderbooks`
+  (up to 100 tickers per request).
+- [Rust API] `get_margin_corporate_actions(GetMarginCorporateActionsParams)` for
+  `GET /margin/corporate_actions`, with typed notices and terms.
+- [Upstream] Margin market funding configuration and top-of-book sizes.
+
+### Tests
+
+- [Tests] Parsing coverage for the optional trades ticker, new margin market fields, batch
+  orderbooks, and corporate action notices.
+
+### Changelog reconciliation (2026-10-06 .. 2026-10-19)
+
+| Upstream entry | Disposition |
+| --- | --- |
+| FIX accepts trade-scoped API keys (10-06) | No change — FIX not in crate |
+| Subaccount-restricted keys can trade perps (10-08) | No change — server-side authorization |
+| Top-of-book sizes on margin markets (10-08) | `MarginMarket::{bid_size_fp, ask_size_fp}` |
+| `GET /margin/trades` ticker optional (10-08) | `GetMarginTradesParams::ticker: Option<String>` (breaking) |
+| `client_transfer_id` on intra-account transfer (10-08) | No change — crate has no intra-exchange-instance transfer endpoint |
+| Funding configuration on margin markets (10-09) | `funding_deadband`, `funding_cap`, `funding_limit_unit` |
+| Funding invalid premium handling (10-12) | `funding_invalid_premium_handling` |
+| Clearer combo `invalid_parameters` messages (10-12) | No change — message text only |
+| Batch orderbooks for margin markets (10-13) | `get_margin_market_orderbooks` |
+| October 15, 2026 (10-14) | No change — date heading, no content |
+| Funding averages premium over bars (10-15) | No change — server behavior; documented upstream |
+| `GET /portfolio/balance` own rate-limit bucket (10-15) | No change — metering is server-side; the optional client limiter conservatively counts it as a read |
+| Per-market mass cancel over FIX (10-16) | No change — FIX not in crate |
+| REST schema corrections for shared definitions (10-16) | No change — touched structs re-verified against the YAML `required` sets; no shape differences found |
+| Margin corporate action notices (10-19) | `get_margin_corporate_actions` and types |
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed

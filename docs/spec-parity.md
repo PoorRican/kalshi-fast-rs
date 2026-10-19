@@ -91,6 +91,16 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `MarginMarket` funding fields (`funding_deadband`, `funding_cap`, `funding_limit_unit`,
+  `funding_invalid_premium_handling`) and `market_version` are `required` in the Perps OpenAPI but
+  modeled as `Option` so payloads from before they existed still parse. The two funding enums carry
+  a `#[serde(other)] Unknown` variant. `market_id` and the `*_size_fp` fields are optional upstream.
+- `MarginCorporateAction` terms objects (`cash`, `split`, `final_settlement`, `ticker_change`) are
+  `Option`: exactly one is present on scheduled/applied/lapsed notices and none on cancelled ones.
+  `execution_time` is likewise absent on cancelled notices.
+- `GET /portfolio/balance` has its own server-side rate-limit bucket (2026-10-15). The client-side
+  `RateLimitConfig` limiter does not model it and counts balance calls as reads.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

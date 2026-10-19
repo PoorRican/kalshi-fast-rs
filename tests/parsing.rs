@@ -2027,3 +2027,84 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         Some("politics")
     );
 }
+
+// ============================================================================
+// Margin: changelog 2026-10-06..2026-10-19
+// ============================================================================
+
+#[test]
+fn margin_trades_params_ticker_is_optional() {
+    use kalshi_fast::GetMarginTradesParams;
+    let v = serde_json::to_value(GetMarginTradesParams::default()).unwrap();
+    assert_eq!(v, serde_json::json!({}));
+    let v = serde_json::to_value(GetMarginTradesParams {
+        ticker: Some("X".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(v, serde_json::json!({"ticker": "X"}));
+}
+
+#[test]
+fn margin_market_parses_funding_and_top_of_book_sizes() {
+    use kalshi_fast::{
+        MarginFundingInvalidPremiumHandling, MarginFundingLimitUnit, MarginMarketResponse,
+    };
+    let r: MarginMarketResponse = serde_json::from_value(serde_json::json!({"market": {
+        "market_id": "7c1f0000-0000-0000-0000-000000000000", "ticker": "AAPL-PERP",
+        "status": "active", "title": "t", "contract_size": "1.000000",
+        "underlying_multiplier": "1", "tick_size": "0.01", "fractional_trading_enabled": true,
+        "schedule": {"is_open": true}, "exchange_index": 1, "market_version": 2,
+        "bid": "1.00", "bid_size_fp": "5.00", "ask": "1.01", "ask_size_fp": "0.00",
+        "funding_deadband": 0.5, "funding_cap": 2.0, "funding_limit_unit": "percentage",
+        "funding_invalid_premium_handling": "exclude"
+    }}))
+    .unwrap();
+    let m = r.market;
+    assert_eq!(m.market_version, Some(2));
+    assert_eq!(m.bid_size_fp.as_deref(), Some("5.00"));
+    assert_eq!(m.ask_size_fp.as_deref(), Some("0.00"));
+    assert_eq!(
+        m.funding_limit_unit,
+        Some(MarginFundingLimitUnit::Percentage)
+    );
+    assert_eq!(
+        m.funding_invalid_premium_handling,
+        Some(MarginFundingInvalidPremiumHandling::Exclude)
+    );
+}
+
+#[test]
+fn margin_batch_orderbooks_and_corporate_actions_parse() {
+    use kalshi_fast::{
+        GetMarginCorporateActionsResponse, GetMarginMarketOrderbooksResponse,
+        MarginCorporateActionStatus, MarginCorporateActionType,
+    };
+    let o: GetMarginMarketOrderbooksResponse = serde_json::from_value(serde_json::json!({
+        "orderbooks": [{"ticker": "A", "orderbook": {"bids": [["1.00", "2"]], "asks": null}}]
+    }))
+    .unwrap();
+    assert_eq!(o.orderbooks[0].orderbook.bids[0][0], "1.00");
+    assert!(o.orderbooks[0].orderbook.asks.is_empty());
+
+    let c: GetMarginCorporateActionsResponse = serde_json::from_value(serde_json::json!({
+        "corporate_actions": [
+          {"id": "1", "market_id": "m", "market_ticker": "A", "type": "stock_split",
+           "status": "scheduled", "updated_ts": "2026-10-19T00:00:00Z",
+           "execution_time": "2026-10-20T00:00:00Z",
+           "split": {"ratio_old": "1", "ratio_new": "4"}},
+          {"id": "2", "market_id": "m", "market_ticker": "A", "type": "cash_dividend",
+           "status": "cancelled", "updated_ts": "2026-10-19T00:00:00Z"}
+        ]
+    }))
+    .unwrap();
+    assert_eq!(
+        c.corporate_actions[0].action_type,
+        MarginCorporateActionType::StockSplit
+    );
+    assert_eq!(
+        c.corporate_actions[1].status,
+        MarginCorporateActionStatus::Cancelled
+    );
+    assert!(c.corporate_actions[1].split.is_none());
+}

@@ -51,7 +51,9 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    /// Optional market ticker filter. Omit to retrieve trades across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -60,6 +62,16 @@ pub struct GetMarginTradesParams {
     pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMarginCorporateActionsParams {
+    /// Filter by market ticker. Omit to return notices across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    /// Filter by market UUID. Omit to return notices across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -277,7 +289,13 @@ pub struct GetMarginMarketsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginMarket {
+    /// Stable market UUID; unchanged when the ticker is renamed.
+    #[serde(default)]
+    pub market_id: Option<String>,
     pub ticker: String,
+    /// Spec-required; `Option` so payloads predating the field still parse.
+    #[serde(default)]
+    pub market_version: Option<i32>,
     pub status: MarginMarketStatus,
     pub title: String,
     pub contract_size: String,
@@ -312,7 +330,11 @@ pub struct MarginMarket {
     #[serde(default)]
     pub bid: Option<String>,
     #[serde(default)]
+    pub bid_size_fp: Option<String>,
+    #[serde(default)]
     pub ask: Option<String>,
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
     #[serde(default)]
     pub settlement_mark_price: Option<TickerPrice>,
     #[serde(default)]
@@ -323,6 +345,36 @@ pub struct MarginMarket {
     pub asset_class: Option<String>,
     #[serde(default)]
     pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Funding deadband set at market creation, in `funding_limit_unit`.
+    /// Spec-required; `Option` so payloads predating the field still parse.
+    #[serde(default)]
+    pub funding_deadband: Option<f64>,
+    /// Funding cap set at market creation, in `funding_limit_unit`.
+    #[serde(default)]
+    pub funding_cap: Option<f64>,
+    #[serde(default)]
+    pub funding_limit_unit: Option<MarginFundingLimitUnit>,
+    #[serde(default)]
+    pub funding_invalid_premium_handling: Option<MarginFundingInvalidPremiumHandling>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+    #[serde(other)]
+    Unknown,
+}
+
+/// How funding averages a bar whose premium is invalid.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingInvalidPremiumHandling {
+    Dampen,
+    Exclude,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -357,6 +409,114 @@ pub struct MarginOrderbookCount {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub asks: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginMarketOrderbooksResponse {
+    /// One entry per requested ticker, in request order.
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub orderbooks: Vec<MarginMarketOrderbook>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginMarketOrderbook {
+    pub ticker: String,
+    pub orderbook: MarginOrderbookCount,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginCorporateActionsResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub corporate_actions: Vec<MarginCorporateAction>,
+}
+
+/// Corporate action notice. Scheduled, applied and lapsed notices carry exactly one terms object
+/// matching `action_type`; cancelled notices omit all terms and `execution_time`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateAction {
+    pub id: String,
+    pub market_id: String,
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginCorporateActionType,
+    pub status: MarginCorporateActionStatus,
+    pub updated_ts: String,
+    #[serde(default)]
+    pub execution_time: Option<String>,
+    #[serde(default)]
+    pub cash: Option<MarginCorporateActionCashTerms>,
+    #[serde(default)]
+    pub split: Option<MarginCorporateActionSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<MarginCorporateActionFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<MarginCorporateActionTickerChangeTerms>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionType {
+    CashDividend,
+    SpecialDividend,
+    SpinOff,
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionStatus {
+    Scheduled,
+    Cancelled,
+    Applied,
+    Lapsed,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionCashTerms {
+    #[serde(default)]
+    pub cash_per_share: Option<String>,
+    #[serde(default)]
+    pub cash_per_contract: Option<String>,
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionSplitTerms {
+    #[serde(default)]
+    pub ratio_old: Option<String>,
+    #[serde(default)]
+    pub ratio_new: Option<String>,
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionFinalSettlementTerms {
+    /// bankruptcy, merger, delisting or other.
+    pub reason: String,
+    #[serde(default)]
+    pub settlement_price_per_share: Option<String>,
+    #[serde(default)]
+    pub settlement_price_per_contract: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -747,6 +907,46 @@ impl KalshiRestClient {
         params: GetMarginMarketOrderbookParams,
     ) -> Result<MarginOrderbookResponse, KalshiError> {
         let path = Self::full_path(&format!("/margin/markets/{ticker}/orderbook"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Fetch orderbooks for up to 100 margin markets in one request (public).
+    ///
+    /// Returns one entry per ticker, in request order; an unknown ticker yields a 404.
+    pub async fn get_margin_market_orderbooks(
+        &self,
+        tickers: &[&str],
+    ) -> Result<GetMarginMarketOrderbooksResponse, KalshiError> {
+        let path = Self::full_path("/margin/markets/orderbooks");
+        #[derive(Serialize)]
+        struct Q {
+            tickers: String,
+        }
+        self.send(
+            Method::GET,
+            &path,
+            Some(&Q {
+                tickers: tickers.join(","),
+            }),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Scheduled and recently updated corporate action notices for margin markets (public).
+    pub async fn get_margin_corporate_actions(
+        &self,
+        params: GetMarginCorporateActionsParams,
+    ) -> Result<GetMarginCorporateActionsResponse, KalshiError> {
+        let path = Self::full_path("/margin/corporate_actions");
         self.send(
             Method::GET,
             &path,
