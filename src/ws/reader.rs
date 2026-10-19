@@ -2,7 +2,7 @@ use crate::auth::KalshiAuth;
 use crate::env::KalshiEnvironment;
 use crate::error::KalshiError;
 use crate::ws::event::{ReaderItem, WsEvent, WsReaderMode};
-use crate::ws::low_level::WsLowLevelClient;
+use crate::ws::low_level::{WsLowLevelClient, close_error};
 use crate::ws::protocol::{WsProtocol, parse_control_message};
 use crate::ws::reconnect::WsReconnectConfig;
 use crate::ws::subscription::SubscriptionTracker;
@@ -60,7 +60,19 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
                 client.send_raw(Message::Ping(Vec::new())).await
             }
             _ = sleep_until(pong_deadline.unwrap_or_else(Instant::now)), if pong_deadline.is_some() => {
-                Err(KalshiError::Ws("websocket keepalive timed out".to_string()))
+                // A pong can sit buffered behind a send that blocked past the deadline.
+                // Drain it before declaring the socket dead.
+                match futures::FutureExt::now_or_never(client.next_frame()) {
+                    Some(Ok(msg)) => {
+                        pong_deadline = None;
+                        handle_incoming_message(msg, &mut client, &tracker, &event_tx, mode).await
+                    }
+                    Some(Err(err)) => Err(err),
+                    None => Err(KalshiError::Ws(format!(
+                        "websocket keepalive timed out: no inbound frame within {:?} of ping",
+                        config.pong_timeout
+                    ))),
+                }
             }
             maybe_out = outgoing_rx.recv(), if !outgoing_closed => {
                 match maybe_out {
@@ -72,7 +84,7 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
                 }
             }
         };
-        if let Err(_err) = result {
+        if let Err(err) = result {
             if event_tx.is_closed() {
                 return;
             }
@@ -84,6 +96,7 @@ pub(crate) async fn reader_loop<P: WsProtocol + 'static>(
                 &tracker,
                 &event_tx,
                 &mut shutdown_rx,
+                err,
             )
             .await;
             match reconnect {
@@ -121,7 +134,7 @@ pub(crate) async fn handle_incoming_message<P: WsProtocol>(
             Ok(())
         }
         Message::Pong(_) => Ok(()),
-        Message::Close(_) => Err(KalshiError::Ws("websocket closed".to_string())),
+        Message::Close(frame) => Err(close_error(frame.as_ref())),
         Message::Text(text) => {
             handle_payload::<P>(Bytes::from(text), tracker, event_tx, mode).await
         }
@@ -201,9 +214,10 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
     tracker: &Arc<Mutex<SubscriptionTracker<P>>>,
     event_tx: &mpsc::Sender<ReaderItem<P::Message>>,
     shutdown_rx: &mut watch::Receiver<bool>,
+    cause: KalshiError,
 ) -> Result<(), KalshiError> {
     let mut attempt: u32 = 0;
-    let mut last_err = KalshiError::Ws("websocket disconnected".to_string());
+    let mut last_err = cause;
     loop {
         if *shutdown_rx.borrow() || event_tx.is_closed() {
             return Ok(());
@@ -875,6 +889,175 @@ mod tests {
             .await
             .expect("start reader");
         server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn reader_blackhole_keepalive_timeout_reports_cause() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let _ws = accept_async(stream).await.expect("accept ws");
+            // Half-open peer: keep the socket open and never read or write.
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        });
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{addr}"),
+            margin_ws_url: format!("ws://{addr}"),
+        };
+        let config = WsReconnectConfig {
+            max_retries: Some(0),
+            base_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(10),
+            jitter: 0.0,
+            resubscribe: false,
+            ping_interval: Some(Duration::from_millis(25)),
+            pong_timeout: Duration::from_millis(50),
+        };
+        let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
+            .await
+            .expect("connect");
+        let receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+        match timeout(Duration::from_secs(2), receiver.next())
+            .await
+            .expect("disconnect within window")
+            .expect("event")
+        {
+            WsEvent::Disconnected { error } => {
+                let text = error.to_string();
+                assert!(text.contains("keepalive"), "cause lost: {text}");
+            }
+            other => panic!("expected Disconnected, got {other:?}"),
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn reader_close_frame_reports_code_and_reason() {
+        use tokio_tungstenite::tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            ws.send(Message::Close(Some(CloseFrame {
+                code: CloseCode::Error,
+                reason: "backpressure: queue full".into(),
+            })))
+            .await
+            .expect("send close");
+            while ws.next().await.is_some() {}
+        });
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{addr}"),
+            margin_ws_url: format!("ws://{addr}"),
+        };
+        let config = WsReconnectConfig {
+            max_retries: Some(0),
+            base_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(10),
+            jitter: 0.0,
+            resubscribe: false,
+            ping_interval: None,
+            pong_timeout: Duration::from_secs(10),
+        };
+        let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
+            .await
+            .expect("connect");
+        let receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+        match timeout(Duration::from_secs(2), receiver.next())
+            .await
+            .expect("disconnect within window")
+            .expect("event")
+        {
+            WsEvent::Disconnected { error } => {
+                let text = error.to_string();
+                assert!(
+                    text.contains("1011") && text.contains("backpressure: queue full"),
+                    "close code/reason lost: {text}"
+                );
+            }
+            other => panic!("expected Disconnected, got {other:?}"),
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn reader_consumer_stall_does_not_trigger_keepalive_disconnect() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            for seq in 1..=5u64 {
+                ws.send(Message::Text(ticker_frame("A", "1", 1, seq)))
+                    .await
+                    .expect("send ticker");
+            }
+            // Answer every keepalive ping while the consumer is stalled.
+            while let Ok(Some(Ok(frame))) = timeout(Duration::from_secs(3), ws.next()).await {
+                if let Message::Ping(payload) = frame {
+                    ws.send(Message::Pong(payload)).await.expect("pong");
+                }
+            }
+        });
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{addr}"),
+            margin_ws_url: format!("ws://{addr}"),
+        };
+        let config = WsReconnectConfig {
+            max_retries: Some(0),
+            base_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(10),
+            jitter: 0.0,
+            resubscribe: false,
+            ping_interval: Some(Duration::from_millis(20)),
+            pong_timeout: Duration::from_millis(50),
+        };
+        let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
+            .await
+            .expect("connect");
+        let receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 1,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+        let first = timeout(Duration::from_secs(2), receiver.next())
+            .await
+            .expect("first event")
+            .expect("event");
+        assert!(matches!(first, WsEvent::Message(_)));
+        // Stall well past pong_timeout while the reader is blocked on the full channel.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        for _ in 0..4 {
+            let event = timeout(Duration::from_secs(2), receiver.next())
+                .await
+                .expect("message after stall")
+                .expect("event");
+            assert!(
+                matches!(event, WsEvent::Message(_)),
+                "unexpected event after stall: {event:?}"
+            );
+        }
+        server.abort();
     }
     #[tokio::test]
     async fn reader_loop_exits_when_event_receiver_closes() {

@@ -122,7 +122,8 @@
 //! [`KalshiWsClient`] reconnects automatically with exponential backoff when
 //! the underlying connection drops. On success it resubscribes to all active
 //! channels and emits [`WsEvent::Reconnected`]. If retries are exhausted it
-//! emits [`WsEvent::Disconnected`]. Configure via [`WsReconnectConfig`].
+//! emits [`WsEvent::Disconnected`] carrying the last transport error, including the peer's close
+//! code and reason when the server sent a Close frame. Configure via [`WsReconnectConfig`].
 //!
 //! **Note:** Sequence resync is not automatic; callers must detect gaps with
 //! [`WsMessageV2::subscription_id`] and [`WsMessageV2::sequence`]. Matching only
