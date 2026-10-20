@@ -6,7 +6,7 @@ use crate::rest::client::KalshiRestClient;
 use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::trades::GetHistoricalMarketsParams;
 use crate::types::{
-    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter,
+    FixedPointCount, FixedPointDollars, MarketStatusQuery, MveFilter, SettlementBoundsType,
     deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
@@ -301,12 +301,6 @@ pub struct Market {
     #[serde(default)]
     pub previous_price_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub liquidity: Option<i64>,
-    #[serde(default)]
-    pub liquidity_fp: Option<String>,
-    #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]
     pub occurrence_datetime: Option<String>,
@@ -318,6 +312,13 @@ pub struct Market {
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// `default` or `floor`. Markets of type `floor` also carry
+    /// [`settlement_floor_dollars`](Self::settlement_floor_dollars).
+    #[serde(default)]
+    pub settlement_bounds_type: Option<SettlementBoundsType>,
+    /// Lowest value the YES side can settle at; set only for `floor` markets.
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]

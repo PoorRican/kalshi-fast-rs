@@ -9,7 +9,54 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-20
+
+### Compatibility
+
+- Docs snapshot: 2026-10-20
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-22
+
+### Breaking
+
+- [Rust API] `Market` drops `liquidity_dollars` (removed upstream 2026-10-01) and the already
+  out-of-spec `liquidity` / `liquidity_fp`. Use `yes_bid_size_fp` / `yes_ask_size_fp`.
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (upstream made it optional).
+- [Rust API] New fields on public structs that downstream code may build with struct literals:
+  `AmendOrderV2Request::expiration_time`, `CreateRFQRequest::obscure_creator_id`,
+  `CreateMarginOrderRequest::market_version`, `GenerateApiKeyRequest::key_type`,
+  `GetEventParams::exclude_markets`, `WsSubscriptionParamsV2::user_filter`, and `min_ts` / `subaccount` on `GetHistoricalFillsParams` and
+  `GetHistoricalOrdersParams`. Add the fields or use `..Default::default()`.
+- [Rust API] `MarginLastUpdateReason` gains an `Unknown` catch-all variant (exhaustive matches must
+  add an arm). `MarginDataMessage` and `MarginChannel` gain `CorporateActionsDelta` /
+  `CorporateActions`; `MarginEnvelope` gains `sending_ts_ms`.
+
 ### Added
+
+- [Upstream] Settlement bounds on markets: `Market::settlement_bounds_type`
+  (`SettlementBoundsType`) and `settlement_floor_dollars`.
+- [Upstream] REST amend with expiry: `AmendOrderV2Request::expiration_time` (omit to keep, `0` to
+  clear, future Unix seconds to set).
+- [Upstream] `CreateRFQRequest::obscure_creator_id`.
+- [Upstream] `MultivariateEventCollection::price_level_structure` / `price_ranges`;
+  `get_event_with_params` and `GetEventParams::exclude_markets`; `GetFillsParams::ticker` accepts up to
+  100 comma-separated tickers; historical fills/orders accept `subaccount` (and `min_ts`).
+- [Upstream] Margin REST: `get_margin_market_orderbooks` (batch), `get_margin_premium_index`,
+  `get_margin_corporate_actions`; `MarginMarket::{market_version, market_id, funding_deadband,
+  funding_cap, funding_limit_unit, funding_invalid_premium_handling, bid_size_fp, ask_size_fp}`;
+  `CreateMarginOrderRequest::market_version`; `premium_index` / `premium_index_ts` on the funding
+  estimate response.
+- [Upstream] Margin WebSocket: `MarginChannel::CorporateActions` and
+  `MarginDataMessage::CorporateActionsDelta`; `sending_ts_ms` on `MarginEnvelope`.
+- [Upstream] Prediction WebSocket: `WsUserOrder::last_update_reason` (`WsLastUpdateReason`, including
+  `SettlementBoundsCancel` and `ReduceOnlyCancel`) and `WsSubscriptionParamsV2::user_filter`
+  (`WsUserFilter`) for the `communications` channel.
+- [Rust API] Ed25519 API keys: `KalshiAuth::from_pem_str` / `from_pem_file` load RSA or Ed25519
+  (PKCS#8) keys and sign accordingly. `GenerateApiKeyRequest::key_type` and
+  `GenerateApiKeyResponse::key_type` (`ApiKeyType`). New dependency: `ed25519-dalek`.
 
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
   WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
@@ -18,11 +65,46 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 - [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
   handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
 
+### Fixed
+
+- [Tests] The `live-tests` `rest_auth` test read the removed `read_limit` / `write_limit` fields and
+  no longer compiled; it now checks `read.refill_rate` / `write.refill_rate`.
+
+### Docs
+
+- [Docs] `docs/spec-parity.md` records the new-field `Option` policy, the `sending_ts_ms` scope
+  decision, the REST vs WebSocket corporate-action types, and the known pre-existing gaps.
+
 ### Tests
 
+- [Tests] Parsing and serialization tests for settlement bounds, amend expiry, user-order reasons,
+  `user_filter`, collection price levels, margin market fields, corporate actions (REST and
+  WebSocket), batch orderbooks, premium index, key type, and Ed25519 sign/verify.
 - [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
   per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
   disconnecting with the keepalive cause.
+
+### Upstream changelog coverage (2026-10-01 .. 2026-10-22)
+
+Implemented: settlement bounds on markets; `liquidity_dollars` removal; amend order expiry;
+RFQ `obscure_creator_id`; `user_filter`; `last_update_reason` (incl. `ReduceOnlyCancel`,
+`SettlementBoundsCancel`); `sending_ts_ms` (margin only); Ed25519 keys; fills multi-ticker filter;
+`exclude_markets`; collection price levels; historical fills/orders `subaccount`; margin
+`market_version`, funding config and invalid-premium handling, top-of-book sizes, optional trades
+ticker, batch orderbooks, premium index, funding estimate premium, corporate actions (REST and
+WebSocket).
+
+No change needed: FIX-only entries (trade-scoped keys, reduce-only, `TradeID`, `ClearingBusinessDate`,
+`SETTLEMENT_BOUNDS_CANCEL`, mass cancel, corporate-action `SecurityStatus`, RFQ `TransactTime`) as the
+crate has no FIX client; `GET /portfolio/positions` `settlement_status` (already a string param);
+stop-loss validation and exit-trigger entries (server-side validation; exit-trigger endpoints are a
+pre-existing gap); post-only RFQ penalties, Redis auth, MCP grants, 20% limit increase,
+`GET /portfolio/balance` bucket, combo error messages, milestone `details.status` note, rebalancing
+(documentation or server behavior only); `user_orders` millisecond truncation (strings stay
+`Option<String>`); optional `permessage-deflate` (client opts out by default); Ed25519 web-app default
+(covered by the Ed25519 support above); Pyth `reference_price` on the margin ticker (already
+modeled); intra-account `client_transfer_id` and `resting_margin_reservation` (endpoints not in the
+crate, listed in `docs/spec-parity.md`); external-feeds hostname (no external-feeds client).
 
 
 ## [0.9.2] - 2026-10-19

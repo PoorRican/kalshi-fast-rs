@@ -142,6 +142,16 @@ pub enum FeeType {
     Unknown,
 }
 
+/// How a market's settlement value is bounded (`Market.settlement_bounds_type`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBoundsType {
+    Default,
+    Floor,
+    #[serde(other)]
+    Unknown,
+}
+
 /// --- Event Status ---
 
 #[derive(Debug, Clone, Copy, Deserialize)]

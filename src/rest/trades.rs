@@ -92,11 +92,17 @@ pub struct GetHistoricalFillsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restricted keys only see their assigned subaccount; unrestricted keys
+    /// return all subaccounts when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -104,11 +110,17 @@ pub struct GetHistoricalOrdersParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Restricted keys only see their assigned subaccount; unrestricted keys
+    /// return all subaccounts when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subaccount: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

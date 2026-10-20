@@ -1,6 +1,7 @@
 use crate::error::KalshiError;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use ed25519_dalek::Signer as _;
 use rand::rngs::OsRng;
 use rsa::pss::SigningKey;
 use rsa::signature::{RandomizedSigner, SignatureEncoding};
@@ -8,10 +9,17 @@ use rsa::{RsaPrivateKey, pkcs1::DecodeRsaPrivateKey, pkcs8::DecodePrivateKey};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Signing key for an API key pair; Kalshi issues RSA and Ed25519 keys.
+#[derive(Debug, Clone)]
+enum SigningKeyKind {
+    Rsa(RsaPrivateKey),
+    Ed25519(ed25519_dalek::SigningKey),
+}
+
 #[derive(Debug, Clone)]
 pub struct KalshiAuth {
     pub key_id: String,
-    private_key: RsaPrivateKey,
+    private_key: SigningKeyKind,
 }
 
 /// Convenience container for the three auth headers.
@@ -32,13 +40,20 @@ impl KalshiAuth {
         Self::from_pem_str(key_id, &pem)
     }
 
-    /// Load from a PEM string (supports PKCS#8 and PKCS#1).
+    /// Load from a PEM string. Supports RSA keys (PKCS#8 or PKCS#1) and
+    /// Ed25519 keys (PKCS#8, as returned by `POST /api_keys/generate` with
+    /// `key_type: "ed25519"`); the algorithm is detected from the key.
     pub fn from_pem_str(key_id: impl Into<String>, pem: &str) -> Result<Self, KalshiError> {
         let key_id = key_id.into();
 
-        let private_key = RsaPrivateKey::from_pkcs8_pem(pem)
+        let private_key = match RsaPrivateKey::from_pkcs8_pem(pem)
             .or_else(|_| RsaPrivateKey::from_pkcs1_pem(pem))
-            .map_err(|e| KalshiError::Crypto(e.to_string()))?;
+        {
+            Ok(key) => SigningKeyKind::Rsa(key),
+            Err(rsa_err) => ed25519_dalek::SigningKey::from_pkcs8_pem(pem)
+                .map(SigningKeyKind::Ed25519)
+                .map_err(|_| KalshiError::Crypto(rsa_err.to_string()))?,
+        };
 
         Ok(Self {
             key_id,
@@ -57,7 +72,8 @@ impl KalshiAuth {
 
     /// Create signature for a request:
     /// `message = timestamp + METHOD + path_without_query`,
-    /// `signature = RSA-PSS(SHA256)`, base64 encoded.
+    /// `signature = RSA-PSS(SHA256)` for RSA keys or Ed25519 for Ed25519 keys,
+    /// base64 encoded.
     pub fn sign(
         &self,
         timestamp_ms: &str,
@@ -67,14 +83,22 @@ impl KalshiAuth {
         let message = Self::signing_message(timestamp_ms, method, path);
         let message_bytes = message.as_bytes();
 
-        // RSA-PSS is randomized; use OS RNG.
-        let mut rng = OsRng;
+        match &self.private_key {
+            SigningKeyKind::Rsa(private_key) => {
+                // RSA-PSS is randomized; use OS RNG.
+                let mut rng = OsRng;
 
-        // PSS with SHA256 (salt length = digest length) per Kalshi docs.
-        let signing_key = SigningKey::<Sha256>::new(self.private_key.clone());
-        let signature = signing_key.sign_with_rng(&mut rng, message_bytes);
+                // PSS with SHA256 (salt length = digest length) per Kalshi docs.
+                let signing_key = SigningKey::<Sha256>::new(private_key.clone());
+                let signature = signing_key.sign_with_rng(&mut rng, message_bytes);
 
-        Ok(STANDARD.encode(signature.to_bytes()))
+                Ok(STANDARD.encode(signature.to_bytes()))
+            }
+            SigningKeyKind::Ed25519(signing_key) => {
+                let signature = signing_key.sign(message_bytes);
+                Ok(STANDARD.encode(signature.to_bytes()))
+            }
+        }
     }
 
     /// Build the canonical signing message (timestamp + METHOD + path_without_query).
@@ -103,7 +127,7 @@ impl KalshiAuth {
 
 #[cfg(test)]
 pub mod tests {
-    use super::KalshiAuth;
+    use super::{KalshiAuth, SigningKeyKind};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use rand::rngs::OsRng;
     use rsa::RsaPrivateKey;
@@ -131,7 +155,7 @@ pub mod tests {
                 RsaPrivateKey::new(&mut rng, 2048).expect("generate local test private key");
             KalshiAuth {
                 key_id,
-                private_key,
+                private_key: SigningKeyKind::Rsa(private_key),
             }
         }
     }
@@ -158,9 +182,45 @@ pub mod tests {
             .decode(headers.signature.as_bytes())
             .expect("decode signature");
         let sig = Signature::try_from(sig_bytes.as_slice()).expect("signature");
-        let verifying_key = VerifyingKey::<Sha256>::new(auth.private_key.to_public_key());
+        let SigningKeyKind::Rsa(private_key) = &auth.private_key else {
+            panic!("test auth is RSA");
+        };
+        let verifying_key = VerifyingKey::<Sha256>::new(private_key.to_public_key());
         verifying_key
             .verify(message.as_bytes(), &sig)
             .expect("signature verifies");
+    }
+
+    #[test]
+    fn ed25519_pkcs8_pem_signs_and_verifies() {
+        use ed25519_dalek::pkcs8::EncodePrivateKey;
+        use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
+        use ed25519_dalek::{Verifier as _, VerifyingKey};
+
+        let mut seed = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut OsRng, &mut seed);
+        let secret = ed25519_dalek::SigningKey::from_bytes(&seed);
+        let pem = secret.to_pkcs8_pem(LineEnding::LF).expect("encode pem");
+        let auth = KalshiAuth::from_pem_str("ed-key", &pem).expect("load ed25519 pem");
+
+        let headers = auth
+            .build_headers("POST", "/trade-api/v2/portfolio/orders?x=1")
+            .expect("build headers");
+        let message = KalshiAuth::signing_message(
+            &headers.timestamp_ms,
+            "POST",
+            "/trade-api/v2/portfolio/orders",
+        );
+        let sig_bytes = STANDARD.decode(headers.signature.as_bytes()).unwrap();
+        let sig = ed25519_dalek::Signature::from_slice(&sig_bytes).expect("64-byte signature");
+        let verifying: VerifyingKey = secret.verifying_key();
+        verifying
+            .verify(message.as_bytes(), &sig)
+            .expect("verifies");
+    }
+
+    #[test]
+    fn garbage_pem_is_a_crypto_error() {
+        assert!(KalshiAuth::from_pem_str("k", "not a pem").is_err());
     }
 }

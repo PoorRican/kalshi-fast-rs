@@ -21,6 +21,7 @@ pub enum MarginDataMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     OrderGroupUpdates(MarginEnvelope<OrderGroupUpdatesMsg>),
     OrderbookSnapshot(MarginEnvelope<OrderbookSnapshotMsg>),
+    CorporateActionsDelta(MarginEnvelope<CorporateActionsDeltaMsg>),
     // -- control messages ----------------------------------------------------
     Subscribed {
         id: Option<u64>,
@@ -97,6 +98,8 @@ enum MarginWireMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates(SequencedMarginEnvelope<OrderGroupUpdatesMsg>),
+    #[serde(rename = "corporate_actions_delta")]
+    CorporateActionsDelta(SequencedMarginEnvelope<CorporateActionsDeltaMsg>),
     #[serde(rename = "subscribed")]
     Subscribed {
         id: Option<u64>,
@@ -137,6 +140,7 @@ impl From<MarginWireMessage> for MarginDataMessage {
             MarginWireMessage::Fill(e) => Self::Fill(e),
             MarginWireMessage::UserOrder(e) => Self::UserOrder(e),
             MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e.into()),
+            MarginWireMessage::CorporateActionsDelta(e) => Self::CorporateActionsDelta(e.into()),
             MarginWireMessage::Subscribed { id, msg } => Self::Subscribed {
                 id,
                 sid: Some(msg.sid),
@@ -186,6 +190,9 @@ pub struct MarginEnvelope<T> {
     #[serde(default)]
     pub seq: Option<u64>,
     pub msg: T,
+    /// Unix milliseconds when Kalshi queued this message at the network layer.
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,6 +202,8 @@ struct SequencedMarginEnvelope<T> {
     sid: u64,
     seq: u64,
     msg: T,
+    #[serde(default)]
+    sending_ts_ms: Option<i64>,
 }
 
 impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
@@ -204,8 +213,68 @@ impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
             sid: envelope.sid,
             seq: Some(envelope.seq),
             msg: envelope.msg,
+            sending_ts_ms: envelope.sending_ts_ms,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// corporate_actions_delta  —  applied stock split / final settlement / ticker change
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginWsCorporateActionType {
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsCorporateActionSplitTerms {
+    pub ratio_old: String,
+    pub ratio_new: String,
+    pub pre_split_mark_price: String,
+    pub post_split_mark_price: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsCorporateActionFinalSettlementTerms {
+    pub settlement_price_per_contract: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsCorporateActionTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
+}
+
+/// A corporate action the exchange applied. Exactly one terms object matches
+/// `action_type`. Positions and balances can change without a fill: re-fetch
+/// them over REST after each event.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsCorporateAction {
+    /// Notice id, matching `id` in `GET /margin/corporate_actions`.
+    pub id: String,
+    pub market_id: String,
+    /// The new ticker for `ticker_change`.
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginWsCorporateActionType,
+    pub ts_ms: i64,
+    #[serde(default)]
+    pub split: Option<MarginWsCorporateActionSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<MarginWsCorporateActionFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<MarginWsCorporateActionTickerChangeTerms>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionsDeltaMsg {
+    pub corporate_action: MarginWsCorporateAction,
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +315,8 @@ pub enum MarginLastUpdateReason {
     Trade,
     PostOnlyCrossCancel,
     ReduceOnlyCancel,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -764,6 +835,54 @@ mod tests {
             MarginDataMessage::Unknown {
                 msg_type: Some("some_future_channel".into())
             }
+        );
+    }
+
+    #[test]
+    fn parse_corporate_actions_delta_with_sending_ts() {
+        let json = serde_json::json!({
+            "type": "corporate_actions_delta",
+            "sid": 7,
+            "seq": 3,
+            "msg": {
+                "corporate_action": {
+                    "id": "ca-1",
+                    "market_id": "5b6c1a3e-0000-4000-8000-000000000001",
+                    "market_ticker": "KXAAPLPERP",
+                    "type": "stock_split",
+                    "ts_ms": 1_700_000_000_000_i64,
+                    "split": {
+                        "ratio_old": "1",
+                        "ratio_new": "4",
+                        "pre_split_mark_price": "200.0000",
+                        "post_split_mark_price": "50.0000"
+                    }
+                }
+            },
+            "sending_ts_ms": 1_700_000_000_123_i64
+        });
+        match parse(&serde_json::to_vec(&json).unwrap()) {
+            MarginDataMessage::CorporateActionsDelta(e) => {
+                assert_eq!(e.sid, 7);
+                assert_eq!(e.seq, Some(3));
+                assert_eq!(e.sending_ts_ms, Some(1_700_000_000_123));
+                let action = e.msg.corporate_action;
+                assert_eq!(action.action_type, MarginWsCorporateActionType::StockSplit);
+                let split = action.split.expect("split terms");
+                assert_eq!(split.ratio_new, "4");
+                assert_eq!(split.post_split_mark_price, "50.0000");
+                assert!(action.final_settlement.is_none());
+                assert!(action.ticker_change.is_none());
+            }
+            other => panic!("expected CorporateActionsDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_last_update_reason_does_not_fail_the_message() {
+        assert_eq!(
+            serde_json::from_str::<MarginLastUpdateReason>("\"SomeFutureReason\"").unwrap(),
+            MarginLastUpdateReason::Unknown
         );
     }
 }

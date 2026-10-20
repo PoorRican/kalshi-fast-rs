@@ -91,6 +91,51 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Validated through the 2026-10-22 changelog (OpenAPI 3.34.0). Newly added response fields that the
+  specs mark required are modeled as `Option` so payloads from before the rollout still parse:
+  `Market.settlement_bounds_type` (`SettlementBoundsType`, `Unknown` catch-all) and
+  `settlement_floor_dollars` (nullable, `floor` markets only);
+  `MultivariateEventCollection.price_level_structure` / `price_ranges`; and on `MarginMarket`
+  `market_version`, `funding_deadband`, `funding_cap`, `funding_limit_unit` and
+  `funding_invalid_premium_handling` (the two unit/handling enums carry an `Unknown` catch-all).
+  `MarginMarket.bid_size_fp` / `ask_size_fp` are omitted by the exchange when market stats are
+  unavailable.
+- `Market.liquidity_dollars` was removed upstream on 2026-10-01 (deprecated since February, always
+  `"0.0000"`). The already-absent-from-spec `liquidity` and `liquidity_fp` were dropped with it.
+  Use `yes_bid_size_fp` / `yes_ask_size_fp` for top-of-book size.
+- `Market` and the other public market/event structs deliberately model spec-required fields as
+  `Option`, so a field the exchange omits never fails a whole page. This predates the current refresh
+  and is unchanged. `CreateMarginOrderRequest.ticker` is `String` although the spec also allows
+  `market_id` instead.
+- `sending_ts_ms` (added to every WebSocket message on 2026-10-01) is exposed on the margin
+  `MarginEnvelope` only. The prediction-market `WsMessageV2` variants do not carry it: threading it
+  through every owned and borrowed variant is a large breaking change on the hot path. Serde ignores
+  the unknown key, so parsing is unaffected. Revisit if latency attribution is needed.
+- `user_orders` `last_update_reason` is `WsLastUpdateReason` on the prediction channel (adds
+  `SettlementBoundsCancel`). The margin enum (`MarginLastUpdateReason`) now has an `Unknown`
+  catch-all, so a new reason string can no longer fail a whole message. The 2026-10-22 millisecond
+  truncation of the legacy `created_time` / `last_update_time` / `expiration_time` strings needs no
+  change: they stay RFC3339 `Option<String>`.
+- Ed25519 API keys (2026-09-24, web-app default since 2026-10-01): `KalshiAuth::from_pem_str`
+  detects RSA (PKCS#8/PKCS#1) or Ed25519 (PKCS#8) from the PEM. The pre-sign text is identical.
+  `GenerateApiKeyRequest::key_type` / `GenerateApiKeyResponse::key_type` use `ApiKeyType`.
+- Margin `corporate_actions` WebSocket channel (`MarginChannel::CorporateActions`) uses
+  `MarginWsCorporateAction*` types, distinct from the REST `MarginCorporateAction*` types: the
+  AsyncAPI split terms carry pre/post mark prices and the WS type set omits cash actions, whereas the
+  REST notice has `status`, `updated_ts` and `cash` terms. The REST `cash` / `split` /
+  `final_settlement` / `ticker_change` terms are `Option` because exactly one is present, and none
+  are for `cancelled` notices.
+- `GET /portfolio/balance` moved to its own server-side rate-limit bucket (2026-10-15). The
+  client-side `RateLimitConfig` still counts balance calls against the read budget; this
+  over-throttles slightly and never under-throttles, so no change was made.
+- Known gaps that predate this refresh and are not part of the 2026-09-28..2026-10-22 delta:
+  intra-exchange transfer endpoints (including `client_transfer_id`), `target_balance_allocation`
+  (including `resting_margin_reservation`), margin exit triggers, `/margin/fee_tier_rates`, FCM
+  subtrader endpoints, block-trade proposals, deposits/withdrawals, `exchange_index` on most request
+  and response types, and the many legacy cent-denominated `Market` / `Order` fields that no longer
+  appear in the spec. The external-feeds WebSocket host move (2026-10-22) is out of scope because the
+  crate has no external-feeds client.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

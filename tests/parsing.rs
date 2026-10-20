@@ -447,18 +447,23 @@ fn historical_params_serialize_correctly() {
         max_ts: Some(1700000000),
         limit: Some(25),
         cursor: Some("c3".into()),
+        min_ts: Some(1699999000),
+        subaccount: Some(2),
     };
     let fills_json = serde_json::to_value(&fills).unwrap();
     assert_eq!(fills_json["ticker"], "MKT-1");
     assert_eq!(fills_json["max_ts"], 1700000000);
     assert_eq!(fills_json["limit"], 25);
     assert_eq!(fills_json["cursor"], "c3");
+    assert_eq!(fills_json["min_ts"], 1699999000);
+    assert_eq!(fills_json["subaccount"], 2);
 
     let orders = kalshi_fast::GetHistoricalOrdersParams {
         ticker: Some("MKT-1".into()),
         max_ts: Some(1700000100),
         limit: Some(15),
         cursor: Some("c4".into()),
+        ..Default::default()
     };
     let orders_json = serde_json::to_value(&orders).unwrap();
     assert_eq!(orders_json["ticker"], "MKT-1");
@@ -629,8 +634,8 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "previous_yes_ask_dollars": "0.5500",
             "previous_price": 52,
             "previous_price_dollars": "0.5200",
-            "liquidity": 1000,
-            "liquidity_dollars": "10.0000",
+            "settlement_bounds_type": "floor",
+            "settlement_floor_dollars": "0.1000",
             "expiration_value": "123.4",
             "occurrence_datetime": "2026-04-16T18:30:00Z",
             "tick_size": 1,
@@ -658,8 +663,12 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
     assert_eq!(
-        resp.markets[0].liquidity_dollars.as_deref(),
-        Some("10.0000")
+        resp.markets[0].settlement_bounds_type,
+        Some(kalshi_fast::SettlementBoundsType::Floor)
+    );
+    assert_eq!(
+        resp.markets[0].settlement_floor_dollars.as_deref(),
+        Some("0.1000")
     );
     assert_eq!(
         resp.markets[0].occurrence_datetime.as_deref(),
@@ -1723,7 +1732,7 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
                 "volume_fp": "10.00",
                 "open_interest_fp": "10.00",
                 "notional_value_dollars": "1.0000",
-                "liquidity_dollars": "20.0000",
+                "settlement_bounds_type": "default",
                 "price_level_structure": "linear_cent",
                 "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
             }]
@@ -1737,7 +1746,11 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
     assert_eq!(market.yes_ask, None);
     assert_eq!(market.notional_value, None);
     assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
-    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
+    assert_eq!(
+        market.settlement_bounds_type,
+        Some(kalshi_fast::SettlementBoundsType::Default)
+    );
+    assert_eq!(market.settlement_floor_dollars, None);
 }
 
 #[test]
@@ -2026,4 +2039,185 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         targets.structured_targets[0].target_type.as_deref(),
         Some("politics")
     );
+}
+
+#[test]
+fn ws_user_order_parses_settlement_bounds_cancel_reason() {
+    let json = r#"{
+        "order_id": "o-1",
+        "user_id": "u-1",
+        "ticker": "MKT-1",
+        "last_update_reason": "SettlementBoundsCancel"
+    }"#;
+    let order: kalshi_fast::WsUserOrder = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        order.last_update_reason,
+        Some(kalshi_fast::WsLastUpdateReason::SettlementBoundsCancel)
+    );
+
+    let future: kalshi_fast::WsUserOrder = serde_json::from_str(
+        r#"{"order_id":"o","user_id":"u","ticker":"T","last_update_reason":"Brand New"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        future.last_update_reason,
+        Some(kalshi_fast::WsLastUpdateReason::Unknown)
+    );
+}
+
+#[test]
+fn communications_user_filter_serializes_as_spec_values() {
+    let params = kalshi_fast::WsSubscriptionParamsV2 {
+        channels: vec![kalshi_fast::WsChannelV2::Communications],
+        user_filter: Some(kalshi_fast::WsUserFilter::SelfOnly),
+        ..Default::default()
+    };
+    let value = serde_json::to_value(&params).unwrap();
+    assert_eq!(value["user_filter"], "self");
+
+    let all = serde_json::to_value(kalshi_fast::WsUserFilter::All).unwrap();
+    assert_eq!(all, "");
+
+    let default = serde_json::to_value(kalshi_fast::WsSubscriptionParamsV2::default()).unwrap();
+    assert!(default.get("user_filter").is_none());
+}
+
+#[test]
+fn amend_order_v2_expiration_time_serializes_only_when_set() {
+    let mut req = kalshi_fast::AmendOrderV2Request {
+        ticker: "MKT-1".into(),
+        side: kalshi_fast::BookSide::Bid,
+        price: "0.5000".into(),
+        count: "10.00".into(),
+        client_order_id: None,
+        updated_client_order_id: None,
+        expiration_time: None,
+        exchange_index: None,
+    };
+    assert!(
+        serde_json::to_value(&req)
+            .unwrap()
+            .get("expiration_time")
+            .is_none()
+    );
+    req.expiration_time = Some(0);
+    assert_eq!(serde_json::to_value(&req).unwrap()["expiration_time"], 0);
+}
+
+#[test]
+fn multivariate_collection_parses_price_level_structure() {
+    let json = r#"{
+        "collection_ticker": "COL-1", "series_ticker": "S", "title": "t", "description": "d",
+        "open_date": "2026-01-01T00:00:00Z", "close_date": "2026-02-01T00:00:00Z",
+        "associated_events": [], "associated_event_tickers": [],
+        "is_ordered": false, "is_single_market_per_event": true, "is_all_yes": false,
+        "size_min": 2, "size_max": 5, "functional_description": "f",
+        "price_level_structure": "linear_cent",
+        "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
+    }"#;
+    let c: kalshi_fast::MultivariateEventCollection = serde_json::from_str(json).unwrap();
+    assert_eq!(c.price_level_structure.as_deref(), Some("linear_cent"));
+    assert_eq!(c.price_ranges.as_ref().map(Vec::len), Some(1));
+}
+
+#[test]
+fn margin_market_parses_funding_config_market_version_and_top_of_book_sizes() {
+    let json = r#"{
+        "ticker": "KXBTCPERP1", "status": "active", "title": "BTC", "contract_size": "1",
+        "underlying_multiplier": "1", "tick_size": "0.01", "fractional_trading_enabled": true,
+        "exchange_index": 1, "market_version": 2,
+        "funding_deadband": 0.0001, "funding_cap": 0.75, "funding_limit_unit": "percentage",
+        "funding_invalid_premium_handling": "dampen",
+        "bid": "49900.00", "bid_size_fp": "10.00", "ask": "50100.00", "ask_size_fp": "0.00"
+    }"#;
+    let m: kalshi_fast::MarginMarket = serde_json::from_str(json).unwrap();
+    assert_eq!(m.market_version, Some(2));
+    assert_eq!(
+        m.funding_limit_unit,
+        Some(kalshi_fast::FundingLimitUnit::Percentage)
+    );
+    assert_eq!(
+        m.funding_invalid_premium_handling,
+        Some(kalshi_fast::FundingInvalidPremiumHandling::Dampen)
+    );
+    assert_eq!(m.bid_size_fp.as_deref(), Some("10.00"));
+    assert_eq!(m.ask_size_fp.as_deref(), Some("0.00"));
+}
+
+#[test]
+fn margin_corporate_actions_response_parses_terms_by_type() {
+    let json = r#"{"corporate_actions": [
+        {"id":"1","market_id":"m","market_ticker":"T","type":"cash_dividend","status":"scheduled",
+         "updated_ts":"2026-10-19T00:00:00Z","execution_time":"2026-10-25T00:00:00Z",
+         "cash":{"cash_per_share":"0.25","cash_per_contract":"0.25","ex_date":"2026-10-25"}},
+        {"id":"2","market_id":"m","market_ticker":"T","type":"final_settlement","status":"applied",
+         "updated_ts":"2026-10-19T00:00:00Z",
+         "final_settlement":{"reason":"delisting","settlement_price_per_contract":"12.5000"}},
+        {"id":"3","market_id":"m","market_ticker":"T","type":"ticker_change","status":"cancelled",
+         "updated_ts":"2026-10-19T00:00:00Z"}
+    ]}"#;
+    let resp: kalshi_fast::GetMarginCorporateActionsResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.corporate_actions.len(), 3);
+    assert_eq!(
+        resp.corporate_actions[0].action_type,
+        kalshi_fast::MarginCorporateActionType::CashDividend
+    );
+    assert!(resp.corporate_actions[0].cash.is_some());
+    assert_eq!(
+        resp.corporate_actions[1]
+            .final_settlement
+            .as_ref()
+            .unwrap()
+            .reason,
+        "delisting"
+    );
+    assert_eq!(
+        resp.corporate_actions[2].status,
+        kalshi_fast::MarginCorporateActionStatus::Cancelled
+    );
+    assert!(resp.corporate_actions[2].execution_time.is_none());
+}
+
+#[test]
+fn margin_batch_orderbooks_and_premium_index_parse() {
+    let books: kalshi_fast::GetMarginMarketOrderbooksResponse = serde_json::from_str(
+        r#"{"orderbooks":[{"ticker":"A","orderbook":{"bids":[["1.00","2.00"]],"asks":[]}}]}"#,
+    )
+    .unwrap();
+    assert_eq!(books.orderbooks[0].ticker, "A");
+    assert_eq!(books.orderbooks[0].orderbook.bids[0][1], "2.00");
+
+    let idx: kalshi_fast::GetMarginPremiumIndexResponse = serde_json::from_str(
+        r#"{"points":[{"second_ts":"2026-10-19T00:00:00Z","premium_index":"-0.0004"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(idx.points[0].premium_index, "-0.0004");
+
+    let est: kalshi_fast::GetMarginFundingRateEstimateResponse = serde_json::from_str(
+        r#"{"next_funding_time":"t","premium_index":"0.001","premium_index_ts":"t2"}"#,
+    )
+    .unwrap();
+    assert_eq!(est.premium_index.as_deref(), Some("0.001"));
+    assert_eq!(est.premium_index_ts.as_deref(), Some("t2"));
+}
+
+#[test]
+fn margin_trades_ticker_is_optional() {
+    let none = serde_json::to_value(kalshi_fast::GetMarginTradesParams::default()).unwrap();
+    assert!(none.get("ticker").is_none());
+}
+
+#[test]
+fn generate_api_key_key_type_round_trips() {
+    let req = kalshi_fast::GenerateApiKeyRequest {
+        name: "k".into(),
+        scopes: vec![],
+        key_type: Some(kalshi_fast::ApiKeyType::Ed25519),
+    };
+    assert_eq!(serde_json::to_value(&req).unwrap()["key_type"], "ed25519");
+
+    let resp: kalshi_fast::GenerateApiKeyResponse =
+        serde_json::from_str(r#"{"api_key_id":"id","private_key":"pem","key_type":"ed25519"}"#)
+            .unwrap();
+    assert_eq!(resp.key_type, Some(kalshi_fast::ApiKeyType::Ed25519));
 }

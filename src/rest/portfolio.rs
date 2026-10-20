@@ -217,6 +217,7 @@ pub struct GetFillsParams {
     pub max_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
+    /// A single market ticker or up to 100 comma-separated tickers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
