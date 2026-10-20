@@ -245,7 +245,12 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
         let reconnect_future = async {
             match auth {
                 Some(auth) => {
-                    WsLowLevelClient::<P>::connect_authenticated(env.clone(), auth.clone()).await
+                    WsLowLevelClient::<P>::connect_authenticated_within(
+                        env.clone(),
+                        auth.clone(),
+                        config.connect_timeout,
+                    )
+                    .await
                 }
                 None => Err(KalshiError::AuthRequired("WebSocket connection")),
             }

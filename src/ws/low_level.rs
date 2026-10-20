@@ -98,7 +98,7 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
             80
         };
         let port = uri.port_u16().unwrap_or(default_port);
-        let tcp = tokio::net::TcpStream::connect((host, port))
+        let tcp = tokio::net::TcpStream::connect((strip_ipv6_brackets(host), port))
             .await
             .map_err(|e| KalshiError::Ws(format!("tcp connect to {host}:{port} failed: {e}")))?;
 
@@ -333,6 +333,15 @@ impl WsLowLevelClient<super::protocol::EventContractProtocol> {
     }
 }
 
+/// `Uri::host()` keeps the brackets of an IPv6 literal (`[::1]`), which the
+/// `ToSocketAddrs` lookup does not accept. The WebSocket request keeps the
+/// original URI; only the TCP target is normalized.
+fn strip_ipv6_brackets(host: &str) -> &str {
+    host.strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -508,5 +517,15 @@ mod tests {
             ts2 >= ts1 + 1_000,
             "attempts reused a signature: {ts1} {ts2}"
         );
+    }
+
+    #[test]
+    fn tcp_target_strips_ipv6_brackets_only() {
+        assert_eq!(strip_ipv6_brackets("[::1]"), "::1");
+        assert_eq!(
+            strip_ipv6_brackets("external-api-ws.kalshi.com"),
+            "external-api-ws.kalshi.com"
+        );
+        assert_eq!(strip_ipv6_brackets("127.0.0.1"), "127.0.0.1");
     }
 }
