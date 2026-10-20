@@ -49,7 +49,7 @@ Note: `get_*_all` loads **all pages into memory** and is intended for convenienc
 - `WsEvent::Message(...)`
 - `WsEvent::Raw(...)` (when using `WsReaderMode::Raw`)
 - `WsEvent::Reconnected { attempt }`
-- `WsEvent::Disconnected { error }`
+- `WsEvent::Disconnected { error }` (the error names the transport cause: keepalive timeout, peer Close code and reason, or the last reconnect failure)
 
 Reconnect uses exponential backoff with jitter, resubscribes to active channels by default, and **does not** attempt sequence resync (callers must handle any gaps).
 

@@ -31,6 +31,21 @@ pub struct WsLowLevelClient<P: WsProtocol> {
     _protocol: PhantomData<P>,
 }
 
+/// Build the transport error for a peer Close frame. Keeps the close code and
+/// reason so disconnect logs show why the server closed the socket.
+pub(crate) fn close_error(
+    frame: Option<&tokio_tungstenite::tungstenite::protocol::CloseFrame>,
+) -> KalshiError {
+    match frame {
+        Some(frame) => KalshiError::Ws(format!(
+            "websocket closed by peer: code {} reason {:?}",
+            u16::from(frame.code),
+            frame.reason
+        )),
+        None => KalshiError::Ws("websocket closed by peer without a close frame".to_string()),
+    }
+}
+
 impl<P: WsProtocol> WsLowLevelClient<P> {
     pub async fn connect_authenticated(
         env: KalshiEnvironment,
@@ -112,8 +127,8 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
                     self.send_raw(Message::Pong(payload)).await?;
                 }
                 Message::Pong(_) => {}
-                Message::Close(_) => {
-                    return Err(KalshiError::Ws("websocket closed".to_string()));
+                Message::Close(frame) => {
+                    return Err(close_error(frame.as_ref()));
                 }
                 _ => {}
             }

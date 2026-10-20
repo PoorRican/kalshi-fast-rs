@@ -8,6 +8,29 @@ Kalshi docs snapshot tracked by that release.
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
 
+## [0.9.2] - 2026-10-19
+
+### Fixed
+
+- [WebSocket] Disconnect errors carry their cause. A reconnect triggered by a transport error reports
+  that error in `WsEvent::Disconnected` (and as the final error after retries are exhausted) instead
+  of the generic `websocket disconnected`.
+- [WebSocket] Peer Close frames report the close code and reason (for example
+  `websocket closed by peer: code 1011 reason "backpressure: queue full"`) instead of `websocket closed`.
+- [WebSocket] A keepalive deadline no longer declares a socket dead while a pong is already buffered
+  behind an outgoing send that blocked past the deadline. The reader drains one buffered frame before
+  timing out. The keepalive timeout message names the pong timeout.
+
+### Tests
+
+- [Tests] Added deterministic mock-server tests for keepalive blackholes reporting a cause, peer Close
+  code and reason reporting, and a stalled consumer not triggering keepalive disconnect.
+
+### Compatibility
+
+- Error text only. Consumers that match on the previous error strings must update. No public API
+  change.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed
