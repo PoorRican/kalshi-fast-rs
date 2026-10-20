@@ -49,8 +49,12 @@ impl<P: WsProtocol> GenericWsClient<P> {
         auth: KalshiAuth,
         config: WsReconnectConfig,
     ) -> Result<Self, KalshiError> {
-        let client =
-            WsLowLevelClient::<P>::connect_authenticated(env.clone(), auth.clone()).await?;
+        let client = WsLowLevelClient::<P>::connect_authenticated_within(
+            env.clone(),
+            auth.clone(),
+            config.connect_timeout,
+        )
+        .await?;
         Ok(Self {
             env,
             auth: Some(auth),
@@ -338,7 +342,12 @@ impl<P: WsProtocol> GenericWsClient<P> {
     async fn reconnect(&mut self) -> Result<(), KalshiError> {
         let new_client = match &self.auth {
             Some(auth) => {
-                WsLowLevelClient::<P>::connect_authenticated(self.env.clone(), auth.clone()).await?
+                WsLowLevelClient::<P>::connect_authenticated_within(
+                    self.env.clone(),
+                    auth.clone(),
+                    self.config.connect_timeout,
+                )
+                .await?
             }
             None => return Err(KalshiError::AuthRequired("WebSocket connection")),
         };

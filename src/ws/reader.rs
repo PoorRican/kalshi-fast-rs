@@ -245,7 +245,12 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
         let reconnect_future = async {
             match auth {
                 Some(auth) => {
-                    WsLowLevelClient::<P>::connect_authenticated(env.clone(), auth.clone()).await
+                    WsLowLevelClient::<P>::connect_authenticated_within(
+                        env.clone(),
+                        auth.clone(),
+                        config.connect_timeout,
+                    )
+                    .await
                 }
                 None => Err(KalshiError::AuthRequired("WebSocket connection")),
             }
@@ -831,6 +836,7 @@ mod tests {
             resubscribe: false,
             ping_interval: Some(Duration::from_millis(25)),
             pong_timeout: Duration::from_millis(50),
+            connect_timeout: None,
         };
         let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
             .await
@@ -914,6 +920,7 @@ mod tests {
             resubscribe: false,
             ping_interval: Some(Duration::from_millis(25)),
             pong_timeout: Duration::from_millis(50),
+            connect_timeout: None,
         };
         let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
             .await
@@ -969,6 +976,7 @@ mod tests {
             resubscribe: false,
             ping_interval: None,
             pong_timeout: Duration::from_secs(10),
+            connect_timeout: None,
         };
         let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
             .await
@@ -1029,6 +1037,7 @@ mod tests {
             resubscribe: false,
             ping_interval: Some(Duration::from_millis(20)),
             pong_timeout: Duration::from_millis(50),
+            connect_timeout: None,
         };
         let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
             .await
@@ -1059,6 +1068,127 @@ mod tests {
         }
         server.abort();
     }
+
+    #[tokio::test]
+    async fn reader_keepalive_silence_within_pong_window_does_not_disconnect() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("accept ws");
+            // Stay silent without reading, so pings go unanswered for less than pong_timeout.
+            sleep(Duration::from_millis(100)).await;
+            ws.send(Message::Text(ticker_frame("A", "1", 1, 1)))
+                .await
+                .expect("send ticker");
+            // Answer later pings so the connection stays healthy.
+            while let Ok(Some(Ok(frame))) = timeout(Duration::from_secs(2), ws.next()).await {
+                if let Message::Ping(payload) = frame {
+                    ws.send(Message::Pong(payload)).await.expect("pong");
+                }
+            }
+        });
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{addr}"),
+            margin_ws_url: format!("ws://{addr}"),
+        };
+        let config = WsReconnectConfig {
+            max_retries: Some(0),
+            base_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(10),
+            jitter: 0.0,
+            resubscribe: false,
+            ping_interval: Some(Duration::from_millis(20)),
+            pong_timeout: Duration::from_millis(300),
+            connect_timeout: None,
+        };
+        let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
+            .await
+            .expect("connect");
+        let receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+        let first = timeout(Duration::from_secs(2), receiver.next())
+            .await
+            .expect("ticker after silence")
+            .expect("event");
+        assert!(
+            matches!(first, WsEvent::Message(_)),
+            "unexpected: {first:?}"
+        );
+        // Keep watching well past the original pong deadline: no disconnect may appear.
+        let watch_until = Instant::now() + Duration::from_millis(600);
+        while let Ok(Some(event)) = timeout(
+            watch_until.saturating_duration_since(Instant::now()),
+            receiver.next(),
+        )
+        .await
+        {
+            assert!(
+                !matches!(
+                    event,
+                    WsEvent::Disconnected { .. } | WsEvent::Reconnected { .. }
+                ),
+                "keepalive disconnected after silence within the pong window: {event:?}"
+            );
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn reader_keepalive_silence_past_pong_window_disconnects() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let _ws = accept_async(stream).await.expect("accept ws");
+            // Hold the socket open and never read or answer pings.
+            sleep(Duration::from_secs(5)).await;
+        });
+        let env = KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{addr}"),
+            margin_ws_url: format!("ws://{addr}"),
+        };
+        let config = WsReconnectConfig {
+            max_retries: Some(0),
+            base_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(10),
+            jitter: 0.0,
+            resubscribe: false,
+            ping_interval: Some(Duration::from_millis(20)),
+            pong_timeout: Duration::from_millis(150),
+            connect_timeout: None,
+        };
+        let mut client = KalshiWsClient::connect_authenticated(env, load_test_auth(), config)
+            .await
+            .expect("connect");
+        let receiver = client
+            .start_reader_v2(WsReaderConfig {
+                buffer_size: 4,
+                mode: WsReaderMode::Owned,
+            })
+            .await
+            .expect("start reader");
+        let event = timeout(Duration::from_secs(2), receiver.next())
+            .await
+            .expect("keepalive disconnect within window")
+            .expect("event");
+        match event {
+            WsEvent::Disconnected { error } => assert!(
+                error.to_string().contains("keepalive timed out"),
+                "unexpected disconnect cause: {error}"
+            ),
+            other => panic!("expected keepalive disconnect, got {other:?}"),
+        }
+        server.abort();
+    }
+
     #[tokio::test]
     async fn reader_loop_exits_when_event_receiver_closes() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");

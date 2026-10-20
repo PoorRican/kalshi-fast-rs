@@ -15,7 +15,8 @@ use bytes::Bytes;
 pub type KalshiWsLowLevelClient = WsLowLevelClient<super::protocol::EventContractProtocol>;
 use futures::{SinkExt, StreamExt};
 use std::marker::PhantomData;
-use tokio_tungstenite::connect_async;
+use std::time::Duration;
+use tokio_tungstenite::client_async_tls_with_config;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::{HeaderValue, Request, header::HeaderName};
@@ -51,10 +52,55 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
         env: KalshiEnvironment,
         auth: KalshiAuth,
     ) -> Result<Self, KalshiError> {
+        Self::connect_authenticated_within(env, auth, None).await
+    }
+
+    /// Connect and authenticate. When `connect_timeout` is set, the whole
+    /// attempt (TCP, TLS and upgrade) is bounded by it and a timed-out attempt
+    /// returns `KalshiError::Ws` so the caller's retry policy applies.
+    pub(crate) async fn connect_authenticated_within(
+        env: KalshiEnvironment,
+        auth: KalshiAuth,
+        connect_timeout: Option<Duration>,
+    ) -> Result<Self, KalshiError> {
+        let attempt = Self::connect_attempt(env, auth);
+        match connect_timeout {
+            None => attempt.await,
+            Some(limit) => tokio::time::timeout(limit, attempt)
+                .await
+                .unwrap_or_else(|_| {
+                    Err(KalshiError::Ws(format!(
+                        "websocket connect timed out after {limit:?}"
+                    )))
+                }),
+        }
+    }
+
+    async fn connect_attempt(
+        env: KalshiEnvironment,
+        auth: KalshiAuth,
+    ) -> Result<Self, KalshiError> {
         let url = P::ws_url(&env);
         let mut req: Request<()> = url
             .into_client_request()
             .map_err(|e| KalshiError::Ws(e.to_string()))?;
+
+        // Open TCP before signing so the signed timestamp is as fresh as the
+        // library allows. Kalshi rejects a stale KALSHI-ACCESS-TIMESTAMP with
+        // 401, and a stalled TCP connect must not age the signature.
+        let uri = req.uri().clone();
+        let host = uri
+            .host()
+            .ok_or_else(|| KalshiError::Ws("websocket URL has no host".to_string()))?;
+        let default_port = if uri.scheme_str() == Some("wss") {
+            443
+        } else {
+            80
+        };
+        let port = uri.port_u16().unwrap_or(default_port);
+        let tcp = tokio::net::TcpStream::connect((strip_ipv6_brackets(host), port))
+            .await
+            .map_err(|e| KalshiError::Ws(format!("tcp connect to {host}:{port} failed: {e}")))?;
 
         let headers = auth.build_headers("GET", P::signing_path())?;
 
@@ -73,7 +119,7 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
                 .map_err(|e| KalshiError::Header(e.to_string()))?,
         );
 
-        let (ws_stream, _resp) = connect_async(req)
+        let (ws_stream, _resp) = client_async_tls_with_config(req, tcp, None, None)
             .await
             .map_err(|e| KalshiError::Ws(e.to_string()))?;
 
@@ -287,6 +333,15 @@ impl WsLowLevelClient<super::protocol::EventContractProtocol> {
     }
 }
 
+/// `Uri::host()` keeps the brackets of an IPv6 literal (`[::1]`), which the
+/// `ToSocketAddrs` lookup does not accept. The WebSocket request keeps the
+/// original URI; only the TCP target is normalized.
+fn strip_ipv6_brackets(host: &str) -> &str {
+    host.strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,6 +351,10 @@ mod tests {
     use serde_json::{Value, json};
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
+    use tokio_tungstenite::accept_hdr_async;
+    use tokio_tungstenite::tungstenite::handshake::server::{
+        Request as ServerRequest, Response as ServerResponse,
+    };
     use url::Url;
 
     #[tokio::test]
@@ -334,5 +393,139 @@ mod tests {
             .expect("unsubscribe");
 
         server.await.expect("server");
+    }
+
+    fn env_for(addr: std::net::SocketAddr) -> KalshiEnvironment {
+        KalshiEnvironment {
+            rest_origin: Url::parse("http://127.0.0.1/").expect("url"),
+            ws_url: format!("ws://{}", addr),
+            margin_ws_url: format!("ws://{}", addr),
+        }
+    }
+
+    fn now_ms() -> u128 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_millis()
+    }
+
+    #[tokio::test]
+    async fn connect_timeout_bounds_stalled_handshake_and_next_attempt_succeeds() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            // First TCP connection: accept it, then never speak WebSocket.
+            let (_stalled, _) = listener.accept().await.expect("accept stalled");
+            let (stream, _) = listener.accept().await.expect("accept retry");
+            let _ws = accept_async(stream).await.expect("accept ws");
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        });
+
+        // Key generation (no test key env set) is slow on CI; keep it outside
+        // the timed window so the bound measures only the connect attempt.
+        let first_auth = load_test_auth();
+        let retry_auth = load_test_auth();
+        let started = std::time::Instant::now();
+        let first = WsLowLevelClient::<EventContractProtocol>::connect_authenticated_within(
+            env_for(addr),
+            first_auth,
+            Some(Duration::from_millis(300)),
+        )
+        .await;
+        let err = match first {
+            Ok(_) => panic!("stalled handshake must not connect"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string().contains("timed out"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "timeout did not bound the attempt"
+        );
+
+        WsLowLevelClient::<EventContractProtocol>::connect_authenticated_within(
+            env_for(addr),
+            retry_auth,
+            Some(Duration::from_secs(5)),
+        )
+        .await
+        .expect("retry connects");
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn each_connect_attempt_signs_a_fresh_timestamp() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().await.expect("accept");
+                let tx = tx.clone();
+                let ws =
+                    accept_hdr_async(stream, move |req: &ServerRequest, resp: ServerResponse| {
+                        let ts = req
+                            .headers()
+                            .get("kalshi-access-timestamp")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+                        let _ = tx.send(ts);
+                        Ok(resp)
+                    })
+                    .await
+                    .expect("accept ws");
+                drop(ws);
+            }
+        });
+
+        let auth_first = load_test_auth();
+        let auth_second = load_test_auth();
+        let first_started = now_ms();
+        let first = WsLowLevelClient::<EventContractProtocol>::connect_authenticated(
+            env_for(addr),
+            auth_first,
+        )
+        .await
+        .expect("first connect");
+        drop(first);
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        let second_started = now_ms();
+        let second = WsLowLevelClient::<EventContractProtocol>::connect_authenticated(
+            env_for(addr),
+            auth_second,
+        )
+        .await
+        .expect("second connect");
+        drop(second);
+        server.await.expect("server");
+
+        let ts1: u128 = rx.recv().await.expect("first ts").parse().expect("ms");
+        let ts2: u128 = rx.recv().await.expect("second ts").parse().expect("ms");
+        assert!(
+            ts1 >= first_started && ts1 <= first_started + 2_000,
+            "first signature not fresh: {ts1} vs {first_started}"
+        );
+        assert!(
+            ts2 >= second_started && ts2 <= second_started + 2_000,
+            "second signature not fresh: {ts2} vs {second_started}"
+        );
+        assert!(
+            ts2 >= ts1 + 1_000,
+            "attempts reused a signature: {ts1} {ts2}"
+        );
+    }
+
+    #[test]
+    fn tcp_target_strips_ipv6_brackets_only() {
+        assert_eq!(strip_ipv6_brackets("[::1]"), "::1");
+        assert_eq!(
+            strip_ipv6_brackets("external-api-ws.kalshi.com"),
+            "external-api-ws.kalshi.com"
+        );
+        assert_eq!(strip_ipv6_brackets("127.0.0.1"), "127.0.0.1");
     }
 }
