@@ -413,10 +413,14 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
+        // Key generation (no test key env set) is slow on CI; keep it outside
+        // the timed window so the bound measures only the connect attempt.
+        let first_auth = load_test_auth();
+        let retry_auth = load_test_auth();
         let started = std::time::Instant::now();
         let first = WsLowLevelClient::<EventContractProtocol>::connect_authenticated_within(
             env_for(addr),
-            load_test_auth(),
+            first_auth,
             Some(Duration::from_millis(300)),
         )
         .await;
@@ -435,7 +439,7 @@ mod tests {
 
         WsLowLevelClient::<EventContractProtocol>::connect_authenticated_within(
             env_for(addr),
-            load_test_auth(),
+            retry_auth,
             Some(Duration::from_secs(5)),
         )
         .await
