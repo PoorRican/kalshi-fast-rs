@@ -39,6 +39,11 @@ pub struct WsReconnectConfig {
     /// the connection as dead and reconnecting. Only meaningful when
     /// `ping_interval` is set.
     pub pong_timeout: Duration,
+    /// Upper bound on one connect attempt (TCP, TLS and WebSocket upgrade),
+    /// for the initial connect and every reconnect. `None` leaves attempts
+    /// unbounded. A timed-out attempt returns `KalshiError::Ws`, so it goes
+    /// through the caller's normal retry and backoff.
+    pub connect_timeout: Option<Duration>,
 }
 
 impl Default for WsReconnectConfig {
@@ -51,6 +56,7 @@ impl Default for WsReconnectConfig {
             resubscribe: true,
             ping_interval: None,
             pong_timeout: Duration::from_secs(10),
+            connect_timeout: None,
         }
     }
 }

@@ -7,6 +7,23 @@ Kalshi docs snapshot tracked by that release.
 
 For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md).
 
+## [Unreleased]
+
+### Added
+
+- [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
+  WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
+  goes through the normal reconnect and backoff path. Default `None` keeps the previous unbounded
+  behavior. Adding the field is breaking for struct literals without `..Default::default()`.
+- [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
+  handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
+
+### Tests
+
+- [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
+  per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
+  disconnecting with the keepalive cause.
+
 
 ## [0.9.2] - 2026-10-19
 
