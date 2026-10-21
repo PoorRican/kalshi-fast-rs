@@ -21,6 +21,7 @@ pub enum MarginDataMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     OrderGroupUpdates(MarginEnvelope<OrderGroupUpdatesMsg>),
     OrderbookSnapshot(MarginEnvelope<OrderbookSnapshotMsg>),
+    CorporateActionsDelta(MarginEnvelope<CorporateActionsDeltaMsg>),
     // -- control messages ----------------------------------------------------
     Subscribed {
         id: Option<u64>,
@@ -97,6 +98,8 @@ enum MarginWireMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates(SequencedMarginEnvelope<OrderGroupUpdatesMsg>),
+    #[serde(rename = "corporate_actions_delta")]
+    CorporateActionsDelta(SequencedMarginEnvelope<CorporateActionsDeltaMsg>),
     #[serde(rename = "subscribed")]
     Subscribed {
         id: Option<u64>,
@@ -137,6 +140,7 @@ impl From<MarginWireMessage> for MarginDataMessage {
             MarginWireMessage::Fill(e) => Self::Fill(e),
             MarginWireMessage::UserOrder(e) => Self::UserOrder(e),
             MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e.into()),
+            MarginWireMessage::CorporateActionsDelta(e) => Self::CorporateActionsDelta(e.into()),
             MarginWireMessage::Subscribed { id, msg } => Self::Subscribed {
                 id,
                 sid: Some(msg.sid),
@@ -432,12 +436,96 @@ pub struct OrderGroupUpdatesMsg {
     pub ts_ms: i64,
 }
 
+// ---------------------------------------------------------------------------
+// corporate_actions  —  applied stock split / final settlement / ticker change
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginAppliedCorporateActionType {
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionSplitTerms {
+    pub ratio_old: String,
+    pub ratio_new: String,
+    pub pre_split_mark_price: String,
+    pub post_split_mark_price: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionFinalSettlementTerms {
+    pub settlement_price_per_contract: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
+}
+
+/// A corporate action the exchange applied to a margin market. Exactly one terms object
+/// matches `action_type`. Positions and balances can change without a fill; re-fetch them.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateAction {
+    /// Notice id, matching `id` from `GET /margin/corporate_actions`.
+    pub id: String,
+    pub market_id: String,
+    /// Market ticker; the new ticker for `ticker_change`.
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginAppliedCorporateActionType,
+    pub ts_ms: i64,
+    #[serde(default)]
+    pub split: Option<CorporateActionSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<CorporateActionFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<CorporateActionTickerChangeTerms>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionsDeltaMsg {
+    pub corporate_action: CorporateAction,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn parse(bytes: &[u8]) -> MarginDataMessage {
         MarginDataMessage::from_bytes(bytes).expect("parse ok")
+    }
+
+    #[test]
+    fn parse_corporate_actions_delta() {
+        let json = serde_json::json!({
+            "type": "corporate_actions_delta",
+            "sid": 7,
+            "seq": 1,
+            "msg": {"corporate_action": {
+                "id": "n1", "market_id": "m1", "market_ticker": "AAPL-PERP",
+                "type": "stock_split", "ts_ms": 1760000000000i64,
+                "split": {"ratio_old": "1", "ratio_new": "4",
+                          "pre_split_mark_price": "400.0000", "post_split_mark_price": "100.0000"}
+            }}
+        });
+        match parse(&serde_json::to_vec(&json).unwrap()) {
+            MarginDataMessage::CorporateActionsDelta(e) => {
+                assert_eq!(e.sid, 7);
+                assert_eq!(e.seq, Some(1));
+                let a = e.msg.corporate_action;
+                assert_eq!(a.action_type, MarginAppliedCorporateActionType::StockSplit);
+                assert_eq!(a.split.unwrap().ratio_new, "4");
+                assert!(a.final_settlement.is_none());
+            }
+            _ => panic!("expected CorporateActionsDelta"),
+        }
     }
 
     #[test]

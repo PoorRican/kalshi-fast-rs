@@ -7,6 +7,10 @@ use std::borrow::Cow;
 pub struct WsOrderbookSnapshot {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock (same on every connection; use to match updates across redundant
+    /// connections). Required by the spec; `Option` so payloads predating it still parse.
+    #[serde(default)]
+    pub clock: Option<i64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default)]
     pub yes_dollars_fp: Vec<(String, String)>,
@@ -20,6 +24,10 @@ pub struct WsOrderbookSnapshot {
 pub struct WsOrderbookDelta {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock (same on every connection; use to match updates across redundant
+    /// connections). Required by the spec; `Option` so payloads predating it still parse.
+    #[serde(default)]
+    pub clock: Option<i64>,
     pub price_dollars: String,
     pub delta_fp: String,
     pub side: YesNo,
@@ -41,6 +49,10 @@ pub struct WsOrderbookSnapshotRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// Exchange clock (same on every connection; use to match updates across redundant
+    /// connections). Required by the spec; `Option` so payloads predating it still parse.
+    #[serde(default)]
+    pub clock: Option<i64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default, borrow)]
     pub yes_dollars_fp: Vec<(Cow<'a, str>, Cow<'a, str>)>,
@@ -54,6 +66,7 @@ impl<'a> WsOrderbookSnapshotRef<'a> {
         WsOrderbookSnapshot {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             yes_dollars_fp: self
                 .yes_dollars_fp
                 .into_iter()
@@ -75,6 +88,10 @@ pub struct WsOrderbookDeltaRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// Exchange clock (same on every connection; use to match updates across redundant
+    /// connections). Required by the spec; `Option` so payloads predating it still parse.
+    #[serde(default)]
+    pub clock: Option<i64>,
     #[serde(borrow)]
     pub price_dollars: Cow<'a, str>,
     #[serde(borrow)]
@@ -98,6 +115,7 @@ impl<'a> WsOrderbookDeltaRef<'a> {
         WsOrderbookDelta {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             price_dollars: self.price_dollars.into_owned(),
             delta_fp: self.delta_fp.into_owned(),
             side: self.side,
@@ -114,6 +132,22 @@ impl<'a> WsOrderbookDeltaRef<'a> {
 mod tests {
     #![allow(deprecated)]
     use super::*;
+
+    #[test]
+    fn ws_orderbook_clock_parse() {
+        let snap: WsOrderbookSnapshot =
+            serde_json::from_str(r#"{"market_ticker":"T","market_id":"1","clock":4182057}"#)
+                .unwrap();
+        assert_eq!(snap.clock, Some(4182057));
+        let delta: WsOrderbookDeltaRef = serde_json::from_str(
+            r#"{"market_ticker":"T","market_id":"1","clock":4182061,"price_dollars":"0.01","delta_fp":"1","side":"yes"}"#,
+        )
+        .unwrap();
+        assert_eq!(delta.into_owned().clock, Some(4182061));
+        let old: WsOrderbookSnapshot =
+            serde_json::from_str(r#"{"market_ticker":"T","market_id":"1"}"#).unwrap();
+        assert_eq!(old.clock, None);
+    }
 
     #[test]
     fn ws_orderbook_delta_side_parse() {

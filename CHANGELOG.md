@@ -9,14 +9,48 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-21
+
+### Compatibility
+
+- Docs snapshot: 2026-10-21
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-21
+
+### Breaking
+
+- [Rust API] `WsOrderbookSnapshot`, `WsOrderbookDelta` and their `*Ref` forms gain `clock:
+  Option<i64>`; `GetEventParams` gains `exclude_markets`; `GetMarginExchangeStatusResponse` and
+  `GetMarginFundingRateEstimateResponse` gain fields. Exhaustive struct literals must add the fields.
+- [Rust API] `MarginChannel` gains `CorporateActions` and `MarginDataMessage` gains
+  `CorporateActionsDelta`; exhaustive matches must handle them.
+
 ### Added
 
+- [Upstream] Orderbook `clock` on Predictions `orderbook_snapshot`/`orderbook_delta` (2026-10-21).
+- [Upstream] Margin corporate actions: `get_margin_corporate_actions` and the `corporate_actions`
+  WebSocket channel (2026-10-19).
+- [Upstream] Margin exchange status `exchange_estimated_resume_time`; funding estimate
+  `premium_index`/`premium_index_ts` (2026-10-15/16).
+- [Upstream] `GET /events/{event_ticker}?exclude_markets=true` via `get_event_with_params` (2026-10-15).
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
   WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
   goes through the normal reconnect and backoff path. Default `None` keeps the previous unbounded
   behavior. Adding the field is breaking for struct literals without `..Default::default()`.
 - [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
   handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
+
+### Changelog entries with no code change
+
+- 2026-10-19 external feeds hostname, FIX mass cancel / corporate-action `SecurityStatus`, post-only
+  RFQ penalties, milestone `details.status` doc note, `user_orders` millisecond truncation (same RFC3339
+  string fields), intra-exchange transfer `client_transfer_id` echo (endpoints not modeled),
+  2026-10-15/16 `GET /portfolio/balance` bucket (server-side rate limit), funding bar averaging
+  (semantics only), REST schema corrections (margin-ignored fields intentionally not modeled),
+  MCP grants, Oct 22 Redis auth note.
 
 ### Tests
 

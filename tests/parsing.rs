@@ -2027,3 +2027,87 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         Some("politics")
     );
 }
+
+// ============================================================================
+// Margin: corporate actions, exchange status, funding estimate, event params
+// ============================================================================
+
+#[test]
+fn margin_corporate_actions_response_parses_all_term_shapes() {
+    use kalshi_fast::{
+        GetMarginCorporateActionsResponse, MarginCorporateActionStatus, MarginCorporateActionType,
+    };
+    let json = r#"{"corporate_actions":[
+        {"id":"a","market_id":"m","market_ticker":"X","type":"cash_dividend","status":"scheduled",
+         "updated_ts":"2026-10-19T00:00:00Z","execution_time":"2026-10-20T00:00:00Z",
+         "cash":{"cash_per_share":"0.25","cash_per_contract":"0.25","ex_date":"2026-10-20"}},
+        {"id":"b","market_id":"m","market_ticker":"X","type":"final_settlement","status":"applied",
+         "updated_ts":"2026-10-19T00:00:00Z","execution_time":"2026-10-19T01:00:00Z",
+         "final_settlement":{"reason":"merger","settlement_price_per_contract":"12.0000"}},
+        {"id":"c","market_id":"m","market_ticker":"X","type":"ticker_change","status":"lapsed",
+         "updated_ts":"2026-10-19T00:00:00Z",
+         "ticker_change":{"old_ticker":"A","new_ticker":"B"}},
+        {"id":"d","market_id":"m","market_ticker":"X","type":"stock_split","status":"cancelled",
+         "updated_ts":"2026-10-19T00:00:00Z"},
+        {"id":"e","market_id":"m","market_ticker":"X","type":"future_type","status":"future_status",
+         "updated_ts":"2026-10-19T00:00:00Z"}
+    ]}"#;
+    let resp: GetMarginCorporateActionsResponse = serde_json::from_str(json).unwrap();
+    let a = &resp.corporate_actions;
+    assert_eq!(a.len(), 5);
+    assert_eq!(a[0].action_type, MarginCorporateActionType::CashDividend);
+    assert_eq!(
+        a[0].cash.as_ref().unwrap().cash_per_share.as_deref(),
+        Some("0.25")
+    );
+    assert_eq!(a[1].status, MarginCorporateActionStatus::Applied);
+    assert_eq!(a[1].final_settlement.as_ref().unwrap().reason, "merger");
+    assert_eq!(a[2].ticker_change.as_ref().unwrap().new_ticker, "B");
+    assert!(a[3].execution_time.is_none() && a[3].split.is_none());
+    assert_eq!(a[4].action_type, MarginCorporateActionType::Unknown);
+    assert_eq!(a[4].status, MarginCorporateActionStatus::Unknown);
+
+    let empty: GetMarginCorporateActionsResponse =
+        serde_json::from_str(r#"{"corporate_actions":null}"#).unwrap();
+    assert!(empty.corporate_actions.is_empty());
+}
+
+#[test]
+fn margin_exchange_status_and_funding_estimate_new_fields() {
+    use kalshi_fast::{GetMarginExchangeStatusResponse, GetMarginFundingRateEstimateResponse};
+    let s: GetMarginExchangeStatusResponse = serde_json::from_str(
+        r#"{"exchange_active":false,"trading_active":false,"exchange_estimated_resume_time":"2026-10-21T20:00:00Z"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        s.exchange_estimated_resume_time.as_deref(),
+        Some("2026-10-21T20:00:00Z")
+    );
+    let s: GetMarginExchangeStatusResponse = serde_json::from_str(
+        r#"{"exchange_active":true,"trading_active":true,"exchange_estimated_resume_time":null}"#,
+    )
+    .unwrap();
+    assert!(s.exchange_estimated_resume_time.is_none());
+
+    let e: GetMarginFundingRateEstimateResponse = serde_json::from_str(
+        r#"{"next_funding_time":"2026-10-21T20:00:00Z","premium_index":"0.0003","premium_index_ts":"2026-10-21T19:59:59Z"}"#,
+    )
+    .unwrap();
+    assert_eq!(e.premium_index.as_deref(), Some("0.0003"));
+    assert_eq!(e.premium_index_ts.as_deref(), Some("2026-10-21T19:59:59Z"));
+}
+
+#[test]
+fn get_event_params_serialize_exclude_markets() {
+    use kalshi_fast::GetEventParams;
+    let v = serde_json::to_value(GetEventParams {
+        exclude_markets: Some(true),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(v, serde_json::json!({"exclude_markets": true}));
+    assert_eq!(
+        serde_json::to_value(GetEventParams::default()).unwrap(),
+        serde_json::json!({})
+    );
+}

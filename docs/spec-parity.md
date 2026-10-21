@@ -91,6 +91,29 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- Orderbook `clock` (Predictions `orderbook_delta` channel, changelog 2026-10-21): AsyncAPI marks
+  `clock` required on both `orderbook_snapshot` and `orderbook_delta` (int64; snapshot may be `0`).
+  It is modeled as `Option<i64>` on `WsOrderbookSnapshot`/`WsOrderbookDelta` (and `*Ref`) so
+  fixtures and payloads predating the field still parse. `clock` is identical across connections
+  (unlike `seq`), may repeat across deltas of one exchange action, and can decrease across exchange
+  maintenance. Keep checking `seq` per connection for gaps.
+- Margin corporate actions (changelog 2026-10-19): `GET /margin/corporate_actions`
+  (`get_margin_corporate_actions`) and the public `corporate_actions` WS channel
+  (`MarginChannel::CorporateActions`, `MarginDataMessage::CorporateActionsDelta`). Spec-required
+  fields are non-optional; terms objects are `Option` (exactly one is present per `type`, none for
+  cancelled notices). REST `type`/`status` and the WS `type` enums carry `#[serde(other)] Unknown`.
+  The WS channel has no snapshot; positions and balances must be re-fetched after each delta.
+- Margin `ExchangeStatus` gained `exchange_estimated_resume_time` (nullable) and the funding
+  estimate gained `premium_index` / `premium_index_ts` (both optional in the spec). The shared
+  schema also lists `intra_exchange_transfers_active` and `exchange_index_statuses`, which the
+  Margin API never returns, so they are intentionally not modeled on the margin response.
+  `exchange_index` on margin subaccount transfers is documented as ignored; unchanged.
+- `GET /events/{event_ticker}` accepts `exclude_markets=true` (`GetEventParams::exclude_markets`,
+  `get_event_with_params`); combining it with `with_nested_markets=true` is rejected client-side.
+- Not modeled: Predictions `GET /portfolio/intra_exchange_instance_transfers[/{id}]` (and the
+  `client_transfer_id` echo added 2026-10-19) — the crate has no intra-exchange transfer endpoints
+  yet. External feeds (`external-feeds` hostname move) are not a surface of this crate.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -165,6 +165,10 @@ pub struct GetEventsResponse {
 pub struct GetEventParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub with_nested_markets: Option<bool>, // default false
+    /// Return event metadata without child markets (default false). Cannot be combined with
+    /// `with_nested_markets=true`; page markets with `GET /markets?event_ticker=...`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude_markets: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -275,10 +279,27 @@ impl KalshiRestClient {
         event_ticker: &str,
         with_nested_markets: Option<bool>,
     ) -> Result<GetEventResponse, KalshiError> {
-        let path = Self::full_path(&format!("/events/{event_ticker}"));
         let params = GetEventParams {
             with_nested_markets,
+            ..Default::default()
         };
+        self.get_event_with_params(event_ticker, params).await
+    }
+
+    /// Get a single event by ticker with the full set of query parameters
+    /// (`with_nested_markets`, `exclude_markets`).
+    pub async fn get_event_with_params(
+        &self,
+        event_ticker: &str,
+        params: GetEventParams,
+    ) -> Result<GetEventResponse, KalshiError> {
+        if params.exclude_markets == Some(true) && params.with_nested_markets == Some(true) {
+            return Err(KalshiError::InvalidParams(
+                "GET /events/{event_ticker}: exclude_markets cannot be combined with with_nested_markets=true"
+                    .to_string(),
+            ));
+        }
+        let path = Self::full_path(&format!("/events/{event_ticker}"));
         self.send(
             Method::GET,
             &path,

@@ -254,6 +254,9 @@ pub enum MarginOrderReason {
 pub struct GetMarginExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    /// Estimated end of the current maintenance window; not guaranteed and can be extended.
+    #[serde(default)]
+    pub exchange_estimated_resume_time: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -682,6 +685,123 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    /// Premium of the final bar evaluated by the estimate (signed decimal fraction); omitted
+    /// when that bar has no available premium.
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    /// Last second of the final bar evaluated; can precede `computed_time` when feeds lag.
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Corporate actions
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMarginCorporateActionsParams {
+    /// Filter by market ticker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    /// Filter by market UUID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionType {
+    CashDividend,
+    SpecialDividend,
+    SpinOff,
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionStatus {
+    Scheduled,
+    Cancelled,
+    Applied,
+    Lapsed,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Terms for `cash_dividend`, `special_dividend` and `spin_off`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MarginCorporateActionCashTerms {
+    #[serde(default)]
+    pub cash_per_share: Option<String>,
+    #[serde(default)]
+    pub cash_per_contract: Option<String>,
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+/// Terms for `stock_split`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MarginCorporateActionSplitTerms {
+    #[serde(default)]
+    pub ratio_old: Option<String>,
+    #[serde(default)]
+    pub ratio_new: Option<String>,
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+/// Terms for `final_settlement`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionFinalSettlementTerms {
+    /// bankruptcy, merger, delisting or other.
+    pub reason: String,
+    #[serde(default)]
+    pub settlement_price_per_share: Option<String>,
+    #[serde(default)]
+    pub settlement_price_per_contract: Option<String>,
+}
+
+/// Terms for `ticker_change`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
+}
+
+/// A margin corporate action notice. Scheduled, applied and lapsed notices carry exactly one
+/// terms object matching `type`; cancelled notices omit all terms and `execution_time`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateAction {
+    pub id: String,
+    pub market_id: String,
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginCorporateActionType,
+    pub status: MarginCorporateActionStatus,
+    pub updated_ts: String,
+    #[serde(default)]
+    pub execution_time: Option<String>,
+    #[serde(default)]
+    pub cash: Option<MarginCorporateActionCashTerms>,
+    #[serde(default)]
+    pub split: Option<MarginCorporateActionSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<MarginCorporateActionFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<MarginCorporateActionTickerChangeTerms>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginCorporateActionsResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub corporate_actions: Vec<MarginCorporateAction>,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -990,6 +1110,23 @@ impl KalshiRestClient {
             Option::<&()>::None,
             Option::<&()>::None,
             true,
+        )
+        .await
+    }
+
+    /// Scheduled and recently updated (last seven days) corporate action notices for margin
+    /// markets, ordered by ex-date ascending.
+    pub async fn get_margin_corporate_actions(
+        &self,
+        params: GetMarginCorporateActionsParams,
+    ) -> Result<GetMarginCorporateActionsResponse, KalshiError> {
+        let path = Self::full_path("/margin/corporate_actions");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
         )
         .await
     }
