@@ -111,7 +111,8 @@ examples are ambiguous.
 - Known unmodeled spec surface (pre-existing, not part of this refresh): FCM subtrader/position
   transfer/block trade endpoints, RFQ batches, weather index, target-balance allocation
   (`resting_margin_reservation`), API usage-level volume progress, intra-exchange instance transfers
-  (`client_transfer_id`), margin exit triggers, margin fee-tier rates, and FIX.
+  (`client_transfer_id`), the `user_filter` subscribe param for `communications` /
+  `rfq_batches` WebSocket channels, margin exit triggers, margin fee-tier rates, and FIX.
 
 ## Test Strategy
 

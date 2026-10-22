@@ -108,7 +108,7 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 | `reduce_only` / ReduceOnlyCancel `last_update_reason` | Added to `WsUserOrder`; margin already had it |
 | `obscure_creator_id` | Added |
 | Margin premium index endpoint | Added |
-| `user_filter: "self"` on communications WS | No change — `user_filter` already modeled |
+| `user_filter: "self"` on communications WS | **Gap** — `WsSubscriptionParamsV2` has no `user_filter` yet; deferred (touches every subscription-params literal), tracked in `docs/spec-parity.md` |
 | `liquidity_dollars` removed | Removed (breaking) |
 | FIX RFQ `TransactTime` | No change — FIX |
 | Margin ticker `reference_price` for Pyth perps | No change — already `Option` |
