@@ -171,9 +171,23 @@ pub struct CreateApiKeyResponse {
     pub extra: Map<String, Value>,
 }
 
+/// Signature algorithm of an API key pair (2026-09-24).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyType {
+    Rsa,
+    Ed25519,
+    /// Unrecognised future key type.
+    #[serde(other, skip_serializing)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateApiKeyRequest {
     pub name: String,
+    /// Defaults to `rsa` server-side when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
 }
@@ -181,6 +195,9 @@ pub struct GenerateApiKeyRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateApiKeyResponse {
     pub api_key_id: String,
+    /// Required by the spec; `Option` so responses predating the field still parse.
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
     pub private_key: String,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,

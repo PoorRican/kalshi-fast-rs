@@ -165,6 +165,10 @@ pub struct GetEventsResponse {
 pub struct GetEventParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub with_nested_markets: Option<bool>, // default false
+    /// Return event metadata without child markets; cannot be combined with
+    /// `with_nested_markets=true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude_markets: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -278,6 +282,28 @@ impl KalshiRestClient {
         let path = Self::full_path(&format!("/events/{event_ticker}"));
         let params = GetEventParams {
             with_nested_markets,
+            exclude_markets: None,
+        };
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Get a single event without loading its child markets (`exclude_markets=true`).
+    /// Page markets with `GET /markets?event_ticker=...&limit=...&cursor=...`.
+    pub async fn get_event_without_markets(
+        &self,
+        event_ticker: &str,
+    ) -> Result<GetEventResponse, KalshiError> {
+        let path = Self::full_path(&format!("/events/{event_ticker}"));
+        let params = GetEventParams {
+            with_nested_markets: None,
+            exclude_markets: Some(true),
         };
         self.send(
             Method::GET,

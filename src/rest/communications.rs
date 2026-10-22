@@ -61,6 +61,12 @@ pub struct Quote {
     pub yes_contracts_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub no_contracts_fp: Option<FixedPointCount>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
+    #[serde(default)]
+    pub creator_subaccount: Option<i64>,
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -89,6 +95,10 @@ pub struct RFQ {
     pub cancelled_ts: Option<String>,
     #[serde(default)]
     pub updated_ts: Option<String>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
+    #[serde(default)]
+    pub creator_subaccount: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -201,6 +211,13 @@ pub struct CreateRFQRequest {
     pub subtrader_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+    /// Hide the creator's public communications ID from other users (2026-10-01).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
+    /// Size quotes against the target cost as principal only; fees are charged on top.
+    /// Only valid together with a target cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -70,6 +70,9 @@ pub struct WsEnvelope {
     pub msg: Option<Box<RawValue>>,
     #[serde(default)]
     pub subscriptions: Option<Vec<WsSubscriptionInfo>>,
+    /// Unix ms when Kalshi queued this message at the network layer (2026-10-01).
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 impl WsEnvelope {
@@ -101,6 +104,7 @@ impl WsEnvelope {
             seq,
             msg,
             subscriptions,
+            ..
         } = self;
 
         match msg_type {

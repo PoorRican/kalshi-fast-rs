@@ -91,6 +91,28 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+## 2026-10 Refresh Notes
+
+- Validated against OpenAPI 3.34.0, AsyncAPI 2.0.0, Perps OpenAPI 0.0.1, Perps AsyncAPI 2.0.0 and the
+  changelog through 2026-10-29.
+- `clock` on `orderbook_snapshot` / `orderbook_delta` is `required` in the AsyncAPI but modeled as
+  `Option<i64>`: the changelog dates its rollout 2026-10-29. `sending_ts_ms` is only exposed on
+  `WsEnvelope`; the typed message enums ignore it.
+- `Market::settlement_bounds_type` is `required` in the spec but `Option` for older payloads;
+  `settlement_floor_dollars` is nullable and only set for `floor` markets. `liquidity_dollars` was
+  removed upstream and from the crate.
+- `MarginMarket::{market_version, funding_deadband, funding_cap, funding_limit_unit,
+  funding_invalid_premium_handling}` are required by the spec but modeled as `Option` so older
+  payloads and fixtures parse. Enum-like fields carry an `Unknown` catch-all.
+- Ed25519 keys sign the same pre-sign text as RSA (`{timestamp_ms}{METHOD}{path}`), unhashed,
+  base64-encoded. Key type is auto-detected from the PEM.
+- Predictions and Margin exchange-status schemas are shared: `intra_exchange_transfers_active` and
+  `exchange_index_statuses` exist only on the Predictions type (Margin never returns them).
+- Known unmodeled spec surface (pre-existing, not part of this refresh): FCM subtrader/position
+  transfer/block trade endpoints, RFQ batches, weather index, target-balance allocation
+  (`resting_margin_reservation`), API usage-level volume progress, intra-exchange instance transfers
+  (`client_transfer_id`), margin exit triggers, margin fee-tier rates, and FIX.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

@@ -9,8 +9,50 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-22
+
+### Compatibility
+
+- Docs snapshot: 2026-10-22
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-29
+
+### Breaking
+
+- [Rust API] `Market::liquidity_dollars` removed (upstream removed the field 2026-10-01; it had returned
+  `"0.0000"` since February). Use `yes_bid_size_fp` / `yes_ask_size_fp`.
+- [Rust API] `CreateRFQRequest` gains `obscure_creator_id` and `target_cost_excludes_fees`;
+  `CreateMarginOrderRequest` gains `market_version`. Struct literals must supply the new fields.
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (omit for all margin markets).
+- [Rust API] `MarginChannel` gains `CorporateActions`; `MarginDataMessage` gains `CorporateActionsDelta`.
+- [Rust API] `WsEnvelope` gains `sending_ts_ms`; `GetEventParams` gains `exclude_markets`;
+  `GenerateApiKeyRequest` gains `key_type`.
+
 ### Added
 
+- [Upstream] Ed25519 API keys (2026-09-24): `KalshiAuth::from_pem_str` / `from_pem_file` accept Ed25519
+  PKCS#8 PEM in addition to RSA and sign the same pre-sign text. `GenerateApiKeyRequest::key_type` /
+  `GenerateApiKeyResponse::key_type` (`ApiKeyType`). The RSA-PSS key is now built once at load time
+  instead of cloned per signature.
+- [Upstream] `Market::settlement_bounds_type` (`SettlementBoundsType`) and `settlement_floor_dollars`.
+- [Upstream] `clock` on `WsOrderbookSnapshot` / `WsOrderbookDelta` (and `*Ref`); `sending_ts_ms` on
+  `WsEnvelope`; `last_update_reason` (`WsLastUpdateReason`, including `SettlementBoundsCancel`) on
+  `WsUserOrder`.
+- [Upstream] `KalshiRestClient::get_event_without_markets` (`exclude_markets=true`).
+- [Upstream] RFQ: `obscure_creator_id` and `target_cost_excludes_fees` on create; `target_cost_excludes_fees`
+  and `creator_subaccount` / `rfq_creator_subaccount` on `RFQ` / `Quote`.
+- [Upstream] Predictions `GetExchangeStatusResponse`: `intra_exchange_transfers_active`,
+  `exchange_index_statuses`.
+- [Upstream] Margin: `market_version`, `funding_deadband`, `funding_cap`, `funding_limit_unit`,
+  `funding_invalid_premium_handling`, `bid_size_fp`, `ask_size_fp` on `MarginMarket`;
+  `market_version` on `CreateMarginOrderRequest`; `premium_index` / `premium_index_ts` on the funding
+  estimate; `exchange_estimated_resume_time` on margin exchange status.
+- [Upstream] Margin endpoints `get_margin_premium_index`, `get_margin_corporate_actions`,
+  `get_margin_market_orderbooks`; margin WebSocket `corporate_actions` channel and
+  `corporate_actions_delta` message.
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
   WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
   goes through the normal reconnect and backoff path. Default `None` keeps the previous unbounded
@@ -20,9 +62,57 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ### Tests
 
+- [Tests] `tests/spec_2026_10_parity.rs` plus an Ed25519 sign/verify unit test in `auth.rs`.
 - [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
   per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
   disconnecting with the keepalive cause.
+
+### Docs
+
+- [Docs] Changelog disposition table and known unmodeled endpoints recorded in `docs/spec-parity.md`.
+
+**Changelog entries since the 2026-09-28 watermark and disposition:**
+
+| Entry | Action |
+|---|---|
+| Orderbook `clock` (10-29) | Added (`Option`: not yet sent at snapshot time) |
+| Intra-account transfers return `client_transfer_id` (10-22, 10-15) | No change — `/portfolio/intra_exchange_instance_transfer*` endpoints not modeled |
+| Post-only RFQ cancellations count toward penalties (10-19) | No change — server behavior |
+| Milestone `details.status` lags (10-22) | No change — doc clarification |
+| WS session Redis auth (10-22) | No change — server internal |
+| `user_order` ms-truncated time strings (10-22) | No code change — still RFC3339 strings; noted on `WsUserOrder` |
+| REST shared-schema corrections (10-22) | Added margin `exchange_estimated_resume_time`; Predictions exchange-status fields; shard/subaccount transfer fields unmodeled |
+| `GET /portfolio/balance` own rate bucket (10-15) | No change — server metering |
+| Funding premium over bars (10-22) | No change — server behavior; estimate fields added |
+| FIX mass cancel / FIX logon / FIX TradeID / FIX ClearingBusinessDate / ReduceOnly ExecInst / SecurityStatus | No change — FIX not in crate |
+| MCP OAuth grants (10-15) | No change — server auth |
+| `exclude_markets` on `GET /events/{ticker}` | Added |
+| Margin corporate actions (REST, WS channel, FIX) | Added REST + WS; FIX n/a |
+| Margin batch orderbooks | Added |
+| MVE `invalid_parameters` messages | No change — error text |
+| Margin `funding_invalid_premium_handling`, `funding_*`, `bid/ask_size_fp`, `market_version` | Added |
+| Intra-exchange transfer `client_transfer_id` request (10-15) | No change — endpoint unmodeled |
+| Margin trades optional `ticker` | Changed to `Option` (breaking) |
+| Restricted keys for perps (10-15) | No change — server auth |
+| FIX/RFQ closure notifications, shard auto-transfers (10-08) | No change — server behavior |
+| `market_version` / 409 `market_version_mismatch` (10-08) | Added request field |
+| Fills `ticker` accepts 100 comma-separated tickers | No change — `ticker` is a `String`; CSV passes through |
+| MVE collections `price_level_structure` / `price_ranges` (10-08) | No change — already present |
+| Margin exit-trigger validations (10-01) | No change — exit-trigger endpoints unmodeled |
+| Positions `settlement_status` (10-01) | No change — already present |
+| WS `sending_ts_ms` (10-01) | Added to `WsEnvelope` only; typed message enums ignore it |
+| Amend `expiration_time` (10-01) | No change — already present in REST amend types |
+| Zero-price exit triggers rejected | No change — unmodeled |
+| `settlement_bounds_type` / `settlement_floor_dollars` / `SettlementBoundsCancel` | Added |
+| Ed25519 default in web UI; Ed25519 keys (09-24) | Added signing + `key_type` |
+| `reduce_only` / ReduceOnlyCancel `last_update_reason` | Added to `WsUserOrder`; margin already had it |
+| `obscure_creator_id` | Added |
+| Margin premium index endpoint | Added |
+| `user_filter: "self"` on communications WS | No change — `user_filter` already modeled |
+| `liquidity_dollars` removed | Removed (breaking) |
+| FIX RFQ `TransactTime` | No change — FIX |
+| Margin ticker `reference_price` for Pyth perps | No change — already `Option` |
+| Rate-limit increase, permessage-deflate, `resting_margin_reservation`, historical fills/orders subaccounts (09-24) | No change — server behavior / target-balance endpoints unmodeled |
 
 
 ## [0.9.2] - 2026-10-19

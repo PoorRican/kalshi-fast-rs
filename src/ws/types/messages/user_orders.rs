@@ -3,7 +3,30 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// Reason for the most recent order update (`lastUpdateReason`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum WsLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    ReduceOnlyCancel,
+    SettlementBoundsCancel,
+    /// Unrecognised future reason.
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
+///
+/// `created_time`, `last_update_time` and `expiration_time` are truncated (not rounded) to
+/// milliseconds as of 2026-10-22 and agree with the `*_ts_ms` fields.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
     pub order_id: String,
@@ -56,6 +79,9 @@ pub struct WsUserOrder {
     pub expiration_time: Option<String>,
     #[serde(default)]
     pub expiration_ts_ms: Option<i64>,
+    /// Reason for the most recent update; absent when none applies.
+    #[serde(default)]
+    pub last_update_reason: Option<WsLastUpdateReason>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
 }
