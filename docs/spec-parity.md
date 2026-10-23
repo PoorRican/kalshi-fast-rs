@@ -91,6 +91,21 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `clock` (exchange clock, 2026-10-21) is required on `orderbook_snapshot` and `orderbook_delta` in the
+  AsyncAPI, so `WsOrderbookSnapshot`/`WsOrderbookDelta` (and `*Ref`) model it as plain `i64`. Unlike
+  `seq` it is identical across connections, so use it to match a market's updates across redundant
+  connections; it may decrease across exchange maintenance and is not comparable across markets.
+  The margin (perps) AsyncAPI does not define `clock`.
+- `SubaccountBalance.exchange_index` is required in the OpenAPI (balances are per subaccount per exchange
+  index; restricted keys see only their locked subaccount). It is modeled as `u32`.
+- `GET /portfolio/orders` accepts up to 100 `event_ticker` values (was 10); `GetOrdersParams::validate`
+  enforces 100. `GET /portfolio/positions` and `GET /markets` remain at 10 per the YAML.
+- `GetEventParams::exclude_markets` is exposed via `get_event_with_params` (`get_event` keeps its
+  signature). The client rejects `exclude_markets=true` with `with_nested_markets=true`, as the YAML says.
+- `IntraExchangeInstanceTransfer.client_transfer_id` (optional) is not modeled: the crate has no
+  intra-exchange-instance transfer endpoints. Predictions `ExchangeStatus.intra_exchange_transfers_active`
+  and `exchange_index_statuses` are optional in the YAML and intentionally not modeled.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

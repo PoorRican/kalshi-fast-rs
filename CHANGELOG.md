@@ -9,6 +9,23 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+### Compatibility
+
+- Docs snapshot: 2026-10-23
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-23
+
+### Breaking
+
+- [Rust API] `WsOrderbookSnapshot`, `WsOrderbookDelta` and their `*Ref` variants gain the required
+  `clock: i64` field (exchange clock, identical across connections). Exhaustive struct literals must add it.
+- [Rust API] `SubaccountBalance` gains the required `exchange_index: u32`.
+- [Rust API] `GetEventParams` gains `exclude_markets`; exhaustive literals must add it or use
+  `..Default::default()`.
+
 ### Added
 
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
@@ -18,8 +35,21 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 - [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
   handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
 
+- [Upstream] `GET /portfolio/orders` accepts up to 100 `event_ticker` values (was 10).
+- [Rust API] `get_event_with_params` supports `GET /events/{event_ticker}?exclude_markets=true`.
+
+### Changelog review (2026-09-28 .. 2026-10-23)
+
+- No change needed: subaccount-restricted keys for balances (server behavior; `exchange_index` added),
+  FIX additions (NoMDEntryTypes, per-market mass cancel, corporate actions; no FIX support), Redis/TLS
+  session limits, post-only RFQ penalties, milestone `details.status` lag, `user_orders` ms-truncated
+  RFC3339 times (still strings), balance rate-limit bucket (server-side; no client-side limiter change),
+  funding premium averaging (semantics only), REST shared-definition schema corrections (reviewed; fields
+  optional), MCP OAuth grants, intra-account `client_transfer_id` (endpoints not implemented).
+
 ### Tests
 
+- [Tests] Coverage for `clock`, 100 event tickers, and `exclude_markets`.
 - [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
   per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
   disconnecting with the keepalive cause.

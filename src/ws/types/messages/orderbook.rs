@@ -7,6 +7,9 @@ use std::borrow::Cow;
 pub struct WsOrderbookSnapshot {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock of the newest change this snapshot includes (0 if none).
+    /// Identical on every connection, unlike `seq`.
+    pub clock: i64,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default)]
     pub yes_dollars_fp: Vec<(String, String)>,
@@ -20,6 +23,9 @@ pub struct WsOrderbookSnapshot {
 pub struct WsOrderbookDelta {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock of the action that made this change. Several deltas can
+    /// share a clock; identical on every connection, unlike `seq`.
+    pub clock: i64,
     pub price_dollars: String,
     pub delta_fp: String,
     pub side: YesNo,
@@ -41,6 +47,8 @@ pub struct WsOrderbookSnapshotRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// Exchange clock of the newest change this snapshot includes (0 if none).
+    pub clock: i64,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default, borrow)]
     pub yes_dollars_fp: Vec<(Cow<'a, str>, Cow<'a, str>)>,
@@ -54,6 +62,7 @@ impl<'a> WsOrderbookSnapshotRef<'a> {
         WsOrderbookSnapshot {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             yes_dollars_fp: self
                 .yes_dollars_fp
                 .into_iter()
@@ -75,6 +84,8 @@ pub struct WsOrderbookDeltaRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// Exchange clock of the action that made this change.
+    pub clock: i64,
     #[serde(borrow)]
     pub price_dollars: Cow<'a, str>,
     #[serde(borrow)]
@@ -98,6 +109,7 @@ impl<'a> WsOrderbookDeltaRef<'a> {
         WsOrderbookDelta {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             price_dollars: self.price_dollars.into_owned(),
             delta_fp: self.delta_fp.into_owned(),
             side: self.side,
@@ -119,7 +131,7 @@ mod tests {
     fn ws_orderbook_delta_side_parse() {
         let json = r#"{
             "market_ticker":"TEST",
-            "market_id":"1",
+            "market_id":"1","clock":1,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes"
@@ -135,7 +147,7 @@ mod tests {
     fn ws_orderbook_delta_timestamps_are_optional() {
         let json_missing_both = r#"{
             "market_ticker":"TEST",
-            "market_id":"1",
+            "market_id":"1","clock":1,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes"
@@ -146,7 +158,7 @@ mod tests {
 
         let json_missing_ts_only = r#"{
             "market_ticker":"TEST",
-            "market_id":"1",
+            "market_id":"1","clock":1,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes",
@@ -159,7 +171,7 @@ mod tests {
 
         let json_missing_ts_ms_only = r#"{
             "market_ticker":"TEST",
-            "market_id":"1",
+            "market_id":"1","clock":1,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes",

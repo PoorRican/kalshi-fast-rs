@@ -4,7 +4,7 @@ pub(crate) use cargo_husky as _;
 use kalshi_fast::{
     ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
     CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
-    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
+    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventParams, GetEventsParams,
     GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
     GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
     GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
@@ -1235,7 +1235,7 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
@@ -1442,18 +1442,41 @@ fn get_orders_params_validates_limit_bounds() {
 
 #[test]
 fn get_orders_params_validates_event_ticker_count() {
-    let params = GetOrdersParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
+    let tickers = |n: usize| Some((0..n).map(|i| format!("E{i}")).collect::<Vec<_>>());
+    let ok = GetOrdersParams {
+        event_ticker: tickers(100),
         ..Default::default()
     };
-    assert!(params.validate().is_err());
+    assert!(ok.validate().is_ok());
+    let too_many = GetOrdersParams {
+        event_ticker: tickers(101),
+        ..Default::default()
+    };
+    assert!(too_many.validate().is_err());
+}
+
+#[test]
+fn get_event_params_serializes_exclude_markets() {
+    let params = GetEventParams {
+        exclude_markets: Some(true),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&params).unwrap(),
+        serde_json::json!({"exclude_markets": true})
+    );
+}
+
+#[test]
+fn ws_orderbook_messages_parse_clock() {
+    let snap: kalshi_fast::WsOrderbookSnapshot =
+        serde_json::from_str(r#"{"market_ticker":"T","market_id":"1","clock":4182057}"#).unwrap();
+    assert_eq!(snap.clock, 4182057);
+    let delta: kalshi_fast::WsOrderbookDelta = serde_json::from_str(
+        r#"{"market_ticker":"T","market_id":"1","clock":4182061,"price_dollars":"0.01","delta_fp":"1.00","side":"yes"}"#,
+    )
+    .unwrap();
+    assert_eq!(delta.clock, 4182061);
 }
 
 #[test]
