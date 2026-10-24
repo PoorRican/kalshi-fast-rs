@@ -629,8 +629,8 @@ fn get_event_response_deserializes_rich_schema_fields() {
             "previous_yes_ask_dollars": "0.5500",
             "previous_price": 52,
             "previous_price_dollars": "0.5200",
-            "liquidity": 1000,
-            "liquidity_dollars": "10.0000",
+            "settlement_bounds_type": "floor",
+            "settlement_floor_dollars": "0.2500",
             "expiration_value": "123.4",
             "occurrence_datetime": "2026-04-16T18:30:00Z",
             "tick_size": 1,
@@ -658,8 +658,12 @@ fn get_event_response_deserializes_rich_schema_fields() {
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
     assert_eq!(
-        resp.markets[0].liquidity_dollars.as_deref(),
-        Some("10.0000")
+        resp.markets[0].settlement_bounds_type.as_deref(),
+        Some("floor")
+    );
+    assert_eq!(
+        resp.markets[0].settlement_floor_dollars.as_deref(),
+        Some("0.2500")
     );
     assert_eq!(
         resp.markets[0].occurrence_datetime.as_deref(),
@@ -1235,12 +1239,13 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
     assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[0].exchange_index, 0);
 }
 
 #[test]
@@ -1402,13 +1407,13 @@ fn get_events_params_validates_limit_bounds() {
 #[test]
 fn get_positions_params_validates_subaccount_bounds() {
     let params = GetPositionsParams {
-        subaccount: Some(32),
+        subaccount: Some(63),
         ..Default::default()
     };
     assert!(params.validate().is_ok());
 
     let params = GetPositionsParams {
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1442,15 +1447,15 @@ fn get_orders_params_validates_limit_bounds() {
 
 #[test]
 fn get_orders_params_validates_event_ticker_count() {
+    let tickers = |n: usize| Some((1..=n).map(|i| format!("E{i}")).collect::<Vec<_>>());
     let params = GetOrdersParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
+        event_ticker: tickers(100),
+        ..Default::default()
+    };
+    assert!(params.validate().is_ok());
+
+    let params = GetOrdersParams {
+        event_ticker: tickers(101),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1459,7 +1464,7 @@ fn get_orders_params_validates_event_ticker_count() {
 #[test]
 fn get_orders_params_validates_subaccount_bounds() {
     let params = GetOrdersParams {
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(params.validate().is_err());
@@ -1549,7 +1554,7 @@ fn create_order_request_validate_subaccount_bounds() {
         action: BuySell::Buy,
         count: Some(1),
         yes_price: Some(10),
-        subaccount: Some(32),
+        subaccount: Some(63),
         ..Default::default()
     };
     assert!(req.validate().is_ok());
@@ -1560,7 +1565,7 @@ fn create_order_request_validate_subaccount_bounds() {
         action: BuySell::Buy,
         count: Some(1),
         yes_price: Some(10),
-        subaccount: Some(33),
+        subaccount: Some(64),
         ..Default::default()
     };
     assert!(req.validate().is_err());
@@ -1723,7 +1728,7 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
                 "volume_fp": "10.00",
                 "open_interest_fp": "10.00",
                 "notional_value_dollars": "1.0000",
-                "liquidity_dollars": "20.0000",
+                "settlement_bounds_type": "default",
                 "price_level_structure": "linear_cent",
                 "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
             }]
@@ -1737,7 +1742,8 @@ fn get_event_response_deserializes_without_removed_cent_fields() {
     assert_eq!(market.yes_ask, None);
     assert_eq!(market.notional_value, None);
     assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
-    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
+    assert_eq!(market.settlement_bounds_type.as_deref(), Some("default"));
+    assert_eq!(market.settlement_floor_dollars, None);
 }
 
 #[test]
@@ -1822,7 +1828,9 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
         }]
     }"#;
 
@@ -1833,6 +1841,11 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
+    assert_eq!(
+        resp.multivariate_contracts[0].price_level_structure,
+        "linear_cent"
+    );
+    assert_eq!(resp.multivariate_contracts[0].price_ranges.len(), 1);
 
     let lookup_json = r#"{
         "lookup_points": [{

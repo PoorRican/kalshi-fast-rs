@@ -21,6 +21,7 @@ pub enum MarginDataMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     OrderGroupUpdates(MarginEnvelope<OrderGroupUpdatesMsg>),
     OrderbookSnapshot(MarginEnvelope<OrderbookSnapshotMsg>),
+    CorporateActionsDelta(MarginEnvelope<CorporateActionsDeltaMsg>),
     // -- control messages ----------------------------------------------------
     Subscribed {
         id: Option<u64>,
@@ -97,6 +98,8 @@ enum MarginWireMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates(SequencedMarginEnvelope<OrderGroupUpdatesMsg>),
+    #[serde(rename = "corporate_actions_delta")]
+    CorporateActionsDelta(SequencedMarginEnvelope<CorporateActionsDeltaMsg>),
     #[serde(rename = "subscribed")]
     Subscribed {
         id: Option<u64>,
@@ -137,6 +140,7 @@ impl From<MarginWireMessage> for MarginDataMessage {
             MarginWireMessage::Fill(e) => Self::Fill(e),
             MarginWireMessage::UserOrder(e) => Self::UserOrder(e),
             MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e.into()),
+            MarginWireMessage::CorporateActionsDelta(e) => Self::CorporateActionsDelta(e.into()),
             MarginWireMessage::Subscribed { id, msg } => Self::Subscribed {
                 id,
                 sid: Some(msg.sid),
@@ -186,6 +190,9 @@ pub struct MarginEnvelope<T> {
     #[serde(default)]
     pub seq: Option<u64>,
     pub msg: T,
+    /// Unix milliseconds when Kalshi queued this message at the network layer.
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,6 +202,8 @@ struct SequencedMarginEnvelope<T> {
     sid: u64,
     seq: u64,
     msg: T,
+    #[serde(default)]
+    sending_ts_ms: Option<i64>,
 }
 
 impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
@@ -204,6 +213,7 @@ impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
             sid: envelope.sid,
             seq: Some(envelope.seq),
             msg: envelope.msg,
+            sending_ts_ms: envelope.sending_ts_ms,
         }
     }
 }
@@ -349,6 +359,66 @@ pub struct TickerMsg {
     #[serde(default)]
     pub funding_rate: Option<TickerFundingRate>,
     pub ts_ms: i64,
+}
+
+// ---------------------------------------------------------------------------
+// corporate_actions_delta  —  applied split / final settlement / ticker change
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionsDeltaMsg {
+    pub corporate_action: MarginWsCorporateAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginWsCorporateActionType {
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+}
+
+/// A corporate action the exchange applied. Exactly one terms object matches `action_type`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsCorporateAction {
+    /// Notice id, matching `id` in `GET /margin/corporate_actions`.
+    pub id: String,
+    pub market_id: String,
+    /// Market ticker; the new ticker for `ticker_change`.
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginWsCorporateActionType,
+    /// Unix milliseconds when the exchange applied the action.
+    pub ts_ms: i64,
+    #[serde(default)]
+    pub split: Option<MarginWsSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<MarginWsFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<MarginWsTickerChangeTerms>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsSplitTerms {
+    /// Old-share component of the ratio (a 4-for-1 split is `ratio_new` 4, `ratio_old` 1).
+    pub ratio_old: String,
+    pub ratio_new: String,
+    /// Mark price in dollars before the split.
+    pub pre_split_mark_price: String,
+    /// Mark price in dollars after the split.
+    pub post_split_mark_price: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsFinalSettlementTerms {
+    /// Final settlement price in dollars per contract.
+    pub settlement_price_per_contract: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
 }
 
 // ---------------------------------------------------------------------------

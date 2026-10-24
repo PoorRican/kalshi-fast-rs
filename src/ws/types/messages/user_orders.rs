@@ -3,12 +3,38 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// Reason for the most recent update of a `user_orders` message.
+///
+/// `ReduceOnlyCancel` means `reduce_only` capped or cancelled the order at placement;
+/// `SettlementBoundsCancel` means a settlement bounds update put a resting order out of bounds.
+/// Unrecognised future reasons deserialize to [`Self::Unknown`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum WsOrderUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    ReduceOnlyCancel,
+    SettlementBoundsCancel,
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
     pub order_id: String,
     pub user_id: String,
     pub ticker: String,
+    /// Exchange shard the order lives on. Required by the spec; `Option` so older frames parse.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub status: Option<OrderStatus>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
@@ -56,6 +82,8 @@ pub struct WsUserOrder {
     pub expiration_time: Option<String>,
     #[serde(default)]
     pub expiration_ts_ms: Option<i64>,
+    #[serde(default)]
+    pub last_update_reason: Option<WsOrderUpdateReason>,
     #[serde(default)]
     pub subaccount_number: Option<u32>,
 }

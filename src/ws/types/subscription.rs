@@ -29,6 +29,21 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `communications` only: restrict `rfq_created`/`rfq_deleted` to RFQs you created.
+    /// Quote notifications are unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<WsUserFilter>,
+}
+
+/// `user_filter` for `communications` subscriptions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsUserFilter {
+    /// RFQs from all users (the default; serialized as `""`).
+    #[serde(rename = "")]
+    All,
+    /// Only RFQs you created.
+    #[serde(rename = "self")]
+    Own,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -381,12 +396,35 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
         ));
     }
 
+    if params.user_filter.is_some() && !has_communications {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: user_filter only allowed for communications".to_string(),
+        ));
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_subscription_restricts_user_filter_to_communications() {
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Communications],
+            user_filter: Some(WsUserFilter::Own),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Fill],
+            user_filter: Some(WsUserFilter::Own),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_err());
+    }
 
     #[test]
     fn validate_subscription_requires_market_tickers_for_orderbook_delta() {

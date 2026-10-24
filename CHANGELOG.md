@@ -9,8 +9,51 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+
+## [0.10.0] - 2026-10-24
+
+### Compatibility
+
+- Docs snapshot: 2026-10-24
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-29
+
+### Breaking
+
+- [Upstream] `Market::liquidity_dollars` removed (removed upstream 2026-10-01). The legacy
+  `liquidity` / `liquidity_fp` fields, absent from the schema, are removed with it.
+- [Rust API] `AmendOrderV2Request` gains `expiration_time`; `GetMarginTradesParams::ticker` is now
+  `Option<String>`; `MarginMarket`, `MultivariateEventCollection` and `SubaccountBalance` gain
+  spec-required fields (`market_version` and `funding_*`; `price_level_structure` / `price_ranges`;
+  `exchange_index`); `GetMarginExchangeStatusResponse`, `CreateRFQRequest`, `GetPositionsParams`,
+  `GetOrdersParams`, `GetFillsParams`, `CreateMarginOrderRequest` and `WsSubscriptionParamsV2` gain
+  fields; `MarginChannel` and `MarginDataMessage` gain variants. Struct literals and exhaustive
+  matches need updating.
+- [Rust API] Subaccount validation widened from `0..=32` to `0..=63`; `GetOrdersParams::validate`
+  accepts up to 100 `event_ticker` values (was 10).
+
 ### Added
 
+- [Upstream] `Market::{settlement_bounds_type, settlement_floor_dollars, exchange_index}`.
+- [Upstream] `GetPositionsParams::settlement_status` (`PositionSettlementStatus`),
+  `exchange_index` on orders/fills/positions params, comma-separated `ticker` documented (max 100) on
+  `GetFillsParams`, `GetEventParams::exclude_markets` and `get_event_with_params`.
+- [Upstream] `CreateRFQRequest::{obscure_creator_id, target_cost_excludes_fees}`;
+  `target_cost_centi_cents` is now `#[deprecated]`; the request derives `Default`.
+- [Upstream] WebSocket: `clock` on `WsOrderbookSnapshot` / `WsOrderbookDelta` (+ `Ref` types),
+  `WsUserOrder::{last_update_reason, exchange_index}` with `WsOrderUpdateReason`,
+  `WsSubscriptionParamsV2::user_filter` (`WsUserFilter`) for `communications`, and
+  `sending_ts_ms` on `WsEnvelope` / `MarginEnvelope`.
+- [Upstream] Margin REST: `get_margin_market_orderbooks` (up to 100 tickers),
+  `get_margin_corporate_actions`, `get_margin_premium_index`; `MarginMarket` gains
+  `market_version`, `bid_size_fp`, `ask_size_fp`, funding configuration and `market_id`;
+  `CreateMarginOrderRequest::market_version`; `premium_index` / `premium_index_ts` on the funding
+  estimate; `exchange_estimated_resume_time` on margin exchange status.
+- [Upstream] Margin WebSocket: public `corporate_actions` channel (`MarginChannel::CorporateActions`)
+  and `MarginDataMessage::CorporateActionsDelta`.
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
   WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
   goes through the normal reconnect and backoff path. Default `None` keeps the previous unbounded
@@ -18,12 +61,18 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 - [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
   handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
 
+### Docs
+
+- [Docs] `docs/spec-parity.md` records the 2026-10 modeling decisions and a "Known gaps" list of
+  upstream endpoints/channels the crate does not implement yet (several predate the previous
+  watermark, e.g. RFQ batches, deposits/withdrawals, intra-exchange transfers, Ed25519 signing).
+
 ### Tests
 
+- [Tests] `tests/spec_refresh_2026_10.rs` covers the new REST/WebSocket/margin shapes.
 - [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
   per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
   disconnecting with the keepalive cause.
-
 
 ## [0.9.2] - 2026-10-19
 

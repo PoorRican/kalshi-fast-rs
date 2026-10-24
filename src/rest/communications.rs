@@ -183,17 +183,23 @@ pub struct GetRFQResponse {
     pub rfq: RFQ,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateRFQRequest {
     pub market_ticker: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_fp: Option<FixedPointCount>,
+    #[deprecated(note = "deprecated upstream; use `target_cost_dollars`")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Hide the requester's public communications ID from other users until a quote executes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,

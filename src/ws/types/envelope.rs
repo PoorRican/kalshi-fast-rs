@@ -70,6 +70,12 @@ pub struct WsEnvelope {
     pub msg: Option<Box<RawValue>>,
     #[serde(default)]
     pub subscriptions: Option<Vec<WsSubscriptionInfo>>,
+    /// Unix milliseconds when Kalshi queued this message at the network layer.
+    ///
+    /// Transport metadata: typed [`WsMessageV2`] variants do not carry it; read it from the
+    /// envelope (or the raw frame) when measuring delivery latency.
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 impl WsEnvelope {
@@ -101,6 +107,7 @@ impl WsEnvelope {
             seq,
             msg,
             subscriptions,
+            sending_ts_ms: _,
         } = self;
 
         match msg_type {

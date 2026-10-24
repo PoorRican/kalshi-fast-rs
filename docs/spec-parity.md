@@ -91,6 +91,54 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- **2026-10 refresh (changelog through 2026-10-29; OpenAPI 3.34.0, Perps OpenAPI 0.0.1, AsyncAPI 2.0.0).**
+  - `liquidity_dollars` was removed upstream (always `"0.0000"` since Feb 2026) and is removed from
+    `Market`, along with the legacy `liquidity` / `liquidity_fp` (not in the schema). Top-of-book size
+    is `yes_bid_size_fp` / `yes_ask_size_fp`. `Market` still models every spec-required field as
+    `Option` (and keeps some pre-fixed-point legacy fields) by design; new fields
+    `settlement_bounds_type` (`default` | `floor`), `settlement_floor_dollars` and `exchange_index` follow that.
+  - `clock` on `orderbook_snapshot` / `orderbook_delta` is required by the AsyncAPI but modeled as
+    `Option<u64>`: captured pre-2026-10-21 frames lack it and dropping a book update over a missing
+    sequencing aid is worse than a `None`. It is the cross-connection ordering key (unlike `seq`).
+  - `sending_ts_ms` is envelope metadata on every message. It is exposed on `WsEnvelope` and
+    `MarginEnvelope`; the typed Predictions `WsMessageV2` variants deliberately do not carry it
+    (adding it would break every exhaustive match for a latency-only field). Read it from the raw frame.
+  - `user_orders.last_update_reason` is `WsOrderUpdateReason` with an `Unknown` catch-all, since the
+    spec's enum has grown twice already (`ReduceOnlyCancel`, `SettlementBoundsCancel`).
+    `exchange_index` on `WsUserOrder` is spec-required but `Option` for older frames.
+  - Newly spec-required REST fields are modeled as required where the endpoint is new or the field
+    cannot reasonably be absent: `SubaccountBalance.exchange_index`, `MultivariateEventCollection`
+    `price_level_structure` / `price_ranges`, `MarginMarket` `market_version` and
+    `funding_{deadband,cap,limit_unit,invalid_premium_handling}`. `MarginMarket.schedule` is spec-required
+    but kept `Option` (pre-existing).
+  - `CreateRFQRequest.target_cost_centi_cents` is `#[deprecated]` (spec marks it deprecated, still
+    accepted); the struct now derives `Default` so callers can omit it with `..Default::default()`.
+  - Margin `bid_size_fp` / `ask_size_fp` are omitted when market stats are unavailable, hence `Option`.
+  - `GET /portfolio/subaccounts/balances` returns one row per `(subaccount_number, exchange_index)`.
+    Subaccount validation is `0..=63` (spec text "0 for primary, 1-63"; the schema only has `minimum: 0`).
+  - `GET /portfolio/balance` now has its own rate-limit bucket (1 rps Basic/Advanced, 5 rps above).
+    The client-side limiter still charges balance calls to the read bucket (conservative; no change).
+  - The Predictions `GET /portfolio/positions` `event_ticker` description now says a single event
+    ticker; the crate still sends a CSV list (up to 10) unchanged.
+
+### Known gaps (not implemented; tracked, not silently dropped)
+
+These upstream surfaces have no Rust counterpart. Several predate the previous watermark, so earlier
+"validated through" dates covered the changelog text, not full endpoint coverage.
+
+- Predictions REST: `POST /portfolio/intra_exchange_instance_transfer` and its list/get endpoints
+  (so the 2026-10-22 `client_transfer_id` echo has nothing to attach to), `GET /portfolio/deposits`,
+  `GET /portfolio/withdrawals`, RFQ batches and block-trade proposals (`/communications/rfq_batches*`,
+  `/communications/block-trade-proposals*`), `/account/api_usage_level/*`, `/live_data/weather/*`,
+  `/live_data/events/{event_ticker}`, `/fcm/subtraders*`, `/fcm/fills`, `/portfolio/target_balance_allocation`.
+- Margin REST: margin exit triggers (`/margin/{isolated,cross}/positions/{ticker}/exit_trigger*`; the
+  2026-10-01 `stop_loss_past_liquidation` and strictly-positive-price rules are server-side validations),
+  `/margin/fee_tier_rates`, `/margin/fcm/*`, `/portfolio/intra_exchange_instance_transfer`.
+- WebSocket: Predictions channels `batch_communications`, `cfbenchmarks_value_5hz`, `pyth_value`.
+- Auth: Ed25519 request signing (`ApiKeyType::ed25519`). The web app now generates Ed25519 keys by
+  default, but the crate signs RSA-PSS only, so new web-generated keys must be created as RSA.
+- FIX: out of scope for this crate.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

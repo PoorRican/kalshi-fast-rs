@@ -51,7 +51,9 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    /// Market ticker. Omit to retrieve trades across all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,6 +126,11 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Market version you expect. If set and the market has moved to a different version
+    /// (e.g. after a stock split) the order is rejected with HTTP 409
+    /// `market_version_mismatch`; re-read the market before resubmitting. `0`/omitted skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -254,6 +261,9 @@ pub enum MarginOrderReason {
 pub struct GetMarginExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    /// Estimated time the exchange resumes; `None` when unknown or not paused.
+    #[serde(default)]
+    pub exchange_estimated_resume_time: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -277,9 +287,15 @@ pub struct GetMarginMarketsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginMarket {
+    /// Stable market UUID.
+    #[serde(default)]
+    pub market_id: Option<String>,
     pub ticker: String,
     pub status: MarginMarketStatus,
     pub title: String,
+    /// Starts at 1 and increases when trading resumes after a corporate action (e.g. a stock
+    /// split). Pass it as `market_version` on order creation to guard against stale reads.
+    pub market_version: u32,
     pub contract_size: String,
     pub underlying_multiplier: String,
     pub tick_size: String,
@@ -311,8 +327,14 @@ pub struct MarginMarket {
     pub volume_24h_notional_value_dollars: Option<String>,
     #[serde(default)]
     pub bid: Option<String>,
+    /// Contracts resting at the best bid (`"0.00"` when empty); omitted without market stats.
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
     #[serde(default)]
     pub ask: Option<String>,
+    /// Contracts resting at the best ask (`"0.00"` when empty); omitted without market stats.
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
     #[serde(default)]
     pub settlement_mark_price: Option<TickerPrice>,
     #[serde(default)]
@@ -323,6 +345,32 @@ pub struct MarginMarket {
     pub asset_class: Option<String>,
     #[serde(default)]
     pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Funding deadband set at market creation, in `funding_limit_unit`.
+    pub funding_deadband: f64,
+    /// Funding cap set at market creation, in `funding_limit_unit`.
+    pub funding_cap: f64,
+    pub funding_limit_unit: MarginFundingLimitUnit,
+    pub funding_invalid_premium_handling: MarginFundingInvalidPremiumHandling,
+}
+
+/// Unit of `funding_deadband` / `funding_cap`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+    #[serde(other)]
+    Unknown,
+}
+
+/// How funding averages a bar with no premium: `dampen` counts it as 0, `exclude` leaves it out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingInvalidPremiumHandling {
+    Dampen,
+    Exclude,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -682,6 +730,160 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    /// Premium of the final bar evaluated; omitted when that bar has no premium.
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    /// Last second of the final bar evaluated.
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
+}
+
+/// `GET /margin/markets/orderbooks` response: one entry per requested ticker, in request order.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginMarketOrderbooksResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub orderbooks: Vec<MarginMarketOrderbook>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginMarketOrderbook {
+    pub ticker: String,
+    pub orderbook: MarginOrderbookCount,
+}
+
+/// `GET /margin/corporate_actions` query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMarginCorporateActionsParams {
+    /// Filter by market ticker. Omit for all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    /// Filter by market UUID. Omit for all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginCorporateActionsResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub corporate_actions: Vec<MarginCorporateAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionType {
+    CashDividend,
+    SpecialDividend,
+    SpinOff,
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionStatus {
+    Scheduled,
+    Cancelled,
+    Applied,
+    Lapsed,
+    #[serde(other)]
+    Unknown,
+}
+
+/// A scheduled, cancelled, applied or lapsed corporate action notice.
+///
+/// Scheduled, applied and lapsed notices carry `execution_time` and exactly one terms object
+/// matching `action_type`; cancelled notices omit both. Amounts are dollar strings.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateAction {
+    pub id: String,
+    pub market_id: String,
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginCorporateActionType,
+    pub status: MarginCorporateActionStatus,
+    pub updated_ts: String,
+    #[serde(default)]
+    pub execution_time: Option<String>,
+    #[serde(default)]
+    pub cash: Option<MarginCorporateActionCashTerms>,
+    #[serde(default)]
+    pub split: Option<MarginCorporateActionSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<MarginCorporateActionFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<MarginCorporateActionTickerChangeTerms>,
+}
+
+/// Terms for dividends and spin-offs.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionCashTerms {
+    #[serde(default)]
+    pub cash_per_share: Option<String>,
+    #[serde(default)]
+    pub cash_per_contract: Option<String>,
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionSplitTerms {
+    #[serde(default)]
+    pub ratio_old: Option<String>,
+    #[serde(default)]
+    pub ratio_new: Option<String>,
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionFinalSettlementTerms {
+    pub reason: String,
+    #[serde(default)]
+    pub settlement_price_per_share: Option<String>,
+    #[serde(default)]
+    pub settlement_price_per_contract: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
+}
+
+/// `GET /margin/funding_rates/premium_index` query params.
+#[derive(Debug, Clone, Serialize)]
+pub struct GetMarginPremiumIndexParams {
+    pub ticker: String,
+    /// Window start, inclusive (Unix seconds).
+    pub start_ts: i64,
+    /// Window end, exclusive (Unix seconds); after `start_ts` and at most one hour later.
+    pub end_ts: i64,
+}
+
+/// Informational per-second premium index series; may differ from actual funding calculations.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginPremiumIndexResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub points: Vec<MarginPremiumIndexPoint>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginPremiumIndexPoint {
+    pub second_ts: String,
+    /// Signed fraction by which the impact-price book sat above/below the index; `0` if unmeasurable.
+    pub premium_index: String,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -751,6 +953,34 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Current orderbooks of up to 100 margin markets in one request, in request order.
+    /// A ticker that is not a margin market returns `404`.
+    pub async fn get_margin_market_orderbooks(
+        &self,
+        tickers: &[&str],
+    ) -> Result<GetMarginMarketOrderbooksResponse, KalshiError> {
+        if tickers.is_empty() || tickers.len() > 100 {
+            return Err(KalshiError::InvalidParams(
+                "GET /margin/markets/orderbooks: tickers must contain 1..=100 entries".to_string(),
+            ));
+        }
+        let path = Self::full_path("/margin/markets/orderbooks");
+        #[derive(Serialize)]
+        struct Q {
+            tickers: String,
+        }
+        self.send(
+            Method::GET,
+            &path,
+            Some(&Q {
+                tickers: tickers.join(","),
+            }),
             Option::<&()>::None,
             false,
         )
@@ -1007,6 +1237,44 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&Q { ticker }),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Informational per-second premium index for a perp over a window of up to one hour.
+    pub async fn get_margin_premium_index(
+        &self,
+        params: GetMarginPremiumIndexParams,
+    ) -> Result<GetMarginPremiumIndexResponse, KalshiError> {
+        if params.end_ts <= params.start_ts || params.end_ts - params.start_ts > 3600 {
+            return Err(KalshiError::InvalidParams(
+                "GET /margin/funding_rates/premium_index: end_ts must be after start_ts and within one hour"
+                    .to_string(),
+            ));
+        }
+        let path = Self::full_path("/margin/funding_rates/premium_index");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Scheduled notices and notices updated in the last seven days, earliest ex-date first.
+    pub async fn get_margin_corporate_actions(
+        &self,
+        params: GetMarginCorporateActionsParams,
+    ) -> Result<GetMarginCorporateActionsResponse, KalshiError> {
+        let path = Self::full_path("/margin/corporate_actions");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
             Option::<&()>::None,
             false,
         )

@@ -7,6 +7,12 @@ use std::borrow::Cow;
 pub struct WsOrderbookSnapshot {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock of the newest change this snapshot includes (0 if the market has no
+    /// recorded change). Identical across connections, unlike `seq`.
+    ///
+    /// Required by the spec; `Option` so frames from before the 2026-10-21 rollout still parse.
+    #[serde(default)]
+    pub clock: Option<u64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default)]
     pub yes_dollars_fp: Vec<(String, String)>,
@@ -20,6 +26,11 @@ pub struct WsOrderbookSnapshot {
 pub struct WsOrderbookDelta {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock of the action that made this change. Identical across connections, so it
+    /// can match a market's updates across redundant connections. Several deltas can share one.
+    /// `Option` for the same reason as [`WsOrderbookSnapshot::clock`].
+    #[serde(default)]
+    pub clock: Option<u64>,
     pub price_dollars: String,
     pub delta_fp: String,
     pub side: YesNo,
@@ -41,6 +52,9 @@ pub struct WsOrderbookSnapshotRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// See [`WsOrderbookSnapshot::clock`].
+    #[serde(default)]
+    pub clock: Option<u64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default, borrow)]
     pub yes_dollars_fp: Vec<(Cow<'a, str>, Cow<'a, str>)>,
@@ -54,6 +68,7 @@ impl<'a> WsOrderbookSnapshotRef<'a> {
         WsOrderbookSnapshot {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             yes_dollars_fp: self
                 .yes_dollars_fp
                 .into_iter()
@@ -75,6 +90,9 @@ pub struct WsOrderbookDeltaRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// See [`WsOrderbookDelta::clock`].
+    #[serde(default)]
+    pub clock: Option<u64>,
     #[serde(borrow)]
     pub price_dollars: Cow<'a, str>,
     #[serde(borrow)]
@@ -98,6 +116,7 @@ impl<'a> WsOrderbookDeltaRef<'a> {
         WsOrderbookDelta {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             price_dollars: self.price_dollars.into_owned(),
             delta_fp: self.delta_fp.into_owned(),
             side: self.side,
@@ -120,12 +139,14 @@ mod tests {
         let json = r#"{
             "market_ticker":"TEST",
             "market_id":"1",
+            "clock":4182061,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes"
         }"#;
         let delta: WsOrderbookDelta = serde_json::from_str(json).unwrap();
         assert!(matches!(delta.side, YesNo::Yes));
+        assert_eq!(delta.clock, Some(4182061));
     }
 
     // The deprecated venue field remains accepted because the wire may omit
@@ -136,6 +157,7 @@ mod tests {
         let json_missing_both = r#"{
             "market_ticker":"TEST",
             "market_id":"1",
+            "clock":4182061,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes"
@@ -147,6 +169,7 @@ mod tests {
         let json_missing_ts_only = r#"{
             "market_ticker":"TEST",
             "market_id":"1",
+            "clock":4182061,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes",
@@ -160,6 +183,7 @@ mod tests {
         let json_missing_ts_ms_only = r#"{
             "market_ticker":"TEST",
             "market_id":"1",
+            "clock":4182061,
             "price_dollars":"0.01",
             "delta_fp":"1",
             "side":"yes",
