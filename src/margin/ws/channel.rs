@@ -21,6 +21,13 @@ pub enum MarginChannel {
     /// Order-group lifecycle updates (requires auth).
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates,
+    /// Applied stock splits, final settlements and ticker changes (`corporate_actions_delta`).
+    ///
+    /// No snapshot on subscribe; use `GET /margin/corporate_actions` for upcoming and
+    /// recent notices. Positions and balances can change without a fill, so re-fetch them
+    /// over REST after each message.
+    #[serde(rename = "corporate_actions")]
+    CorporateActions,
 }
 
 impl crate::ws::protocol::Channel for MarginChannel {
@@ -39,6 +46,7 @@ impl crate::ws::protocol::Channel for MarginChannel {
             Self::Fill => "fill",
             Self::UserOrders => "user_orders",
             Self::OrderGroupUpdates => "order_group_updates",
+            Self::CorporateActions => "corporate_actions",
         }
     }
 }

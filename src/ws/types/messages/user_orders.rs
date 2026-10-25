@@ -3,12 +3,36 @@ use crate::types::{
 };
 use serde::Deserialize;
 
+/// Why a `user_order` update was emitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum WsLastUpdateReason {
+    Decrease,
+    Amend,
+    MarginCancel,
+    SelfTradeCancel,
+    ExpiryCancel,
+    CloseCancel,
+    HaltCancel,
+    Trade,
+    PostOnlyCrossCancel,
+    /// `reduce_only` capped the order at placement.
+    ReduceOnlyCancel,
+    /// Cancelled because a settlement-bounds update put it out of bounds.
+    SettlementBoundsCancel,
+    #[serde(other)]
+    Unknown,
+}
+
 /// User order update payload (type: "user_order").
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsUserOrder {
     pub order_id: String,
     pub user_id: String,
     pub ticker: String,
+    /// Exchange shard where the order resides.
+    #[serde(default)]
+    pub exchange_index: Option<u32>,
     #[serde(default)]
     pub status: Option<OrderStatus>,
     /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
@@ -52,6 +76,9 @@ pub struct WsUserOrder {
     pub last_update_time: Option<String>,
     #[serde(default)]
     pub last_updated_ts_ms: Option<i64>,
+    #[serde(default)]
+    pub last_update_reason: Option<WsLastUpdateReason>,
+    /// RFC3339, truncated (not rounded) to milliseconds; agrees with `expiration_ts_ms`.
     #[serde(default)]
     pub expiration_time: Option<String>,
     #[serde(default)]

@@ -17,6 +17,22 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Absent on the Margin exchange status.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Per exchange index status; the top-level fields reflect index 0. Absent when the
+    /// breakdown is unavailable (and always on the Margin exchange status).
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub exchange_index_statuses: Vec<ExchangeIndexStatus>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: u32,
+    pub description: String,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

@@ -54,6 +54,12 @@ pub struct Quote {
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
     #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
+    #[serde(default)]
+    pub rfq_creator_subaccount: Option<u32>,
+    #[serde(default)]
     pub rfq_creator_order_id: Option<String>,
     #[serde(default)]
     pub creator_order_id: Option<String>,
@@ -73,6 +79,8 @@ pub struct RFQ {
     pub contracts_fp: FixedPointCount,
     #[serde(default)]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub target_cost_excludes_fees: Option<bool>,
     pub status: String,
     pub created_ts: String,
     #[serde(default)]
@@ -85,6 +93,8 @@ pub struct RFQ {
     pub cancellation_reason: Option<String>,
     #[serde(default)]
     pub creator_user_id: Option<String>,
+    #[serde(default)]
+    pub creator_subaccount: Option<u32>,
     #[serde(default)]
     pub cancelled_ts: Option<String>,
     #[serde(default)]
@@ -194,6 +204,12 @@ pub struct CreateRFQRequest {
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cost_excludes_fees: Option<bool>,
+    /// Hide the requester's public communications ID from other users. Obscured
+    /// `creator_id`/`rfq_creator_id` fields carry a shared placeholder until a quote executes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub obscure_creator_id: Option<bool>,
     pub rest_remainder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,

@@ -23,7 +23,7 @@ pub struct GetOrdersParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
 
-    /// CSV max 10
+    /// CSV max 100. An event with no markets matches no orders.
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_csv_opt"
@@ -39,36 +39,40 @@ pub struct GetOrdersParams {
     pub status: Option<OrderStatus>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u32>, // default 100, max 200
+    pub limit: Option<u32>, // default 100, max 1000
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subaccount: Option<u32>,
+
+    /// Restrict results to one exchange shard; omit for all shards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 impl GetOrdersParams {
     pub fn validate(&self) -> Result<(), KalshiError> {
         if let Some(limit) = self.limit
-            && (limit == 0 || limit > 200)
+            && (limit == 0 || limit > 1000)
         {
             return Err(KalshiError::InvalidParams(
-                "GET /portfolio/orders: limit must be 1..=200".to_string(),
+                "GET /portfolio/orders: limit must be 1..=1000".to_string(),
             ));
         }
         if let Some(evts) = &self.event_ticker
-            && evts.len() > 10
+            && evts.len() > 100
         {
             return Err(KalshiError::InvalidParams(
-                "GET /portfolio/orders: event_ticker supports up to 10 tickers".to_string(),
+                "GET /portfolio/orders: event_ticker supports up to 100 tickers".to_string(),
             ));
         }
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "subaccount must be 0..=32".to_string(),
+                "subaccount must be 0..=63".to_string(),
             ));
         }
         Ok(())
@@ -255,10 +259,10 @@ impl CreateOrderRequest {
         }
 
         if let Some(sub) = self.subaccount
-            && sub > 32
+            && sub > 63
         {
             return Err(KalshiError::InvalidParams(
-                "CreateOrderRequest: subaccount must be 0..=32".to_string(),
+                "CreateOrderRequest: subaccount must be 0..=63".to_string(),
             ));
         }
 
@@ -584,6 +588,10 @@ pub struct AmendOrderV2Request {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// Unix seconds. Omit to preserve expiry, `0` to clear it, otherwise a future time. Send the
+    /// current price and total count for an expiry-only amendment (queue priority is kept).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_index: Option<u32>,
 }

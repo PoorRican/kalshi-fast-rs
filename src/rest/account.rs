@@ -79,6 +79,9 @@ pub struct CreateSubaccountResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubaccountBalance {
     pub subaccount_number: u32,
+    /// Exchange shard this balance is held on. Balances are reported per exchange index.
+    #[serde(default)]
+    pub exchange_index: u32,
     #[serde(deserialize_with = "deserialize_string_or_number")]
     pub balance: FixedPointDollars,
     pub updated_ts: i64,
@@ -129,6 +132,109 @@ pub struct GetSubaccountTransfersResponse {
     pub subaccount_transfers: Vec<SubaccountTransfer>,
     #[serde(default)]
     pub cursor: Option<String>,
+}
+
+/// Exchange instance type for intra-exchange transfers.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExchangeInstance {
+    EventContract,
+    Margined,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Status of an intra-exchange instance transfer.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntraExchangeInstanceTransferStatus {
+    Pending,
+    Complete,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Body of `POST /portfolio/intra_exchange_instance_transfer`. Amounts are in centicents.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntraExchangeInstanceTransferRequest {
+    /// UUID for duplicate prevention; reuse only to retry the identical request. Primary
+    /// accounts only: transfers involving numbered subaccounts reject it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_transfer_id: Option<String>,
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    pub amount: i64,
+    /// 0..=100 (server default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_exchange_shard: Option<u32>,
+    /// 0..=100 (server default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_exchange_shard: Option<u32>,
+    /// Event-contract to event-contract transfers only (server default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_subaccount: Option<u32>,
+    /// Event-contract to event-contract transfers only (server default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_subaccount: Option<u32>,
+}
+
+impl IntraExchangeInstanceTransferRequest {
+    pub fn new(source: ExchangeInstance, destination: ExchangeInstance, amount: i64) -> Self {
+        Self {
+            client_transfer_id: None,
+            source,
+            destination,
+            amount,
+            source_exchange_shard: None,
+            destination_exchange_shard: None,
+            source_subaccount: None,
+            destination_subaccount: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransferResponse {
+    pub transfer_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntraExchangeInstanceTransfer {
+    pub transfer_id: String,
+    /// Echo of the `client_transfer_id` sent at creation; omitted when none was sent.
+    #[serde(default)]
+    pub client_transfer_id: Option<String>,
+    pub source: ExchangeInstance,
+    pub destination: ExchangeInstance,
+    pub source_exchange_shard: i64,
+    pub destination_exchange_shard: i64,
+    #[serde(deserialize_with = "deserialize_string_or_number")]
+    pub amount: FixedPointDollars,
+    pub status: IntraExchangeInstanceTransferStatus,
+    pub created_ts: i64,
+}
+
+/// GET /portfolio/intra_exchange_instance_transfers query params.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    /// 1..=500, default 100.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransfersResponse {
+    #[serde(deserialize_with = "deserialize_null_as_empty_vec")]
+    pub transfers: Vec<IntraExchangeInstanceTransfer>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIntraExchangeInstanceTransferResponse {
+    pub transfer: IntraExchangeInstanceTransfer,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -414,6 +520,68 @@ impl KalshiRestClient {
                 Ok((resp.subaccount_transfers, resp.cursor))
             }
         })
+        .await
+    }
+
+    /// Move funds between exchange instances (and, for event contracts, subaccounts).
+    /// Processed asynchronously; poll [`Self::get_intra_exchange_instance_transfer`].
+    ///
+    /// **Requires auth.**
+    pub async fn intra_exchange_instance_transfer(
+        &self,
+        body: &IntraExchangeInstanceTransferRequest,
+    ) -> Result<IntraExchangeInstanceTransferResponse, KalshiError> {
+        if let Some(limit) = body
+            .source_exchange_shard
+            .max(body.destination_exchange_shard)
+            && limit > 100
+        {
+            return Err(KalshiError::InvalidParams(
+                "intra_exchange_instance_transfer: exchange shard must be 0..=100".to_string(),
+            ));
+        }
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfer");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
+    /// List intra-exchange instance transfers. Supports cursor pagination.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfers(
+        &self,
+        params: GetIntraExchangeInstanceTransfersParams,
+    ) -> Result<GetIntraExchangeInstanceTransfersResponse, KalshiError> {
+        if let Some(limit) = params.limit
+            && (limit == 0 || limit > 500)
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /portfolio/intra_exchange_instance_transfers: limit must be 1..=500"
+                    .to_string(),
+            ));
+        }
+        let path = Self::full_path("/portfolio/intra_exchange_instance_transfers");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Get one intra-exchange instance transfer by id.
+    ///
+    /// **Requires auth.**
+    pub async fn get_intra_exchange_instance_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<GetIntraExchangeInstanceTransferResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/portfolio/intra_exchange_instance_transfers/{transfer_id}"
+        ));
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
         .await
     }
 }

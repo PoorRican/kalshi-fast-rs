@@ -3,6 +3,15 @@ use crate::error::KalshiError;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+/// `user_filter` for the `communications` channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsUserFilter {
+    /// Receive RFQ created/deleted events only for RFQs you created. Quote notifications are
+    /// unchanged. Omit the field (or send `""`) to receive RFQs from all users.
+    #[serde(rename = "self")]
+    SelfOnly,
+}
+
 /// Subscription parameters for WebSocket channels.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WsSubscriptionParamsV2 {
@@ -25,6 +34,9 @@ pub struct WsSubscriptionParamsV2 {
     pub shard_factor: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard_key: Option<u32>,
+    /// `communications` channel only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<WsUserFilter>,
     /// CF Benchmarks index IDs for `cfbenchmarks_value` subscriptions.
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]

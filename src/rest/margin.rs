@@ -9,6 +9,9 @@ use std::collections::BTreeMap;
 // Query parameter helpers
 // ---------------------------------------------------------------------------
 
+/// Query parameters for `GET /margin/orders`.
+///
+/// `limit` accepts 1-10000 (server default 10000).
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginOrdersParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -49,9 +52,13 @@ pub struct GetMarginPositionsParams {
     pub ticker: Option<String>,
 }
 
+/// Query parameters for `GET /margin/trades`.
+///
+/// Omit `ticker` to retrieve trades across all margin markets.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -99,13 +106,41 @@ pub struct GetMarginHistoricalFundingRatesParams {
     pub end_ts: Option<i64>,
 }
 
+/// Query parameters for `GET /margin/corporate_actions`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMarginCorporateActionsParams {
+    /// Filter by market ticker. Omit for all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    /// Filter by market UUID. Omit for all margin markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
+}
+
+/// Query parameters for `GET /margin/funding_rates/premium_index`.
+///
+/// The window `[start_ts, end_ts)` is in Unix seconds and may span at most one hour.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetMarginPremiumIndexParams {
+    pub ticker: String,
+    pub start_ts: i64,
+    pub end_ts: i64,
+}
+
 // ---------------------------------------------------------------------------
 // Request bodies
 // ---------------------------------------------------------------------------
 
+/// Body for `POST /margin/orders`.
+///
+/// Supply `ticker` or `market_id`; `ticker` takes precedence when both are set.
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateMarginOrderRequest {
-    pub ticker: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    /// Stable exchange market UUID. May be supplied instead of `ticker`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
     pub client_order_id: String,
     pub side: BookSide,
     pub count: String,
@@ -124,6 +159,11 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// The `market_version` you expect the market to be at. If set (non-zero) and the
+    /// market's current version differs, the order is rejected with HTTP 409 and error
+    /// code `market_version_mismatch`. `0` or `None` skips the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -134,9 +174,16 @@ pub struct DecreaseMarginOrderRequest {
     pub reduce_to: Option<String>,
 }
 
+/// Body for `POST /margin/orders/{order_id}/amend`.
+///
+/// Supply `ticker` or `market_id`; `ticker` takes precedence when both are set.
 #[derive(Debug, Clone, Serialize)]
 pub struct AmendMarginOrderRequest {
-    pub ticker: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    /// Stable exchange market UUID. May be supplied instead of `ticker`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
     pub side: BookSide,
     pub price: String,
     pub count: String,
@@ -144,6 +191,9 @@ pub struct AmendMarginOrderRequest {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// New Unix expiration (seconds). Omit to preserve the current expiry, `0` to remove
+    /// it (good-till-canceled); a nonzero value must be in the future. For an expiry-only
+    /// amendment send the current `price` and total `count` to preserve queue position.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expiration_time: Option<i64>,
 }
@@ -246,6 +296,215 @@ pub enum MarginOrderReason {
     Liquidation,
     TakeProfitStopLoss,
 }
+
+/// Unit for [`MarginMarket::funding_deadband`] and [`MarginMarket::funding_cap`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingLimitUnit {
+    Percentage,
+    Dollar,
+}
+
+/// How funding averages a bar that has no premium.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFundingInvalidPremiumHandling {
+    /// The bar counts as a premium of 0.
+    Dampen,
+    /// The bar is left out of the average.
+    Exclude,
+}
+
+/// Exit-trigger family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExitTriggerKind {
+    /// Stop-loss / take-profit pair.
+    Bracket,
+    /// Trailing stop whose level ratchets with the liquidation mark.
+    Trailing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExitTriggerStatus {
+    PendingOnEntry,
+    Active,
+    Filled,
+    Failed,
+    Canceled,
+    Unknown,
+}
+
+/// Which bracket leg fired.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExitTriggerLeg {
+    StopLoss,
+    TakeProfit,
+}
+
+/// Why an exit trigger reached its terminal status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExitTriggerReason {
+    UserCanceled,
+    PositionClosed,
+    EntryNotFilled,
+    OrderRejected,
+    PositionFlipped,
+}
+
+/// Asset class scope for FCM subtrader initial-margin caps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarginFcmAssetClass {
+    Crypto,
+    Equities,
+    Metals,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionType {
+    CashDividend,
+    SpecialDividend,
+    SpinOff,
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionStatus {
+    Scheduled,
+    Cancelled,
+    Applied,
+    Lapsed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginFeeSchedule {
+    SelfClearingMembers,
+    KalshiPrime,
+    Fcm,
+}
+
+// ---------------------------------------------------------------------------
+// Exit-trigger and FCM request bodies
+// ---------------------------------------------------------------------------
+
+/// Body for `PUT /margin/isolated/positions/{ticker}/exit_trigger`.
+///
+/// For `bracket` supply `stop_loss_price` and/or `take_profit_price`; for `trailing`
+/// supply exactly one of `trail_amount` / `trail_bps`. A leg you omit is cleared.
+/// The server rejects a `stop_loss_price` at or past the position's liquidation price
+/// (`400 stop_loss_past_liquidation`).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SetIsolatedExitTriggerRequest {
+    /// Defaults to `bracket` server-side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ExitTriggerKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_loss_price: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub take_profit_price: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trail_amount: Option<String>,
+    /// Trailing distance in basis points of the watermark (1-9999).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trail_bps: Option<u32>,
+}
+
+/// Body for `PUT /margin/cross/positions/{ticker}/exit_trigger`.
+///
+/// See [`SetIsolatedExitTriggerRequest`] for the shared leg rules.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SetCrossExitTriggerRequest {
+    /// Contracts this trigger closes; whole number. Omit to cover the whole position.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<String>,
+    /// Ties the trigger to an order (bracket only; mutually exclusive with `count`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor_order_id: Option<String>,
+    /// Idempotency key (max 64 chars); required on `count` / `anchor_order_id` creates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_trigger_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ExitTriggerKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_loss_price: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub take_profit_price: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trail_amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trail_bps: Option<u32>,
+}
+
+/// Body for `PUT /margin/cross/positions/{ticker}/exit_trigger/{trigger_id}`.
+///
+/// At least one leg is required and an omitted leg is cleared.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateExitTriggerRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_loss_price: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub take_profit_price: Option<String>,
+}
+
+/// Body for `POST /margin/fcm/subtraders`.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateMarginFcmSubtraderRequest {
+    /// 1-16 alphanumeric characters; the full id is `{user_id}_{subtrader_suffix}`.
+    pub subtrader_suffix: String,
+    /// When true, ordinary orders require an explicit asset-class initial-margin cap.
+    pub require_category_cap: bool,
+}
+
+/// Body for `PUT /margin/fcm/subtraders/risk_controls`.
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdateFcmSubtraderRiskControlsRequest {
+    pub subtrader_id: String,
+    /// Scopes the cap to one market. Mutually exclusive with `asset_class`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_class: Option<MarginFcmAssetClass>,
+    /// Non-negative fixed-point dollars (up to 4 decimals).
+    pub im_cap: String,
+}
+
+/// Query parameters for `GET /margin/fcm/subtraders/risk_controls`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetFcmSubtraderRiskControlsParams {
+    /// Optional for keys bound to a single subtrader.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtrader_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_class: Option<MarginFcmAssetClass>,
+}
+
+/// Query parameters for `DELETE /margin/fcm/subtraders/risk_controls`.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeleteFcmSubtraderRiskControlsParams {
+    pub subtrader_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_class: Option<MarginFcmAssetClass>,
+}
+
+/// Body for `PUT /margin/fcm/notional_risk_limit`.
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdateFcmNotionalRiskLimitRequest {
+    /// Non-negative fixed-point dollars (up to 4 decimals).
+    pub notional_value_risk_limit: String,
+}
+
 // ---------------------------------------------------------------------------
 // Responses
 // ---------------------------------------------------------------------------
@@ -254,6 +513,239 @@ pub enum MarginOrderReason {
 pub struct GetMarginExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    /// Estimated end of the current maintenance window (RFC 3339). Not guaranteed and can
+    /// be extended. `None` when absent or null.
+    ///
+    /// The shared schema also lists `intra_exchange_transfers_active` and
+    /// `exchange_index_statuses`, which the Margin exchange status never includes.
+    #[serde(default)]
+    pub exchange_estimated_resume_time: Option<String>,
+}
+
+/// Response for `GET /margin/corporate_actions`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginCorporateActionsResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub corporate_actions: Vec<MarginCorporateAction>,
+}
+
+/// A margin corporate action notice.
+///
+/// Scheduled, applied and lapsed notices carry exactly one terms object matching `type`
+/// (`cash`, `split`, `final_settlement` or `ticker_change`); cancelled notices carry none
+/// and omit `execution_time`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateAction {
+    /// Stable notice id (the Klear review id).
+    pub id: String,
+    pub market_id: String,
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginCorporateActionType,
+    pub status: MarginCorporateActionStatus,
+    pub updated_ts: String,
+    #[serde(default)]
+    pub execution_time: Option<String>,
+    #[serde(default)]
+    pub cash: Option<MarginCorporateActionCashTerms>,
+    #[serde(default)]
+    pub split: Option<MarginCorporateActionSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<MarginCorporateActionFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<MarginCorporateActionTickerChangeTerms>,
+}
+
+/// Terms for `cash_dividend`, `special_dividend` and `spin_off`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionCashTerms {
+    #[serde(default)]
+    pub cash_per_share: Option<String>,
+    /// A positive amount credits longs and debits shorts.
+    #[serde(default)]
+    pub cash_per_contract: Option<String>,
+    /// `YYYY-MM-DD`, where available.
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+/// Terms for `stock_split`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionSplitTerms {
+    #[serde(default)]
+    pub ratio_old: Option<String>,
+    #[serde(default)]
+    pub ratio_new: Option<String>,
+    /// `YYYY-MM-DD`, where available.
+    #[serde(default)]
+    pub ex_date: Option<String>,
+}
+
+/// Terms for `final_settlement`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionFinalSettlementTerms {
+    /// `bankruptcy`, `merger`, `delisting` or `other`.
+    pub reason: String,
+    #[serde(default)]
+    pub settlement_price_per_share: Option<String>,
+    #[serde(default)]
+    pub settlement_price_per_contract: Option<String>,
+}
+
+/// Terms for `ticker_change`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginCorporateActionTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
+}
+
+/// Response for `GET /margin/markets/orderbooks`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginMarketOrderbooksResponse {
+    /// One entry per requested ticker, in request order.
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub orderbooks: Vec<MarginMarketOrderbook>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginMarketOrderbook {
+    pub ticker: String,
+    pub orderbook: MarginOrderbookCount,
+}
+
+/// Response for `GET /margin/funding_rates/premium_index`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginPremiumIndexResponse {
+    /// Per-second points, ascending by `second_ts`.
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub points: Vec<MarginPremiumIndexPoint>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginPremiumIndexPoint {
+    /// The one-second bucket (RFC 3339).
+    pub second_ts: String,
+    /// Signed decimal fraction of the index price (not bps); informational only.
+    pub premium_index: String,
+}
+
+/// Response for `GET /margin/fee_tier_rates`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetMarginFeeTierRatesResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub fee_tier_rates: Vec<MarginFeeTierRate>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginFeeTierRate {
+    pub fee_schedule: MarginFeeSchedule,
+    pub tier: u32,
+    /// Decimal fraction of notional (0.0005 = 5 bps).
+    pub maker_fee_rate: f64,
+    /// Decimal fraction of notional (0.0012 = 12 bps).
+    pub taker_fee_rate: f64,
+}
+
+/// An exit trigger (stop-loss / take-profit bracket or trailing stop).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExitTrigger {
+    pub id: String,
+    pub ticker: String,
+    pub kind: ExitTriggerKind,
+    pub status: ExitTriggerStatus,
+    #[serde(default)]
+    pub status_reason: Option<ExitTriggerReason>,
+    #[serde(default)]
+    pub triggered_leg: Option<ExitTriggerLeg>,
+    #[serde(default)]
+    pub triggered_order_id: Option<String>,
+    #[serde(default)]
+    pub anchor_order_id: Option<String>,
+    #[serde(default)]
+    pub client_trigger_id: Option<String>,
+    #[serde(default)]
+    pub stop_loss_price: Option<String>,
+    #[serde(default)]
+    pub take_profit_price: Option<String>,
+    #[serde(default)]
+    pub trail_amount: Option<String>,
+    #[serde(default)]
+    pub trail_bps: Option<i64>,
+    #[serde(default)]
+    pub watermark_price: Option<String>,
+    #[serde(default)]
+    pub effective_stop_price: Option<String>,
+    /// Contracts this trigger closes when it fires; `0` means the whole position.
+    pub count: String,
+    pub filled_count: String,
+    pub created_time: String,
+    pub updated_time: String,
+}
+
+/// Response for the exit-trigger `GET` endpoints.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetExitTriggersResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub exit_triggers: Vec<ExitTrigger>,
+}
+
+/// Response for `POST /margin/fcm/subtraders`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateMarginFcmSubtraderResponse {
+    pub subtrader_id: String,
+}
+
+/// Response for `GET /margin/fcm/subtraders/risk_controls`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetFcmSubtraderRiskControlsResponse {
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub risk_controls: Vec<FcmSubtraderRiskControl>,
+    #[serde(
+        default,
+        deserialize_with = "crate::types::deserialize_null_as_empty_vec"
+    )]
+    pub notional_limits: Vec<FcmSubtraderNotionalRiskLimit>,
+}
+
+/// An FCM-set initial-margin cap. Neither `market_ticker` nor `asset_class` means the cap
+/// applies across all markets.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FcmSubtraderRiskControl {
+    pub subtrader_id: String,
+    #[serde(default)]
+    pub market_ticker: Option<String>,
+    #[serde(default)]
+    pub asset_class: Option<MarginFcmAssetClass>,
+    pub im_cap: String,
+    pub current_im: String,
+}
+
+/// An admin-set notional value risk limit. No `market_ticker` means the whole-subtrader limit.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FcmSubtraderNotionalRiskLimit {
+    pub subtrader_id: String,
+    #[serde(default)]
+    pub market_ticker: Option<String>,
+    pub notional_value_risk_limit: String,
+    pub current_notional: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -277,9 +769,23 @@ pub struct GetMarginMarketsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginMarket {
+    /// Stable market UUID; unchanged when the ticker is renamed.
+    #[serde(default)]
+    pub market_id: Option<String>,
     pub ticker: String,
     pub status: MarginMarketStatus,
     pub title: String,
+    /// Current market version. Starts at 1 and increases when trading resumes after a
+    /// corporate action (e.g. a stock split). Pass it as
+    /// [`CreateMarginOrderRequest::market_version`] to reject orders placed against a stale
+    /// version. A read can briefly return the previous version right after trading resumes.
+    pub market_version: i32,
+    /// Funding deadband, expressed in `funding_limit_unit`.
+    pub funding_deadband: f64,
+    /// Funding cap, expressed in `funding_limit_unit`.
+    pub funding_cap: f64,
+    pub funding_limit_unit: MarginFundingLimitUnit,
+    pub funding_invalid_premium_handling: MarginFundingInvalidPremiumHandling,
     pub contract_size: String,
     pub underlying_multiplier: String,
     pub tick_size: String,
@@ -311,8 +817,16 @@ pub struct MarginMarket {
     pub volume_24h_notional_value_dollars: Option<String>,
     #[serde(default)]
     pub bid: Option<String>,
+    /// Contracts resting at the best bid (`"0.00"` when empty). Omitted when market stats
+    /// are unavailable.
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
     #[serde(default)]
     pub ask: Option<String>,
+    /// Contracts resting at the best ask (`"0.00"` when empty). Omitted when market stats
+    /// are unavailable.
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
     #[serde(default)]
     pub settlement_mark_price: Option<TickerPrice>,
     #[serde(default)]
@@ -443,6 +957,9 @@ pub struct MarginOrder {
     pub price: String,
     pub fill_count: String,
     pub remaining_count: String,
+    /// One of `""`, `Decrease`, `Amend`, `MarginCancel`, `SelfTradeCancel`, `ExpiryCancel`,
+    /// `Trade`, `PostOnlyCrossCancel` or `ReduceOnlyCancel` (`reduce_only` capped the order
+    /// at placement). Kept as a string so new reasons never fail parsing.
     pub last_update_reason: String,
     #[serde(default)]
     pub expiration_time: Option<String>,
@@ -682,6 +1199,14 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    /// Premium of the final bar evaluated by this estimate, as a signed decimal fraction
+    /// before time weighting. Omitted when that bar has no available premium.
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    /// Timestamp of the last second of that bar. Can precede `computed_time` when input
+    /// feeds are delayed.
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -1194,11 +1719,357 @@ impl KalshiRestClient {
         self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
             .await
     }
+
+    /// Cancel all resting margin orders (`DELETE /margin/orders`).
+    ///
+    /// If `subaccount` is `None`, orders from any subaccount are eligible. Orders placed
+    /// during the minute after the request may also be cancelled. Costs 10 rate-limit tokens.
+    pub async fn cancel_all_margin_orders(
+        &self,
+        subaccount: Option<u32>,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/margin/orders");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&SubaccountQuery { subaccount }),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Get the orderbooks of several margin markets in one request
+    /// (`GET /margin/markets/orderbooks`).
+    ///
+    /// Accepts 1-100 tickers; the response has one entry per ticker, in request order.
+    /// A ticker that is not a margin market makes the whole request fail with 404.
+    pub async fn get_margin_market_orderbooks<S: AsRef<str>>(
+        &self,
+        tickers: &[S],
+    ) -> Result<GetMarginMarketOrderbooksResponse, KalshiError> {
+        let path = Self::full_path("/margin/markets/orderbooks");
+        let csv = join_csv(tickers);
+        #[derive(Serialize)]
+        struct Q {
+            tickers: String,
+        }
+        self.send(
+            Method::GET,
+            &path,
+            Some(&Q { tickers: csv }),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// List margin corporate action notices (`GET /margin/corporate_actions`).
+    pub async fn get_margin_corporate_actions(
+        &self,
+        params: GetMarginCorporateActionsParams,
+    ) -> Result<GetMarginCorporateActionsResponse, KalshiError> {
+        let path = Self::full_path("/margin/corporate_actions");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Informational per-second premium index (`GET /margin/funding_rates/premium_index`).
+    pub async fn get_margin_premium_index(
+        &self,
+        params: GetMarginPremiumIndexParams,
+    ) -> Result<GetMarginPremiumIndexResponse, KalshiError> {
+        let path = Self::full_path("/margin/funding_rates/premium_index");
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// Fee schedule for the authenticated account (`GET /margin/fee_tier_rates`).
+    ///
+    /// **Requires auth.**
+    pub async fn get_margin_fee_tier_rates(
+        &self,
+    ) -> Result<GetMarginFeeTierRatesResponse, KalshiError> {
+        let path = Self::full_path("/margin/fee_tier_rates");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    // -- exit triggers -------------------------------------------------------
+
+    /// Set a bracket or trailing stop on an isolated margin position.
+    pub async fn set_isolated_margin_exit_trigger(
+        &self,
+        ticker: &str,
+        body: &SetIsolatedExitTriggerRequest,
+    ) -> Result<ExitTrigger, KalshiError> {
+        let path = Self::full_path(&format!("/margin/isolated/positions/{ticker}/exit_trigger"));
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
+    /// List live exit triggers on an isolated margin position.
+    pub async fn get_isolated_margin_exit_triggers(
+        &self,
+        ticker: &str,
+        kind: Option<ExitTriggerKind>,
+    ) -> Result<GetExitTriggersResponse, KalshiError> {
+        let path = Self::full_path(&format!("/margin/isolated/positions/{ticker}/exit_trigger"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&ExitTriggerKindQuery { kind }),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Cancel exit triggers on an isolated margin position (succeeds if none are live).
+    pub async fn delete_isolated_margin_exit_trigger(
+        &self,
+        ticker: &str,
+        kind: Option<ExitTriggerKind>,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/margin/isolated/positions/{ticker}/exit_trigger"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&ExitTriggerKindQuery { kind }),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Set a bracket or trailing stop on a non-isolated margin position.
+    pub async fn set_cross_margin_exit_trigger(
+        &self,
+        ticker: &str,
+        body: &SetCrossExitTriggerRequest,
+        subaccount: Option<u32>,
+    ) -> Result<ExitTrigger, KalshiError> {
+        let path = Self::full_path(&format!("/margin/cross/positions/{ticker}/exit_trigger"));
+        self.send(
+            Method::PUT,
+            &path,
+            Some(&SubaccountQuery { subaccount }),
+            Some(body),
+            true,
+        )
+        .await
+    }
+
+    /// List live exit triggers on a non-isolated margin position.
+    pub async fn get_cross_margin_exit_triggers(
+        &self,
+        ticker: &str,
+        subaccount: Option<u32>,
+        kind: Option<ExitTriggerKind>,
+    ) -> Result<GetExitTriggersResponse, KalshiError> {
+        let path = Self::full_path(&format!("/margin/cross/positions/{ticker}/exit_trigger"));
+        self.send(
+            Method::GET,
+            &path,
+            Some(&SubaccountKindQuery { subaccount, kind }),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Cancel exit triggers on a non-isolated margin position (succeeds if none are live).
+    pub async fn delete_cross_margin_exit_trigger(
+        &self,
+        ticker: &str,
+        subaccount: Option<u32>,
+        kind: Option<ExitTriggerKind>,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!("/margin/cross/positions/{ticker}/exit_trigger"));
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&SubaccountKindQuery { subaccount, kind }),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Update one cross-margin bracket's leg prices.
+    pub async fn update_cross_margin_exit_trigger(
+        &self,
+        ticker: &str,
+        trigger_id: &str,
+        body: &UpdateExitTriggerRequest,
+        subaccount: Option<u32>,
+    ) -> Result<ExitTrigger, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/margin/cross/positions/{ticker}/exit_trigger/{trigger_id}"
+        ));
+        self.send(
+            Method::PUT,
+            &path,
+            Some(&SubaccountQuery { subaccount }),
+            Some(body),
+            true,
+        )
+        .await
+    }
+
+    /// Cancel one cross-margin bracket by id.
+    pub async fn delete_cross_margin_exit_trigger_by_id(
+        &self,
+        ticker: &str,
+        trigger_id: &str,
+        subaccount: Option<u32>,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/margin/cross/positions/{ticker}/exit_trigger/{trigger_id}"
+        ));
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&SubaccountQuery { subaccount }),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    // -- FCM member endpoints ------------------------------------------------
+
+    /// Create an FCM subtrader (`POST /margin/fcm/subtraders`).
+    pub async fn create_margin_fcm_subtrader(
+        &self,
+        body: &CreateMarginFcmSubtraderRequest,
+    ) -> Result<CreateMarginFcmSubtraderResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/subtraders");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
+    /// Get an FCM subtrader's initial-margin caps and notional limits.
+    pub async fn get_fcm_subtrader_risk_controls(
+        &self,
+        params: GetFcmSubtraderRiskControlsParams,
+    ) -> Result<GetFcmSubtraderRiskControlsResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/subtraders/risk_controls");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
+    /// Set an FCM subtrader's initial-margin cap.
+    pub async fn update_fcm_subtrader_risk_controls(
+        &self,
+        body: &UpdateFcmSubtraderRiskControlsRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/subtraders/risk_controls");
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
+    /// Remove an FCM subtrader's initial-margin cap.
+    pub async fn delete_fcm_subtrader_risk_controls(
+        &self,
+        params: DeleteFcmSubtraderRiskControlsParams,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/subtraders/risk_controls");
+        self.send(
+            Method::DELETE,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Set the FCM member's own account-level notional risk limit.
+    pub async fn update_fcm_notional_risk_limit(
+        &self,
+        body: &UpdateFcmNotionalRiskLimitRequest,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/notional_risk_limit");
+        self.send(Method::PUT, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
+    /// Clear the FCM member's own account-level notional risk limit.
+    pub async fn delete_fcm_notional_risk_limit(&self) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/notional_risk_limit");
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+}
+
+/// Join items with commas using a single exactly-sized allocation.
+fn join_csv<S: AsRef<str>>(items: &[S]) -> String {
+    let mut csv = String::with_capacity(items.iter().map(|t| t.as_ref().len() + 1).sum());
+    for (i, t) in items.iter().enumerate() {
+        if i > 0 {
+            csv.push(',');
+        }
+        csv.push_str(t.as_ref());
+    }
+    csv
+}
+
+#[derive(Serialize)]
+struct SubaccountQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subaccount: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct ExitTriggerKindQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<ExitTriggerKind>,
+}
+
+#[derive(Serialize)]
+struct SubaccountKindQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subaccount: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<ExitTriggerKind>,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{GetMarginOrderGroupResponse, MarginPosition};
+    use super::{GetMarginOrderGroupResponse, MarginPosition, join_csv};
+
+    #[test]
+    fn join_csv_joins_without_trailing_comma() {
+        assert_eq!(join_csv::<&str>(&[]), "");
+        assert_eq!(join_csv(&["A"]), "A");
+        assert_eq!(join_csv(&["A", "B", "C"]), "A,B,C");
+        assert_eq!(join_csv(&["A".to_string(), "B".to_string()]), "A,B");
+    }
 
     #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {

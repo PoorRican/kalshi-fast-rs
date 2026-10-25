@@ -9,7 +9,42 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-25
+
+### Compatibility
+
+- Docs snapshot: 2026-10-25
+- OpenAPI: 3.34.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-29 (latest entry published at the snapshot)
+
+### Breaking
+
+- [Rust API] `Market.liquidity_dollars` removed (upstream removed `liquidity_dollars` from all market responses; it was always `"0.0000"`). Use `yes_bid_size_fp`/`yes_ask_size_fp`.
+- [Rust API] `CreateRFQRequest` gains `target_cost_excludes_fees` and `obscure_creator_id`; `WsQuoteCreated`/`WsQuoteAccepted` (and `*Ref`) gain required `rfq_creator_id`; `MultivariateEventCollection` gains required `price_level_structure` and `price_ranges`; `AmendOrderV2Request` gains `expiration_time`; `GetEventParams`, `GetOrdersParams`, `GetPositionsParams`, `GetFillsParams`, `WsSubscriptionParamsV2`, `WsEnvelope(Ref)`, `WsOrderbookSnapshot/Delta(Ref)` gain fields. Struct literals without `..Default::default()` must add them.
+- [Rust API] Margin: `CreateMarginOrderRequest.ticker`/`AmendMarginOrderRequest.ticker` are now `Option<String>` (YAML allows `market_id` instead); `GetMarginTradesParams.ticker` is `Option<String>`; `MarginChannel::CorporateActions` and `MarginDataMessage::CorporateActionsDelta` variants added; `MarginMarket` has new required fields (`market_version`, `funding_deadband`, `funding_cap`, `funding_limit_unit`, `funding_invalid_premium_handling`).
+
 ### Added
+
+- [Rust API] `intra_exchange_instance_transfer`, `get_intra_exchange_instance_transfer(s)` with `client_transfer_id`; `SubaccountBalance.exchange_index`.
+- [Rust API] `GetPositionsParams.settlement_status` (`PositionSettlementStatus`), `exchange_index` on orders/positions/fills params, `get_event_with_params` + `exclude_markets`.
+- [Rust API] `Market.settlement_bounds_type` / `settlement_floor_dollars`; RFQ/quote `target_cost_excludes_fees` and subaccount fields.
+- [Rust API] WS: `clock` on orderbook snapshot/delta, `sending_ts_ms` on `WsEnvelope(Ref)`, `user_filter` (`WsUserFilter`) for `communications`, `WsUserOrder.last_update_reason` (`WsLastUpdateReason`, incl. `SettlementBoundsCancel`) and `exchange_index`, quote `subaccount`/`rfq_batch_id`.
+- [Rust API] `GetExchangeStatusResponse.intra_exchange_transfers_active` / `exchange_index_statuses`.
+- [Rust API] Margin: batch orderbooks, premium index, corporate actions (REST + WS), `market_version` on orders, exit triggers, cancel-all, FCM endpoints, fee tier rates (see `tests/margin_parsing.rs`).
+
+### Changed
+
+- [Upstream] `GET /portfolio/orders`: `event_ticker` up to 100, `limit` up to 1000; subaccount validation widened to 0..=63 per spec.
+- [Docs] `docs/spec-parity.md` records the nuances below.
+
+### Deprecated
+
+- None new; `WsOrderbookDelta.ts` remains `#[deprecated]`.
+
+### WebSocket (carried from prior Unreleased)
 
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
   WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
@@ -20,9 +55,13 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ### Tests
 
-- [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
-  per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
-  disconnecting with the keepalive cause.
+- [Tests] `tests/spec_refresh_3_34.rs`, `tests/margin_parsing.rs`; mock-server tests for connect timeout, fresh signature timestamps and keepalive.
+
+### Known unreconciled drift
+
+- Ed25519 API keys (changelog 2026-09-24) are not supported; auth is RSA-PSS only.
+- AsyncAPI `batch_communications` channel (RFQ batches) and `POST /portfolio/target_balance_allocation` are not modeled.
+- `GetMarginFeeTiersResponse` is still loosely typed (YAML now defines it).
 
 
 ## [0.9.2] - 2026-10-19

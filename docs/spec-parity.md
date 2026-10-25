@@ -97,3 +97,15 @@ examples are ambiguous.
   `tests/ws_parsing.rs`, `tests/ws_command_behavior.rs`
 - Live contract checks: `tests/rest_public.rs`, `tests/rest_auth.rs`,
   `tests/ws_public.rs`, `tests/ws_auth.rs`
+
+- `WsOrderbookSnapshot`/`WsOrderbookDelta` `clock` is required in AsyncAPI but modeled `Option<i64>`: captured/replayed frames and mid-rollout payloads omit it, and a parse failure would drop the stream.
+- `WsUserOrder.exchange_index` is required in AsyncAPI but kept `Option`, matching the struct's other fields.
+- `sending_ts_ms` is exposed only on the raw `WsEnvelope`/`WsEnvelopeRef` (and `MarginEnvelope`), not on typed messages.
+- `GET /portfolio/positions` `event_ticker`: YAML says a single ticker; the crate still accepts a CSV of up to 10 (unchanged, unverified server behavior).
+- `SubaccountBalance.exchange_index` is required in the YAML; `#[serde(default)]` (shard 0) is used so older payloads parse.
+- `liquidity`/`liquidity_fp` on `Market` are not in the current YAML; left in place pending removal.
+- Margin `ticker` is optional on create/amend order requests because the YAML also allows `market_id`; `ticker` wins when both are set.
+- Margin `MarginOrder.last_update_reason` stays a `String` (REST) while WS `MarginLastUpdateReason` is a closed enum.
+- Margin exchange status omits `intra_exchange_transfers_active`/`exchange_index_statuses` (Margin never returns them); `ApplySubaccountTransferRequest.exchange_index` is not modeled for Margin (ignored).
+- Margin WS `corporate_actions_delta` streams only splits, final settlements and ticker changes; re-fetch positions/balances over REST after each message.
+

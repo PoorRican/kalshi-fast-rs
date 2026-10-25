@@ -70,6 +70,10 @@ pub struct WsEnvelope {
     pub msg: Option<Box<RawValue>>,
     #[serde(default)]
     pub subscriptions: Option<Vec<WsSubscriptionInfo>>,
+    /// Unix ms when Kalshi queued this message at the network layer. Only available on the raw
+    /// envelope; typed messages from [`Self::into_message`] do not carry it.
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 impl WsEnvelope {
@@ -101,6 +105,7 @@ impl WsEnvelope {
             seq,
             msg,
             subscriptions,
+            sending_ts_ms: _,
         } = self;
 
         match msg_type {
@@ -297,6 +302,9 @@ pub struct WsEnvelopeRef<'a> {
     pub msg: Option<&'a RawValue>,
     #[serde(default, borrow)]
     pub subscriptions: Option<Vec<WsSubscriptionInfoRef<'a>>>,
+    /// See [`WsEnvelope::sending_ts_ms`].
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
 }
 
 fn parse_borrowed_msg<'a, T: Deserialize<'a>>(
@@ -326,6 +334,7 @@ impl<'a> WsEnvelopeRef<'a> {
             seq,
             msg,
             subscriptions,
+            sending_ts_ms: _,
         } = self;
         match msg_type {
             WsMsgType::Subscribed => {
