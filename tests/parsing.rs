@@ -1235,7 +1235,7 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":100,"updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
@@ -1322,17 +1322,16 @@ fn get_markets_params_validates_event_ticker_count() {
 
     // 11 is too many
     let params = GetMarketsParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
+        event_ticker: Some((1..=101).map(|i| format!("E{i}")).collect()),
         ..Default::default()
     };
     assert!(params.validate().is_err());
+
+    let at_limit = GetOrdersParams {
+        event_ticker: Some((1..=100).map(|i| format!("E{i}")).collect()),
+        ..Default::default()
+    };
+    assert!(at_limit.validate().is_ok());
 }
 
 #[test]
@@ -1443,17 +1442,16 @@ fn get_orders_params_validates_limit_bounds() {
 #[test]
 fn get_orders_params_validates_event_ticker_count() {
     let params = GetOrdersParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
+        event_ticker: Some((1..=101).map(|i| format!("E{i}")).collect()),
         ..Default::default()
     };
     assert!(params.validate().is_err());
+
+    let at_limit = GetOrdersParams {
+        event_ticker: Some((1..=100).map(|i| format!("E{i}")).collect()),
+        ..Default::default()
+    };
+    assert!(at_limit.validate().is_ok());
 }
 
 #[test]
@@ -1822,7 +1820,9 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "price_level_structure": "linear_cent",
+            "price_ranges": []
         }]
     }"#;
 

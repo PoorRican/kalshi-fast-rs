@@ -15,8 +15,24 @@ use serde_json::{Map, Value};
 pub struct GetExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    /// `true` when intra-exchange transfers are permitted.
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
+    /// Per-exchange-index status. The top-level fields reflect exchange index 0. Absent when the
+    /// breakdown is unavailable.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExchangeIndexStatus {
+    pub exchange_index: u32,
+    pub description: String,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

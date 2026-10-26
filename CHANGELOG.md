@@ -9,17 +9,74 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
+### Compatibility
+
+- Docs snapshot: 2026-10-26
+- OpenAPI: 3.35.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-26
+
+### Breaking
+
+- [Rust API] `WsOrderbookSnapshot`, `WsOrderbookDelta` and their `*Ref` forms gain the required
+  `clock: i64` exchange clock (AsyncAPI marks it required). A frame without `clock` now fails to parse.
+- [Rust API] `MarginMarket` gains the spec-required `market_version`, `funding_deadband`,
+  `funding_cap`, `funding_limit_unit`, `funding_invalid_premium_handling` and `halt_sources`
+  fields, plus `market_id`, `bid_size_fp` and `ask_size_fp`.
+- [Rust API] `GetMarginTradesParams::ticker` is now `Option<String>` (omit for all margin markets).
+- [Rust API] `CreateMarginOrderRequest` gains `market_version: Option<i32>`; `AmendOrderV2Request`
+  gains `expiration_time: Option<i64>`; `GetEventParams` gains `exclude_markets`.
+- [Rust API] `SubaccountBalance` gains the required `exchange_index`;
+  `MultivariateEventCollection` gains the required `price_level_structure` and `price_ranges`.
+- [Rust API] `WsCommunications`, `WsCommunicationsRef`, `WsMsgType`, `MarginChannel` and
+  `MarginDataMessage` gain variants; exhaustive matches must add arms.
+- [Rust API] Added fields on `GetExchangeStatusResponse`, `GetMarginExchangeStatusResponse`,
+  `GetMarginFundingRateEstimateResponse`, `Market` and `WsQuoteExecuted` break exhaustive struct
+  literals only.
+
 ### Added
 
+- [Upstream] Margin REST: `get_margin_market_orderbooks` (`GET /margin/markets/orderbooks`, 1..=100
+  tickers) and `get_margin_corporate_actions` (`GET /margin/corporate_actions`) with typed notices.
+- [Upstream] Intra-account transfers: `intra_exchange_instance_transfer`,
+  `get_intra_exchange_instance_transfers` and `get_intra_exchange_instance_transfer`, including
+  `client_transfer_id` on create and read. Restricted keys may transfer between event-contract
+  exchange indices.
+- [Upstream] Exchange status exposes `intra_exchange_transfers_active` and
+  `exchange_index_statuses`; the margin status exposes `exchange_estimated_resume_time`.
+- [Upstream] `Market::settlement_bounds_type` / `settlement_floor_dollars`; `get_event_with_params`
+  for `exclude_markets`; margin funding estimates carry `premium_index` / `premium_index_ts`.
+- [Upstream] `GET /portfolio/orders` accepts up to 100 `event_ticker` values (client validation
+  raised from 10); `GET /portfolio/fills` `ticker` documents up to 100 comma-separated tickers.
+- [Upstream] Predictions WebSocket communications channel: `rfq_batch_created`,
+  `rfq_batch_deleted`, `batch_quote_created`, `rfq_batch_best_quotes`, `batch_quote_accepted`,
+  `rfq_batch_executed` and `batch_quote_executed`; `quote_executed` carries `rfq_batch_id` and
+  `subaccount`.
+- [Upstream] Margin WebSocket: `corporate_actions` (`corporate_actions_delta`) and
+  `market_lifecycle_v2` channels.
+
+### Changed
+
+- [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
+  handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
   WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
   goes through the normal reconnect and backoff path. Default `None` keeps the previous unbounded
   behavior. Adding the field is breaking for struct literals without `..Default::default()`.
-- [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
-  handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
+
+### Changelog Reconciliation (2026-09-28 through 2026-10-26)
+
+See `docs/spec-parity.md` for the entry-by-entry mapping, the no-change justifications and the
+unresolved drift.
 
 ### Tests
 
+- [Tests] `tests/spec_refresh_2026_10.rs` covers the new REST shapes, query/body serialization and
+  Predictions and Margin WebSocket parsing (owned and borrowed paths).
 - [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
   per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
   disconnecting with the keepalive cause.

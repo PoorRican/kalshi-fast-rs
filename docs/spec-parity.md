@@ -91,6 +91,77 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `Market::settlement_bounds_type` is spec-required but modeled as `Option<SettlementBoundsType>`
+  like the rest of `Market`, so payloads from older snapshots still parse. `SettlementBoundsType`
+  and the other new string enums (`MarginFundingLimitUnit`, `MarginFundingInvalidPremiumHandling`,
+  `MarginCorporateActionType`/`Status`, `ExchangeInstance`) carry `#[serde(other)] Unknown`.
+- `MarginMarket::halt_sources` is spec-required but may arrive `null`; it deserializes to an empty
+  `Vec`. An empty list means "not halted or reason not observed", not proof the market is live.
+  `MarginMarket::schedule` stays `Option` because the schema is nullable.
+- Margin `GET /margin/exchange/status` shares the Predictions `ExchangeStatus` schema, but the margin
+  exchange never returns `intra_exchange_transfers_active` or `exchange_index_statuses`, so only
+  `exchange_estimated_resume_time` is modeled there. `POST /portfolio/margin/subaccounts/transfer`
+  ignores `exchange_index`, so the request type omits it.
+- `orderbook_snapshot` / `orderbook_delta` require `clock` (exchange clock, identical on every
+  connection; `seq` is per subscription). Modeled as a required `i64`. Snapshots send `0` when the
+  market has no recorded change.
+- RFQ batch WebSocket payloads are low volume, so `WsCommunicationsRef` reuses the owned batch
+  structs instead of duplicating every nested type with `Cow` fields.
+- `sending_ts_ms` (optional on every AsyncAPI message since 2026-10-01) is intentionally not surfaced:
+  parsers ignore it and the typed envelopes stay unchanged. Callers needing queue-to-receive latency
+  should use the timed reader's receive stamps.
+- The intra-account transfer endpoint exists in both the Predictions and Margin OpenAPI documents with
+  the same shape (the margin copy requires all three API-key headers). One client method serves both.
+
+## Changelog Reconciliation: 2026-09-28 -> 2026-10-26
+
+Maps every upstream entry after the previous watermark (OpenAPI 3.20.0 -> 3.35.0) to the crate.
+
+| Entry (date) | Outcome |
+| --- | --- |
+| Margin `market_lifecycle_v2` (10-29) | `MarginChannel::MarketLifecycleV2`, `MarginDataMessage::MarketLifecycleV2` |
+| Restricted keys transfer between exchange indices (10-29) | `intra_exchange_instance_transfer`; no key-specific code (server-side scope) |
+| RFQ batch WS messages (TBD) | seven `WsCommunications` variants; `quote_executed.rfq_batch_id` |
+| Margin `halt_sources` (10-29) | `MarginMarket::halt_sources` |
+| Subaccount balances for restricted keys (10-29) | `SubaccountBalance::exchange_index` (now one row per index) |
+| FIX market-data selection fields (10-29), FIX logon / replace / mass-cancel / TradeID / SecurityStatus (10-01..10-22) | No change: the crate has no FIX client |
+| `GET /portfolio/orders` up to 100 event tickers (10-29) | `GetOrdersParams` validation 10 -> 100 |
+| Orderbook `clock` (10-29) | `clock` on snapshot/delta (owned and `Ref`) |
+| `client_transfer_id` on transfer reads (10-22) | `IntraExchangeInstanceTransfer::client_transfer_id` |
+| Post-only RFQ cancellations penalized (10-19) | No change: server-side policy |
+| Milestone `details.status` lag (10-22) | No change: documentation clarification; `Milestone.details` is an untyped map |
+| Redis auth / verified TLS for WS limits (10-22) | No change: server-side |
+| `user_orders` timestamps truncated to ms (10-22) | No change: fields stay RFC3339 strings |
+| REST schema corrections for shared definitions (10-22) | Margin `exchange_estimated_resume_time` added; the other documented fields are never returned by margin, so they are not modeled; Predictions `subaccount` `minimum: 0` is already `u32` |
+| `GET /portfolio/balance` own rate-limit bucket (10-15) | No change: the opt-in client throttle stays conservative (balance draws on the read budget) |
+| Funding averages clock-aligned bars (10-22) | `premium_index` / `premium_index_ts` on the funding estimate |
+| Margin corporate actions: REST, WS channel, FIX (10-22) | `get_margin_corporate_actions`, `MarginChannel::CorporateActions`; FIX no change |
+| `GET /margin/markets/orderbooks` (10-15) | `get_margin_market_orderbooks` |
+| Multivariate `invalid_parameters` messages (10-15) | No change: error text only, status and code unchanged |
+| Margin `funding_invalid_premium_handling`, `funding_deadband`/`funding_cap`/`funding_limit_unit`, `bid_size_fp`/`ask_size_fp`, `market_version` (10-15, 10-08) | `MarginMarket` fields; `CreateMarginOrderRequest::market_version` |
+| `client_transfer_id` on transfer create (10-15) | `IntraExchangeInstanceTransferRequest::client_transfer_id` |
+| `GET /margin/trades` optional ticker (10-15) | `GetMarginTradesParams::ticker: Option` |
+| Restricted keys on perps orders/positions/fills (10-15) | No change: `subaccount` already optional on those requests |
+| MCP portfolio grants; `exclude_markets` on `GET /events/{ticker}` (10-15) | `GetEventParams::exclude_markets`, `get_event_with_params`; MCP OAuth no change |
+| FIX / RFQ closure notification / shard capital transfer (10-08) | No change: server-side or FIX |
+| Multivariate collections `price_level_structure` / `price_ranges` (10-08) | `MultivariateEventCollection` fields |
+| `GET /portfolio/fills` up to 100 tickers (10-08) | Doc comment only: `ticker` is already a free string |
+| Exit-trigger validation (10-01) | No change: the crate has no exit-trigger endpoints (see drift) |
+| `settlement_status` on positions (10-01) | No change: `GetPositionsParams::settlement_status` already exists |
+| `sending_ts_ms` on WS messages (10-01) | No change: see note above |
+| Amend `expiration_time` (10-01) | `AmendOrderV2Request::expiration_time`; margin amend already had it |
+| `settlement_bounds_type` / `settlement_floor_dollars` (10-01) | `Market` fields |
+
+## Unresolved Drift (not addressed in this refresh)
+
+Found while auditing the YAML; none is tied to a changelog entry after the previous watermark.
+
+- RFQ batch REST endpoints (`/communications/rfq_batches/...`) are not implemented.
+- Margin exit-trigger endpoints (`.../exit_trigger`), `/margin/fee_tier_rates`, `/margin/fcm/*` and
+  `/margin/funding_rates/premium_index` are not implemented.
+- `GET /portfolio/positions` documents a single `event_ticker` and an `exchange_index` filter; the
+  crate still sends a CSV `event_ticker` (max 10) and has no `exchange_index` filter.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

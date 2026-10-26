@@ -154,6 +154,48 @@ pub(super) enum WsWireMessage {
         seq: Option<u64>,
         msg: WsQuoteExecuted,
     },
+    #[serde(rename = "rfq_batch_created")]
+    RfqBatchCreated {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchCreated,
+    },
+    #[serde(rename = "rfq_batch_deleted")]
+    RfqBatchDeleted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchDeleted,
+    },
+    #[serde(rename = "batch_quote_created")]
+    BatchQuoteCreated {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsBatchQuoteCreated,
+    },
+    #[serde(rename = "rfq_batch_best_quotes")]
+    RfqBatchBestQuotes {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchBestQuotes,
+    },
+    #[serde(rename = "batch_quote_accepted")]
+    BatchQuoteAccepted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsBatchQuoteAccepted,
+    },
+    #[serde(rename = "rfq_batch_executed")]
+    RfqBatchExecuted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchExecuted,
+    },
+    #[serde(rename = "batch_quote_executed")]
+    BatchQuoteExecuted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsBatchQuoteExecuted,
+    },
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates {
         sid: Option<u64>,
@@ -305,6 +347,55 @@ impl WsWireMessage {
                     sid,
                     seq,
                     msg: WsCommunications::QuoteExecuted(msg),
+                })
+            }
+            WsWireMessage::RfqBatchCreated { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::RfqBatchCreated(msg),
+                })
+            }
+            WsWireMessage::RfqBatchDeleted { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::RfqBatchDeleted(msg),
+                })
+            }
+            WsWireMessage::BatchQuoteCreated { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::BatchQuoteCreated(msg),
+                })
+            }
+            WsWireMessage::RfqBatchBestQuotes { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::RfqBatchBestQuotes(msg),
+                })
+            }
+            WsWireMessage::BatchQuoteAccepted { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::BatchQuoteAccepted(msg),
+                })
+            }
+            WsWireMessage::RfqBatchExecuted { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::RfqBatchExecuted(msg),
+                })
+            }
+            WsWireMessage::BatchQuoteExecuted { sid, seq, msg } => {
+                WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::BatchQuoteExecuted(msg),
                 })
             }
             WsWireMessage::OrderGroupUpdates { sid, seq, msg } => {
@@ -485,6 +576,48 @@ pub(super) enum WsWireMessageRef<'a> {
         #[serde(borrow)]
         msg: WsQuoteExecutedRef<'a>,
     },
+    #[serde(rename = "rfq_batch_created")]
+    RfqBatchCreated {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchCreated,
+    },
+    #[serde(rename = "rfq_batch_deleted")]
+    RfqBatchDeleted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchDeleted,
+    },
+    #[serde(rename = "batch_quote_created")]
+    BatchQuoteCreated {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsBatchQuoteCreated,
+    },
+    #[serde(rename = "rfq_batch_best_quotes")]
+    RfqBatchBestQuotes {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchBestQuotes,
+    },
+    #[serde(rename = "batch_quote_accepted")]
+    BatchQuoteAccepted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsBatchQuoteAccepted,
+    },
+    #[serde(rename = "rfq_batch_executed")]
+    RfqBatchExecuted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsRfqBatchExecuted,
+    },
+    #[serde(rename = "batch_quote_executed")]
+    BatchQuoteExecuted {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        msg: WsBatchQuoteExecuted,
+    },
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates {
         sid: Option<u64>,
@@ -640,6 +773,55 @@ impl<'a> WsWireMessageRef<'a> {
                     sid,
                     seq,
                     msg: WsCommunicationsRef::QuoteExecuted(msg),
+                })
+            }
+            WsWireMessageRef::RfqBatchCreated { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchCreated(msg),
+                })
+            }
+            WsWireMessageRef::RfqBatchDeleted { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchDeleted(msg),
+                })
+            }
+            WsWireMessageRef::BatchQuoteCreated { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::BatchQuoteCreated(msg),
+                })
+            }
+            WsWireMessageRef::RfqBatchBestQuotes { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchBestQuotes(msg),
+                })
+            }
+            WsWireMessageRef::BatchQuoteAccepted { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::BatchQuoteAccepted(msg),
+                })
+            }
+            WsWireMessageRef::RfqBatchExecuted { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchExecuted(msg),
+                })
+            }
+            WsWireMessageRef::BatchQuoteExecuted { sid, seq, msg } => {
+                WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::BatchQuoteExecuted(msg),
                 })
             }
             WsWireMessageRef::OrderGroupUpdates { sid, seq, msg } => {

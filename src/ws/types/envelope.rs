@@ -244,6 +244,49 @@ impl WsEnvelope {
                 seq,
                 msg: WsCommunications::QuoteExecuted(parse_msg(&msg)?),
             })),
+            WsMsgType::RfqBatchCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                sid,
+                seq,
+                msg: WsCommunications::RfqBatchCreated(parse_msg(&msg)?),
+            })),
+            WsMsgType::RfqBatchDeleted => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                sid,
+                seq,
+                msg: WsCommunications::RfqBatchDeleted(parse_msg(&msg)?),
+            })),
+            WsMsgType::BatchQuoteCreated => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::BatchQuoteCreated(parse_msg(&msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchBestQuotes => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::RfqBatchBestQuotes(parse_msg(&msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteAccepted => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::BatchQuoteAccepted(parse_msg(&msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchExecuted => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                sid,
+                seq,
+                msg: WsCommunications::RfqBatchExecuted(parse_msg(&msg)?),
+            })),
+            WsMsgType::BatchQuoteExecuted => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunications::BatchQuoteExecuted(parse_msg(&msg)?),
+                }))
+            }
             WsMsgType::OrderGroupUpdates => {
                 Ok(WsMessageV2::Data(WsDataMessageV2::OrderGroupUpdates {
                     sid,
@@ -469,6 +512,55 @@ impl<'a> WsEnvelopeRef<'a> {
                 seq,
                 msg: WsCommunicationsRef::QuoteExecuted(parse_borrowed_msg(msg)?),
             })),
+            WsMsgType::RfqBatchCreated => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchCreated(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchDeleted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchDeleted(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteCreated => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::BatchQuoteCreated(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchBestQuotes => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchBestQuotes(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteAccepted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::BatchQuoteAccepted(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchExecuted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::RfqBatchExecuted(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteExecuted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    msg: WsCommunicationsRef::BatchQuoteExecuted(parse_borrowed_msg(msg)?),
+                }))
+            }
             WsMsgType::OrderGroupUpdates => {
                 Ok(WsMessageRef::Data(WsDataMessageRef::OrderGroupUpdates {
                     sid,

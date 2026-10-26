@@ -21,6 +21,8 @@ pub enum MarginDataMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     OrderGroupUpdates(MarginEnvelope<OrderGroupUpdatesMsg>),
     OrderbookSnapshot(MarginEnvelope<OrderbookSnapshotMsg>),
+    CorporateActionsDelta(MarginEnvelope<CorporateActionsDeltaMsg>),
+    MarketLifecycleV2(MarginEnvelope<MarketLifecycleV2Msg>),
     // -- control messages ----------------------------------------------------
     Subscribed {
         id: Option<u64>,
@@ -97,6 +99,10 @@ enum MarginWireMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates(SequencedMarginEnvelope<OrderGroupUpdatesMsg>),
+    #[serde(rename = "corporate_actions_delta")]
+    CorporateActionsDelta(SequencedMarginEnvelope<CorporateActionsDeltaMsg>),
+    #[serde(rename = "market_lifecycle_v2")]
+    MarketLifecycleV2(SequencedMarginEnvelope<MarketLifecycleV2Msg>),
     #[serde(rename = "subscribed")]
     Subscribed {
         id: Option<u64>,
@@ -137,6 +143,8 @@ impl From<MarginWireMessage> for MarginDataMessage {
             MarginWireMessage::Fill(e) => Self::Fill(e),
             MarginWireMessage::UserOrder(e) => Self::UserOrder(e),
             MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e.into()),
+            MarginWireMessage::CorporateActionsDelta(e) => Self::CorporateActionsDelta(e.into()),
+            MarginWireMessage::MarketLifecycleV2(e) => Self::MarketLifecycleV2(e.into()),
             MarginWireMessage::Subscribed { id, msg } => Self::Subscribed {
                 id,
                 sid: Some(msg.sid),
@@ -277,6 +285,91 @@ where
     D: serde::Deserializer<'de>,
 {
     Option::<i64>::deserialize(deserializer).map(RequiredNullableI64)
+}
+
+// ---------------------------------------------------------------------------
+// market_lifecycle_v2  —  market deactivation / activation
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginMarketLifecycleEventType {
+    Activated,
+    Deactivated,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarketLifecycleV2Msg {
+    pub market_ticker: String,
+    pub event_type: MarginMarketLifecycleEventType,
+    /// Whether trading on the market is paused.
+    pub is_deactivated: bool,
+}
+
+// ---------------------------------------------------------------------------
+// corporate_actions_delta  —  applied corporate action
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginCorporateActionKind {
+    StockSplit,
+    FinalSettlement,
+    TickerChange,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsSplitTerms {
+    pub ratio_old: String,
+    pub ratio_new: String,
+    /// Mark price in US dollars before the split.
+    pub pre_split_mark_price: String,
+    /// Mark price in US dollars after the split.
+    pub post_split_mark_price: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsFinalSettlementTerms {
+    /// Final settlement price in US dollars per contract.
+    pub settlement_price_per_contract: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
+}
+
+/// A corporate action the exchange applied. Exactly one terms object matches `action_type`.
+///
+/// Positions and balances can change without a fill; re-fetch them from the REST API after
+/// each message.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginWsCorporateAction {
+    /// Notice id, matching `id` in `GET /margin/corporate_actions`.
+    pub id: String,
+    pub market_id: String,
+    /// Market ticker; the new ticker for a ticker change.
+    pub market_ticker: String,
+    #[serde(rename = "type")]
+    pub action_type: MarginCorporateActionKind,
+    /// Unix timestamp in milliseconds when the exchange applied the action.
+    pub ts_ms: i64,
+    #[serde(default)]
+    pub split: Option<MarginWsSplitTerms>,
+    #[serde(default)]
+    pub final_settlement: Option<MarginWsFinalSettlementTerms>,
+    #[serde(default)]
+    pub ticker_change: Option<MarginWsTickerChangeTerms>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionsDeltaMsg {
+    pub corporate_action: MarginWsCorporateAction,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -749,6 +842,64 @@ mod tests {
         let bytes = br#"{"type":"orderbook_snapshot","sid":1,"seq":1,"msg":{"market_ticker":"KXBTCPERP1","bid":[["1"]]}}"#;
         let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
         assert_eq!(error.parse_context(), Some("margin websocket message"));
+    }
+
+    #[test]
+    fn parse_market_lifecycle_v2() {
+        let msg = parse(
+            br#"{"type":"market_lifecycle_v2","sending_ts_ms":1792000000150,"sid":13,"seq":4,
+            "msg":{"market_ticker":"KXBTCPERP","event_type":"deactivated","is_deactivated":true}}"#,
+        );
+        match msg {
+            MarginDataMessage::MarketLifecycleV2(e) => {
+                assert_eq!(e.sid, 13);
+                assert_eq!(e.seq, Some(4));
+                assert_eq!(e.msg.market_ticker, "KXBTCPERP");
+                assert_eq!(
+                    e.msg.event_type,
+                    MarginMarketLifecycleEventType::Deactivated
+                );
+                assert!(e.msg.is_deactivated);
+            }
+            other => panic!("expected MarketLifecycleV2, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_corporate_actions_delta_split() {
+        let msg = parse(
+            br#"{"type":"corporate_actions_delta","sid":2,"seq":1,"msg":{"corporate_action":{
+            "id":"n1","market_id":"m1","market_ticker":"KXAAPL","type":"stock_split","ts_ms":1792000000000,
+            "split":{"ratio_old":"1","ratio_new":"4","pre_split_mark_price":"400.00","post_split_mark_price":"100.00"}}}}"#,
+        );
+        match msg {
+            MarginDataMessage::CorporateActionsDelta(e) => {
+                let a = e.msg.corporate_action;
+                assert_eq!(a.action_type, MarginCorporateActionKind::StockSplit);
+                assert_eq!(a.split.unwrap().ratio_new, "4");
+                assert!(a.final_settlement.is_none() && a.ticker_change.is_none());
+            }
+            other => panic!("expected CorporateActionsDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_corporate_actions_delta_ticker_change() {
+        let msg = parse(
+            br#"{"type":"corporate_actions_delta","sid":2,"seq":2,"msg":{"corporate_action":{
+            "id":"n2","market_id":"m2","market_ticker":"NEW","type":"ticker_change","ts_ms":1,
+            "ticker_change":{"old_ticker":"OLD","new_ticker":"NEW"}}}}"#,
+        );
+        match msg {
+            MarginDataMessage::CorporateActionsDelta(e) => {
+                let t = e.msg.corporate_action.ticker_change.unwrap();
+                assert_eq!(
+                    (t.old_ticker.as_str(), t.new_ticker.as_str()),
+                    ("OLD", "NEW")
+                );
+            }
+            other => panic!("expected CorporateActionsDelta, got {other:?}"),
+        }
     }
 
     #[test]

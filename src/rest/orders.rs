@@ -23,7 +23,7 @@ pub struct GetOrdersParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ticker: Option<String>,
 
-    /// CSV max 10
+    /// CSV max 100
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_csv_opt"
@@ -58,10 +58,10 @@ impl GetOrdersParams {
             ));
         }
         if let Some(evts) = &self.event_ticker
-            && evts.len() > 10
+            && evts.len() > 100
         {
             return Err(KalshiError::InvalidParams(
-                "GET /portfolio/orders: event_ticker supports up to 10 tickers".to_string(),
+                "GET /portfolio/orders: event_ticker supports up to 100 tickers".to_string(),
             ));
         }
         if let Some(sub) = self.subaccount
@@ -584,6 +584,11 @@ pub struct AmendOrderV2Request {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// New Unix expiration timestamp in seconds. Omit to preserve the current expiry; `0`
+    /// removes it (good-till-canceled). A nonzero value must be in the future. For an
+    /// expiry-only amendment, send the current price and total count; queue priority is kept.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_index: Option<u32>,
 }
