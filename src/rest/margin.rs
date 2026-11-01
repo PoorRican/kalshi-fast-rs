@@ -323,6 +323,31 @@ pub struct MarginMarket {
     pub asset_class: Option<String>,
     #[serde(default)]
     pub product_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Why the market is halted (e.g. `initial_setup`, `corporate_action`). Empty means not
+    /// halted *or* reason not observed. Required by the spec; defaults to empty if omitted.
+    #[serde(default)]
+    pub halt_sources: Vec<String>,
+    /// Stable market UUID (unchanged across ticker renames).
+    #[serde(default)]
+    pub market_id: Option<String>,
+    /// Current market version; increases when trading resumes after a corporate action.
+    /// Required by the spec; `Option` so older payloads still parse.
+    #[serde(default)]
+    pub market_version: Option<i32>,
+    #[serde(default)]
+    pub funding_deadband: Option<f64>,
+    #[serde(default)]
+    pub funding_cap: Option<f64>,
+    /// `percentage` or `dollar`; kept as a raw string for forward compatibility.
+    #[serde(default)]
+    pub funding_limit_unit: Option<String>,
+    /// `dampen` or `exclude`; kept as a raw string for forward compatibility.
+    #[serde(default)]
+    pub funding_invalid_premium_handling: Option<String>,
+    #[serde(default)]
+    pub bid_size_fp: Option<String>,
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
