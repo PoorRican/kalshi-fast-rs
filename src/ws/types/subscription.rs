@@ -29,6 +29,14 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// Orderbook channel only. Report no-side updates in yes-leg pricing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_yes_price: Option<bool>,
+    /// Orderbook channel only. `0` (default, real-time), `100` or `1000` opts in to conflated
+    /// `orderbook_delta` updates (one net delta per changed price level per window).
+    /// A repeated subscribe must reuse the existing interval; to change it, unsubscribe first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_interval_ms: Option<u32>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -381,12 +389,44 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
         ));
     }
 
+    if let Some(interval) = params.update_interval_ms {
+        if !has_orderbook_delta {
+            return Err(KalshiError::InvalidParams(
+                "subscribe: update_interval_ms only allowed for orderbook_delta".to_string(),
+            ));
+        }
+        if !matches!(interval, 0 | 100 | 1000) {
+            return Err(KalshiError::InvalidParams(
+                "subscribe: update_interval_ms must be 0, 100 or 1000".to_string(),
+            ));
+        }
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_subscription_update_interval_ms() {
+        let mut params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_tickers: Some(vec!["T".into()]),
+            update_interval_ms: Some(100),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_ok());
+        params.update_interval_ms = Some(250);
+        assert!(validate_subscription(&params).is_err());
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            update_interval_ms: Some(100),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&params).is_err());
+    }
 
     #[test]
     fn validate_subscription_requires_market_tickers_for_orderbook_delta() {

@@ -9,6 +9,37 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-01
+
+### Compatibility
+
+- Docs snapshot: 2026-11-01
+- OpenAPI: 3.35.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-30
+
+### Breaking
+
+- [Rust API] `WsSubscriptionParamsV2` gains `use_yes_price` and `update_interval_ms`;
+  `MarginChannel` gains `MarketLifecycleV2` and `CorporateActions` (exhaustive matches must be
+  updated); `WsOrderbookSnapshot`/`WsOrderbookDelta` (and `*Ref`) gain `clock`; `MarginMarket`
+  gains several fields. Exhaustive struct literals must be updated.
+- [Rust API] `WsReconnectConfig::connect_timeout` was added (see below); struct literals need
+  `..Default::default()`.
+
+### Added
+
+- [Upstream] `GET /portfolio/credit_history` (2026-10-27): `get_credit_history`,
+  `GetCreditHistoryParams`, `CreditHistory`, `CreditStatus`.
+- [Upstream] Opt-in conflated orderbook updates (2026-10-28): `update_interval_ms` (0/100/1000,
+  validated, orderbook_delta only).
+- [Upstream] Orderbook snapshots/deltas include exchange `clock` (2026-10-21), as `Option<i64>`.
+- [Upstream] Margin `halt_sources` (2026-10-26) plus `market_id`, `market_version`, `funding_*`,
+  `bid_size_fp`/`ask_size_fp` on `MarginMarket`; margin `market_lifecycle_v2` and
+  `corporate_actions` channels.
+
 ### Added
 
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the

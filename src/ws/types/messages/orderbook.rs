@@ -7,6 +7,9 @@ use std::borrow::Cow;
 pub struct WsOrderbookSnapshot {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock (required by the spec; `None` only if the wire omits it).
+    #[serde(default)]
+    pub clock: Option<i64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default)]
     pub yes_dollars_fp: Vec<(String, String)>,
@@ -20,6 +23,9 @@ pub struct WsOrderbookSnapshot {
 pub struct WsOrderbookDelta {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock (required by the spec; `None` only if the wire omits it).
+    #[serde(default)]
+    pub clock: Option<i64>,
     pub price_dollars: String,
     pub delta_fp: String,
     pub side: YesNo,
@@ -41,6 +47,9 @@ pub struct WsOrderbookSnapshotRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// Exchange clock (required by the spec; `None` only if the wire omits it).
+    #[serde(default)]
+    pub clock: Option<i64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default, borrow)]
     pub yes_dollars_fp: Vec<(Cow<'a, str>, Cow<'a, str>)>,
@@ -54,6 +63,7 @@ impl<'a> WsOrderbookSnapshotRef<'a> {
         WsOrderbookSnapshot {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             yes_dollars_fp: self
                 .yes_dollars_fp
                 .into_iter()
@@ -75,6 +85,9 @@ pub struct WsOrderbookDeltaRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    /// Exchange clock (required by the spec; `None` only if the wire omits it).
+    #[serde(default)]
+    pub clock: Option<i64>,
     #[serde(borrow)]
     pub price_dollars: Cow<'a, str>,
     #[serde(borrow)]
@@ -98,6 +111,7 @@ impl<'a> WsOrderbookDeltaRef<'a> {
         WsOrderbookDelta {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             price_dollars: self.price_dollars.into_owned(),
             delta_fp: self.delta_fp.into_owned(),
             side: self.side,
@@ -172,5 +186,25 @@ mod tests {
             Some("2022-11-22T20:44:01Z")
         );
         assert_eq!(delta_missing_ts_ms.ts_ms, None);
+    }
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::*;
+
+    #[test]
+    fn orderbook_clock_parses_and_is_optional() {
+        let snap: WsOrderbookSnapshot =
+            serde_json::from_str(r#"{"market_ticker":"T","market_id":"1","clock":42}"#).unwrap();
+        assert_eq!(snap.clock, Some(42));
+        let delta: WsOrderbookDelta = serde_json::from_str(
+            r#"{"market_ticker":"T","market_id":"1","price_dollars":"0.01","delta_fp":"1.00","side":"yes","clock":7}"#,
+        )
+        .unwrap();
+        assert_eq!(delta.clock, Some(7));
+        let old: WsOrderbookSnapshotRef =
+            serde_json::from_str(r#"{"market_ticker":"T","market_id":"1"}"#).unwrap();
+        assert_eq!(old.into_owned().clock, None);
     }
 }

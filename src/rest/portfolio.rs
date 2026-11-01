@@ -173,6 +173,56 @@ pub struct GetSettlementsResponse {
     pub cursor: Option<String>,
 }
 
+/// Processing status of a [`CreditHistory`] entry.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CreditStatus {
+    Unknown,
+    Pending,
+    Failed,
+    Applied,
+    /// Unrecognized future status; preserved for forward compatibility.
+    #[serde(other)]
+    Other,
+}
+
+/// One entry in the authenticated member's credit history.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreditHistory {
+    pub credit_id: String,
+    /// Credit category (free-form string in the spec).
+    #[serde(rename = "type")]
+    pub credit_type: String,
+    pub status: CreditStatus,
+    pub amount_dollars: FixedPointDollars,
+    pub reason: String,
+    pub created_time: String,
+}
+
+/// Query parameters for `GET /portfolio/credit_history`.
+///
+/// `min_ts` is inclusive and `max_ts` is exclusive (credit creation time).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetCreditHistoryParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ts: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetCreditHistoryResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub credits: Vec<CreditHistory>,
+    /// Empty when there are no more results.
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Fill {
     pub fill_id: String,
@@ -288,6 +338,18 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Get the authenticated member's credit history, newest first.
+    ///
+    /// **Requires auth.**
+    pub async fn get_credit_history(
+        &self,
+        params: GetCreditHistoryParams,
+    ) -> Result<GetCreditHistoryResponse, KalshiError> {
+        let path = Self::full_path("/portfolio/credit_history");
+        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+            .await
+    }
+
     pub async fn get_portfolio_total_resting_order_value(
         &self,
     ) -> Result<GetPortfolioRestingOrderTotalValueResponse, KalshiError> {
@@ -386,5 +448,23 @@ impl KalshiRestClient {
         max_items: Option<usize>,
     ) -> impl Stream<Item = Result<Settlement, KalshiError>> + Send {
         stream_items(self.settlements_pager(params), max_items)
+    }
+}
+
+#[cfg(test)]
+mod credit_history_tests {
+    use super::*;
+
+    #[test]
+    fn credit_history_response_parses() {
+        let json = r#"{"credits":[{"credit_id":"c1","type":"promo","status":"applied",
+            "amount_dollars":"1.500000","reason":"Bonus KXTEST","created_time":"2026-10-27T20:00:00Z"},
+            {"credit_id":"c2","type":"promo","status":"brand_new","amount_dollars":"0.010000",
+            "reason":"r","created_time":"2026-10-27T20:00:00Z"}],"cursor":""}"#;
+        let resp: GetCreditHistoryResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.credits.len(), 2);
+        assert_eq!(resp.credits[0].status, CreditStatus::Applied);
+        assert_eq!(resp.credits[1].status, CreditStatus::Other);
+        assert_eq!(resp.credits[0].credit_type, "promo");
     }
 }

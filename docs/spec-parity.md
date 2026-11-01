@@ -97,3 +97,13 @@ examples are ambiguous.
   `tests/ws_parsing.rs`, `tests/ws_command_behavior.rs`
 - Live contract checks: `tests/rest_public.rs`, `tests/rest_auth.rs`,
   `tests/ws_public.rs`, `tests/ws_auth.rs`
+
+- Orderbook `clock` (AsyncAPI-required on snapshot and delta `msg`) is `Option<i64>` so fixtures and
+  any older payloads without it still parse. In conflated mode (`update_interval_ms` 100/1000) it
+  is not a whole-book watermark; apply deltas in `seq` order.
+- `MarginMarket.halt_sources` is spec-required; an empty list means "not halted or reason not
+  observed", so `#[serde(default)]` is used. `market_version`, `funding_*` are spec-required but
+  modeled as `Option` for the same tolerance.
+- RFQ batch messages (`rfq_batch_*`, `batch_quote_*`) on the `communications` channel are not yet
+  typed; they surface as `WsMessageV2::Unknown` with the raw payload. Exit-trigger REST endpoints
+  and the Clearing Member (`_fp` dollar) APIs are not modeled by this crate.
