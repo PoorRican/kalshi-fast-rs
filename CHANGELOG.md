@@ -9,6 +9,8 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-02
+
 ### Compatibility
 
 - Docs snapshot: 2026-11-02
