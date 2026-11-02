@@ -22,10 +22,11 @@ async fn test_series_cross_consistency() {
         .next()
         .expect("demo returned no series");
 
-    let detail_resp = tokio::time::timeout(common::TEST_TIMEOUT, client.get_series(&first.ticker))
-        .await
-        .expect("timeout")
-        .expect("request failed");
+    let detail_resp =
+        tokio::time::timeout(common::TEST_TIMEOUT, client.get_series(&first.ticker, None))
+            .await
+            .expect("timeout")
+            .expect("request failed");
 
     assert_eq!(detail_resp.series.ticker, first.ticker);
     assert!(

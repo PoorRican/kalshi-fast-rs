@@ -9,6 +9,38 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+### Compatibility
+
+- Docs snapshot: 2026-11-02
+- OpenAPI: 3.35.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-10-29
+- The fetched sources also publish November 5 and TBD entries. Their published schemas are
+  covered without asserting that the future-dated behavior is deployed. Settlement floors
+  remain explicitly unlaunched in Kalshi's settlement-bounds guide.
+
+### Breaking
+
+- [Rust API] Prepare `0.10.0` as a clean cutover to current fixed-point and shard-aware
+  request/response models. Removed upstream fields are no longer exposed as optional
+  compatibility fields.
+- [Rust API] Removed legacy V1 order mutations, exchange announcements, and multivariate
+  lookup operations/types. Use V2 event orders and the current multivariate create operation.
+  Quote detail, deletion, acceptance, and confirmation now require the RFQ ID and use the
+  canonical nested RFQ quote paths instead of deprecated unnested aliases.
+- [Rust API] Balance, API-key listing, event detail, series detail, subaccount creation,
+  order-group operations, and scoped order amendments/decreases have updated parameters.
+  Market/position event filters are singular; order event and fill-market filters follow
+  their documented CSV contracts.
+- [Rust API] Current REST trades, orders, fills, and accounting responses use the published
+  normalized direction, fixed-point, shard, and required-field shapes. Subaccount transfer
+  history uses `transfers`; historical candles retain their distinct unsuffixed dollar fields.
+- [Rust API] WebSocket channel/message enums and subscription/envelope structs gain current
+  feed variants, send timestamps, pricing/conflation controls, and underlying selections.
+  Update exhaustive matches and struct literals accordingly.
+
 ### Added
 
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
@@ -17,12 +49,38 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
   behavior. Adding the field is breaking for struct literals without `..Default::default()`.
 - [WebSocket] Each connect attempt signs a fresh `KALSHI-ACCESS-TIMESTAMP` immediately before the
   handshake request is sent, so reconnects after a stalled connect no longer reuse a stale signature.
+- [Rust API] Added Ed25519 PKCS#8 authentication alongside RSA PKCS#8/PKCS#1. Signing keys are
+  parsed and retained once; `KalshiAuth` clones share them and debug output excludes key material.
+- [REST] Added historical positions, ledger histories, shard transfers and allocation controls,
+  event fee changes, canonical RFQ quote operations, block-trade proposals, weather/event live
+  data, API-tier progress/upgrade, and current event-contract FCM operations.
+- [REST] Expanded perps coverage with exit triggers, corporate actions, premium-index history,
+  multi-orderbooks, schedules, fee rates, cancellation, and FCM risk controls.
+- [WebSocket] Added typed CF Benchmarks 5 Hz and Pyth feeds, current communications notifications,
+  orderbook clocks, transmission timestamps, and margin corporate-action/lifecycle messages.
+- [WebSocket] Exposed published `use_yes_price`, `update_interval_ms`, communications
+  `user_filter`, and Pyth underlying-selection controls without opting existing subscriptions
+  into different pricing or conflation modes.
+
+### Fixed
+
+- [WebSocket] Application commands and reconnect replay now share command-ID
+  allocation, preventing a new command sent before replay acknowledgements from
+  replacing a pending replay. Both direct and background readers preserve streams
+  across subsequent reconnects.
+- [WebSocket] Split multi-channel acknowledgements retain channel-specific options
+  only on their owning channels. Both active and partially acknowledged requests
+  replay without leaking communications sharding or orderbook conflation options.
+  The channel-independent `skip_ticker_ack` preference is preserved on every replay.
 
 ### Tests
 
 - [Tests] Mock-server tests for connect timeout with a retry that succeeds, fresh signature timestamps
   per attempt, keepalive silence within the pong window not disconnecting, and silence past the window
   disconnecting with the keepalive cause.
+- [Tests] Added regressions for RSA/Ed25519 signing, current fixed-point and
+  required/nullable response shapes, historical-position pagination, nested RFQ
+  operations, subscription validation/replay, and owned/borrowed WebSocket payloads.
 
 
 ## [0.9.2] - 2026-10-19

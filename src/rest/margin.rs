@@ -5,6 +5,9 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod extra;
+pub use extra::*;
+
 // ---------------------------------------------------------------------------
 // Query parameter helpers
 // ---------------------------------------------------------------------------
@@ -51,7 +54,8 @@ pub struct GetMarginPositionsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetMarginTradesParams {
-    pub ticker: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,7 +109,11 @@ pub struct GetMarginHistoricalFundingRatesParams {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateMarginOrderRequest {
-    pub ticker: String,
+    /// Supply a ticker or market ID; ticker takes precedence when both are present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
     pub client_order_id: String,
     pub side: BookSide,
     pub count: String,
@@ -124,6 +132,9 @@ pub struct CreateMarginOrderRequest {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_group_id: Option<String>,
+    /// Expected market version; zero skips the version check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -136,7 +147,11 @@ pub struct DecreaseMarginOrderRequest {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AmendMarginOrderRequest {
-    pub ticker: String,
+    /// Supply a ticker or market ID; ticker takes precedence when both are present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
     pub side: BookSide,
     pub price: String,
     pub count: String,
@@ -144,6 +159,7 @@ pub struct AmendMarginOrderRequest {
     pub client_order_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_client_order_id: Option<String>,
+    /// Omit to preserve the expiry, or set to zero to remove it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expiration_time: Option<i64>,
 }
@@ -211,6 +227,8 @@ pub struct ApplyMarginSubaccountTransferRequest {
     pub from_subaccount: u32,
     pub to_subaccount: u32,
     pub amount_cents: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_index: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +263,16 @@ pub enum MarginMarketStatus {
 pub enum MarginOrderReason {
     Liquidation,
     TakeProfitStopLoss,
+    AutoRebalance,
+}
+
+/// How a margin subaccount is margined.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginSubaccountType {
+    Cross,
+    Isolated,
+    AutoRebalance,
 }
 // ---------------------------------------------------------------------------
 // Responses
@@ -254,6 +282,21 @@ pub enum MarginOrderReason {
 pub struct GetMarginExchangeStatusResponse {
     pub exchange_active: bool,
     pub trading_active: bool,
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    #[serde(default)]
+    pub exchange_estimated_resume_time: Option<String>,
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<MarginExchangeIndexStatus>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MarginExchangeIndexStatus {
+    pub exchange_index: u32,
+    pub description: String,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -278,15 +321,24 @@ pub struct GetMarginMarketsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginMarket {
     pub ticker: String,
+    #[serde(default)]
+    pub market_id: Option<String>,
     pub status: MarginMarketStatus,
     pub title: String,
     pub contract_size: String,
     pub underlying_multiplier: String,
     pub tick_size: String,
     pub fractional_trading_enabled: bool,
-    #[serde(default)]
+    /// Null for markets that trade around the clock.
+    #[serde(deserialize_with = "Option::deserialize")]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    pub market_version: i32,
+    pub funding_deadband: f64,
+    pub funding_cap: f64,
+    pub funding_limit_unit: String,
+    pub funding_invalid_premium_handling: String,
+    pub halt_sources: Vec<String>,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -312,7 +364,11 @@ pub struct MarginMarket {
     #[serde(default)]
     pub bid: Option<String>,
     #[serde(default)]
+    pub bid_size_fp: Option<String>,
+    #[serde(default)]
     pub ask: Option<String>,
+    #[serde(default)]
+    pub ask_size_fp: Option<String>,
     #[serde(default)]
     pub settlement_mark_price: Option<TickerPrice>,
     #[serde(default)]
@@ -532,6 +588,7 @@ pub struct GetMarginPositionsResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginPosition {
     pub subaccount: u32,
+    pub subaccount_type: MarginSubaccountType,
     pub market_ticker: String,
     pub position: String,
     pub entry_price: String,
@@ -589,6 +646,7 @@ pub struct GetMarginBalanceResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginSubaccountBalance {
     pub subaccount: u32,
+    pub subaccount_type: MarginSubaccountType,
     pub position_value: String,
     pub account_equity: String,
     pub maintenance_margin: String,
@@ -613,6 +671,7 @@ pub struct GetMarginRiskResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarginRiskPosition {
     pub subaccount: u32,
+    pub subaccount_type: MarginSubaccountType,
     pub market_ticker: String,
     pub position: String,
     pub mark_price: String,
@@ -652,6 +711,7 @@ pub struct MarginFundingHistoryEntry {
     pub quantity: String,
     #[serde(default)]
     pub subaccount_number: Option<i64>,
+    pub subaccount_type: MarginSubaccountType,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -682,6 +742,10 @@ pub struct GetMarginFundingRateEstimateResponse {
     pub funding_rate: Option<f64>,
     #[serde(default)]
     pub mark_price: Option<String>,
+    #[serde(default)]
+    pub premium_index: Option<String>,
+    #[serde(default)]
+    pub premium_index_ts: Option<String>,
 }
 
 use crate::rest::account::EmptyResponse;
@@ -1198,18 +1262,24 @@ impl KalshiRestClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{GetMarginOrderGroupResponse, MarginPosition};
+    use super::{
+        AmendMarginOrderRequest, GetMarginOrderGroupResponse, GetMarginTradesParams,
+        MarginFundingHistoryEntry, MarginMarket, MarginPosition, MarginPriceDistribution,
+        MarginSubaccountType,
+    };
+    use crate::types::BookSide;
 
     #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {
         let position: MarginPosition = serde_json::from_value(serde_json::json!({
             "subaccount": 2,
+            "subaccount_type": "isolated",
             "market_ticker": "KXBTC-26JUN",
-            "position": "1.2500",
-            "entry_price": "100.00",
-            "unrealized_pnl": "2.50",
+            "position": "1.25",
+            "entry_price": "100.000000",
+            "unrealized_pnl": "2.500000",
             "margin_used": null,
-            "fees": "0.10",
+            "fees": "0.100000",
             "roe": null,
             "is_portfolio": true
         }))
@@ -1217,6 +1287,11 @@ mod tests {
 
         assert_eq!(position.margin_used, None);
         assert_eq!(position.roe, None);
+        assert!(matches!(
+            position.subaccount_type,
+            MarginSubaccountType::Isolated
+        ));
+        assert_eq!(position.entry_price, "100.000000");
         assert!(position.is_portfolio);
     }
 
@@ -1224,7 +1299,7 @@ mod tests {
     fn margin_order_group_deserializes_order_ids() {
         let response: GetMarginOrderGroupResponse = serde_json::from_value(serde_json::json!({
             "is_auto_cancel_enabled": true,
-            "contracts_limit_fp": "12.5000",
+            "contracts_limit_fp": "12.50",
             "orders": ["a", "b"],
             "exchange_index": 3
         }))
@@ -1233,5 +1308,94 @@ mod tests {
         assert_eq!(response.orders, vec!["a".to_string(), "b".to_string()]);
         assert!(response.is_auto_cancel_enabled);
         assert_eq!(response.exchange_index, Some(3));
+    }
+
+    #[test]
+    fn margin_market_schedule_is_required_but_nullable_for_24_7_markets() {
+        let mut fixture = serde_json::json!({
+            "ticker": "KXBTC",
+            "status": "active",
+            "title": "Bitcoin",
+            "contract_size": "1",
+            "underlying_multiplier": "1",
+            "tick_size": "0.010000",
+            "fractional_trading_enabled": false,
+            "schedule": {"is_open": true, "next_close_ts": 1760000000, "next_open_ts": null},
+            "exchange_index": 0,
+            "market_version": 2,
+            "funding_deadband": 0.0,
+            "funding_cap": 0.1,
+            "funding_limit_unit": "percentage",
+            "funding_invalid_premium_handling": "exclude",
+            "halt_sources": [],
+            "bid_size_fp": "2.50"
+        });
+        let market: MarginMarket = serde_json::from_value(fixture.clone()).unwrap();
+        let schedule = market.schedule.expect("scheduled market");
+        assert!(schedule.is_open);
+        assert_eq!(schedule.next_close_ts, Some(1760000000));
+        assert_eq!(schedule.next_open_ts, None);
+        assert_eq!(market.bid_size_fp.as_deref(), Some("2.50"));
+        assert!(!market.fractional_trading_enabled);
+
+        fixture["schedule"] = serde_json::Value::Null;
+        let always_open: MarginMarket = serde_json::from_value(fixture.clone()).unwrap();
+        assert!(always_open.schedule.is_none());
+        assert_eq!(always_open.ticker, "KXBTC");
+
+        fixture.as_object_mut().unwrap().remove("schedule");
+        assert!(serde_json::from_value::<MarginMarket>(fixture).is_err());
+    }
+
+    #[test]
+    fn nullable_historical_trade_prices_preserve_six_decimal_strings() {
+        let price: MarginPriceDistribution = serde_json::from_value(serde_json::json!({
+            "open": null, "low": null, "high": null, "close": null,
+            "mean": null, "previous": "1.234567"
+        }))
+        .unwrap();
+        assert_eq!(price.open, None);
+        assert_eq!(price.previous.as_deref(), Some("1.234567"));
+    }
+
+    #[test]
+    fn funding_history_accepts_nullable_subaccount_number() {
+        let entry: MarginFundingHistoryEntry = serde_json::from_value(serde_json::json!({
+            "market_ticker": "KXBTC",
+            "funding_time": "2026-01-01T00:00:00Z",
+            "funding_rate": 0.001,
+            "mark_price": "100.000000",
+            "funding_amount": "-0.000001",
+            "quantity": "1.25",
+            "subaccount_number": null,
+            "subaccount_type": "auto_rebalance"
+        }))
+        .unwrap();
+        assert_eq!(entry.subaccount_number, None);
+        assert_eq!(entry.funding_amount, "-0.000001");
+        assert!(matches!(
+            entry.subaccount_type,
+            MarginSubaccountType::AutoRebalance
+        ));
+    }
+
+    #[test]
+    fn amend_supports_market_id_and_explicit_expiry_removal() {
+        let request = AmendMarginOrderRequest {
+            ticker: None,
+            market_id: Some("market-id".into()),
+            side: BookSide::Bid,
+            price: "1.2345".into(),
+            count: "1.25".into(),
+            client_order_id: None,
+            updated_client_order_id: None,
+            expiration_time: Some(0),
+        };
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["market_id"], "market-id");
+        assert_eq!(value["expiration_time"], 0);
+        assert!(value.get("ticker").is_none());
+        let query = serde_json::to_value(GetMarginTradesParams::default()).unwrap();
+        assert!(query.get("ticker").is_none());
     }
 }

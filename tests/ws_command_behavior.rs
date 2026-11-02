@@ -36,12 +36,7 @@ async fn ws_demo_ticker_subscription_can_be_listed_and_unsubscribed() {
                 .into_iter()
                 .find(|sub| sub.sid == sid)
                 .expect("ticker subscription missing from list_subscriptions");
-            assert!(
-                subscription.channels.contains(&WsChannelV2::Ticker)
-                    || subscription.channel == Some(WsChannelV2::Ticker)
-            );
-            assert!(subscription.market_tickers.is_none());
-            assert!(subscription.market_ids.is_none());
+            assert_eq!(subscription.channel, "ticker");
         }
         other => panic!("expected list_subscriptions response, got {other:?}"),
     }
@@ -77,7 +72,7 @@ async fn ws_demo_ticker_subscription_can_be_listed_and_unsubscribed() {
 }
 
 #[tokio::test]
-async fn ws_demo_orderbook_subscription_is_listed_with_market_filter() {
+async fn ws_demo_orderbook_subscription_is_listed() {
     let market_ticker = common::first_open_demo_market_ticker().await;
     let mut ws = common::connect_demo_ws().await;
 
@@ -110,13 +105,7 @@ async fn ws_demo_orderbook_subscription_is_listed_with_market_filter() {
                 .into_iter()
                 .find(|sub| sub.sid == sid)
                 .expect("orderbook subscription missing from list_subscriptions");
-            assert!(
-                subscription.channels.contains(&WsChannelV2::OrderbookDelta)
-                    || subscription.channel == Some(WsChannelV2::OrderbookDelta)
-            );
-            if let Some(market_tickers) = subscription.market_tickers {
-                assert_eq!(market_tickers, vec![market_ticker]);
-            }
+            assert_eq!(subscription.channel, "orderbook_delta");
         }
         other => panic!("expected list_subscriptions response, got {other:?}"),
     }

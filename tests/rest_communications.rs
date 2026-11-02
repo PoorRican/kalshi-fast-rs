@@ -34,9 +34,7 @@
 
 mod common;
 
-use kalshi_fast::{
-    CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, KalshiRestClient, MarketStatusQuery,
-};
+use kalshi_fast::{CreateQuoteRequest, CreateRFQRequest, GetMarketsParams, MarketStatusQuery};
 use std::time::Duration;
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -77,6 +75,8 @@ async fn test_rfq_lifecycle() {
                 contracts_fp: None,
                 target_cost_centi_cents: None,
                 target_cost_dollars: None,
+                target_cost_excludes_fees: None,
+                obscure_creator_id: None,
                 rest_remainder: false,
                 replace_existing: None,
                 subtrader_id: None,
@@ -146,6 +146,8 @@ async fn test_quote_lifecycle() {
                 contracts_fp: None,
                 target_cost_centi_cents: None,
                 target_cost_dollars: None,
+                target_cost_excludes_fees: None,
+                obscure_creator_id: None,
                 rest_remainder: false,
                 replace_existing: None,
                 subtrader_id: None,
@@ -167,6 +169,7 @@ async fn test_quote_lifecycle() {
                 yes_bid: "0.01".to_string(),
                 no_bid: "0.01".to_string(),
                 rest_remainder: false,
+                post_only: None,
                 subaccount: None,
             })
             .await
@@ -179,7 +182,7 @@ async fn test_quote_lifecycle() {
 
     // 3. Get the quote and verify
     let get_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_quote(&quote_id).await
+        client.get_rfq_quote(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")
@@ -190,7 +193,7 @@ async fn test_quote_lifecycle() {
 
     // 4. Delete the quote (cleanup)
     let _delete_quote = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.delete_quote(&quote_id).await
+        client.delete_rfq_quote(&rfq_id, &quote_id).await
     })
     .await
     .expect("timeout")

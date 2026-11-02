@@ -14,6 +14,27 @@ pub struct WsCfBenchmarksAvgData {
     pub window_end_ts_exclusive: i64,
 }
 
+/// Borrowed windowed-average metadata.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsCfBenchmarksAvgDataRef<'a> {
+    #[serde(borrow)]
+    pub value: Cow<'a, str>,
+    pub window_size: i64,
+    pub window_start_ts_ms: i64,
+    pub window_end_ts_exclusive: i64,
+}
+
+impl<'a> WsCfBenchmarksAvgDataRef<'a> {
+    pub fn into_owned(self) -> WsCfBenchmarksAvgData {
+        WsCfBenchmarksAvgData {
+            value: self.value.into_owned(),
+            window_size: self.window_size,
+            window_start_ts_ms: self.window_start_ts_ms,
+            window_end_ts_exclusive: self.window_end_ts_exclusive,
+        }
+    }
+}
+
 /// Message payload for the `cfbenchmarks_value` WebSocket channel.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsCfBenchmarksValue {
@@ -38,9 +59,10 @@ pub struct WsCfBenchmarksValueRef<'a> {
     pub received_at: i64,
     #[serde(borrow)]
     pub data: Cow<'a, str>,
-    pub avg_60s_data: WsCfBenchmarksAvgData,
-    #[serde(default)]
-    pub last_60s_windowed_average_15min: Option<WsCfBenchmarksAvgData>,
+    #[serde(borrow)]
+    pub avg_60s_data: WsCfBenchmarksAvgDataRef<'a>,
+    #[serde(default, borrow)]
+    pub last_60s_windowed_average_15min: Option<WsCfBenchmarksAvgDataRef<'a>>,
 }
 
 impl<'a> WsCfBenchmarksValueRef<'a> {
@@ -49,8 +71,10 @@ impl<'a> WsCfBenchmarksValueRef<'a> {
             index_id: self.index_id.into_owned(),
             received_at: self.received_at,
             data: self.data.into_owned(),
-            avg_60s_data: self.avg_60s_data,
-            last_60s_windowed_average_15min: self.last_60s_windowed_average_15min,
+            avg_60s_data: self.avg_60s_data.into_owned(),
+            last_60s_windowed_average_15min: self
+                .last_60s_windowed_average_15min
+                .map(WsCfBenchmarksAvgDataRef::into_owned),
         }
     }
 }
@@ -64,7 +88,7 @@ pub struct WsCfBenchmarksIndexList {
 /// Borrowed version of [`WsCfBenchmarksIndexList`].
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsCfBenchmarksIndexListRef<'a> {
-    #[serde(borrow)]
+    #[serde(borrow, deserialize_with = "super::deserialize_borrowed_strings")]
     pub index_ids: Vec<Cow<'a, str>>,
 }
 

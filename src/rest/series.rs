@@ -59,12 +59,8 @@ pub struct Series {
     pub title: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
-    #[serde(default)]
-    pub subcategory: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub url: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub categories: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub tags: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
@@ -82,15 +78,11 @@ pub struct Series {
     #[serde(default)]
     pub product_metadata: Option<Map<String, Value>>,
     #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default)]
     pub volume_fp: Option<String>,
-    #[serde(default)]
-    pub latest_event_ticker: Option<String>,
     #[serde(default)]
     pub last_updated_ts: Option<String>,
     #[serde(default)]
-    pub inactive: Option<bool>,
+    pub exchange_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -105,6 +97,9 @@ pub struct GetSeriesListParams {
     /// If true, includes total volume traded across all events in each series.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_volume: Option<bool>,
+    /// Return series whose metadata was updated after this Unix timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -135,16 +130,47 @@ impl KalshiRestClient {
         .await
     }
 
-    /// Get a single series by ticker.
-    pub async fn get_series(&self, series_ticker: &str) -> Result<GetSeriesResponse, KalshiError> {
+    /// Get a single series by ticker, optionally including aggregate volume.
+    pub async fn get_series(
+        &self,
+        series_ticker: &str,
+        include_volume: Option<bool>,
+    ) -> Result<GetSeriesResponse, KalshiError> {
         let path = Self::full_path(&format!("/series/{series_ticker}"));
+        let query = include_volume.map(|value| [("include_volume", value)]);
         self.send(
             Method::GET,
             &path,
-            Option::<&()>::None,
+            query.as_ref(),
             Option::<&()>::None,
             false,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn series_discovery_categories_and_fixed_point_volume() {
+        let series: Series = serde_json::from_value(json!({
+            "ticker": "SERIES",
+            "category": "Primary",
+            "categories": ["Primary", "Discovery"],
+            "last_updated_ts": "2026-11-02T00:00:00Z",
+            "exchange_index": 2,
+            "volume_fp": "123.4567"
+        }))
+        .unwrap();
+        assert_eq!(series.categories, ["Primary", "Discovery"]);
+        assert_eq!(series.volume_fp.as_deref(), Some("123.4567"));
+        assert_eq!(
+            series.last_updated_ts.as_deref(),
+            Some("2026-11-02T00:00:00Z")
+        );
+        assert_eq!(series.exchange_index, Some(2));
     }
 }

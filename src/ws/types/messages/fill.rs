@@ -11,18 +11,12 @@ pub struct WsFill {
     pub client_order_id: Option<String>,
     #[serde(alias = "ticker")]
     pub market_ticker: String,
-    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
-    #[serde(default)]
-    pub side: Option<YesNo>,
-    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `book_side`.
-    #[serde(default)]
-    pub action: Option<BuySell>,
-    /// Normalized outcome side (yes | no). Added 2026-05-07.
-    #[serde(default)]
-    pub outcome_side: Option<YesNo>,
-    /// Normalized book side (bid | ask). Added 2026-05-07.
-    #[serde(default)]
-    pub book_side: Option<BookSide>,
+    pub exchange_index: i32,
+    /// Legacy direction fields remain part of the published payload.
+    pub side: YesNo,
+    pub action: BuySell,
+    pub outcome_side: YesNo,
+    pub book_side: BookSide,
     pub count_fp: String,
     pub yes_price_dollars: String,
     pub is_taker: bool,
@@ -31,8 +25,6 @@ pub struct WsFill {
     pub ts_ms: i64,
     pub post_position_fp: String,
     pub purchased_side: YesNo,
-    #[serde(default)]
-    pub created_time: Option<String>,
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
@@ -45,24 +37,22 @@ pub struct WsFillRef<'a> {
     pub trade_id: Cow<'a, str>,
     #[serde(borrow)]
     pub order_id: Cow<'a, str>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(alias = "ticker", borrow)]
     pub market_ticker: Cow<'a, str>,
-    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `outcome_side`.
-    #[serde(default)]
-    pub side: Option<YesNo>,
-    /// Deprecated 2026-05-07; removed ~2026-05-28. Use `book_side`.
-    #[serde(default)]
-    pub action: Option<BuySell>,
-    /// Normalized outcome side (yes | no). Added 2026-05-07.
-    #[serde(default)]
-    pub outcome_side: Option<YesNo>,
-    /// Normalized book side (bid | ask). Added 2026-05-07.
-    #[serde(default)]
-    pub book_side: Option<BookSide>,
+    pub exchange_index: i32,
+    pub side: YesNo,
+    pub action: BuySell,
+    pub outcome_side: YesNo,
+    pub book_side: BookSide,
     #[serde(borrow)]
     pub count_fp: Cow<'a, str>,
+    #[serde(borrow)]
     pub yes_price_dollars: Cow<'a, str>,
     pub is_taker: bool,
     #[serde(borrow)]
@@ -72,8 +62,6 @@ pub struct WsFillRef<'a> {
     #[serde(borrow)]
     pub post_position_fp: Cow<'a, str>,
     pub purchased_side: YesNo,
-    #[serde(default, borrow)]
-    pub created_time: Option<Cow<'a, str>>,
     #[serde(default)]
     #[serde(alias = "subaccount_number")]
     pub subaccount: Option<i64>,
@@ -86,6 +74,7 @@ impl<'a> WsFillRef<'a> {
             order_id: self.order_id.into_owned(),
             client_order_id: self.client_order_id.map(Cow::into_owned),
             market_ticker: self.market_ticker.into_owned(),
+            exchange_index: self.exchange_index,
             side: self.side,
             action: self.action,
             outcome_side: self.outcome_side,
@@ -98,7 +87,6 @@ impl<'a> WsFillRef<'a> {
             ts_ms: self.ts_ms,
             post_position_fp: self.post_position_fp.into_owned(),
             purchased_side: self.purchased_side,
-            created_time: self.created_time.map(Cow::into_owned),
             subaccount: self.subaccount,
         }
     }
@@ -114,6 +102,9 @@ mod tests {
             "trade_id":"t",
             "order_id":"o",
             "market_ticker":"T",
+            "exchange_index":0,
+            "outcome_side":"no",
+            "book_side":"ask",
             "side":"no",
             "action":"buy",
             "count_fp":"1",
@@ -126,8 +117,8 @@ mod tests {
             "purchased_side":"yes"
         }"#;
         let fill: WsFill = serde_json::from_str(json).unwrap();
-        assert!(matches!(fill.side, Some(YesNo::No)));
-        assert!(matches!(fill.action, Some(BuySell::Buy)));
+        assert!(matches!(fill.side, YesNo::No));
+        assert!(matches!(fill.action, BuySell::Buy));
     }
 
     #[test]
@@ -136,6 +127,9 @@ mod tests {
             "trade_id":"t",
             "order_id":"o",
             "market_ticker":"T",
+            "exchange_index":0,
+            "side":"yes",
+            "action":"buy",
             "outcome_side":"yes",
             "book_side":"bid",
             "count_fp":"1",
@@ -148,9 +142,7 @@ mod tests {
             "purchased_side":"yes"
         }"#;
         let fill: WsFill = serde_json::from_str(json).unwrap();
-        assert!(matches!(fill.outcome_side, Some(YesNo::Yes)));
-        assert!(matches!(fill.book_side, Some(BookSide::Bid)));
-        assert!(fill.side.is_none());
-        assert!(fill.action.is_none());
+        assert!(matches!(fill.outcome_side, YesNo::Yes));
+        assert!(matches!(fill.book_side, BookSide::Bid));
     }
 }

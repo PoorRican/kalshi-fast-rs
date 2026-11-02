@@ -8,22 +8,38 @@ High-performance async Rust client for the [Kalshi](https://kalshi.com) Trade AP
 
 ## Highlights
 
-- REST parity with the current Kalshi Trade API OpenAPI surface
-- WebSocket parity with the current AsyncAPI surface, including `user_orders`
+- Predictions and perps REST aligned to Kalshi's published specifications
+- Typed owned/borrowed WebSocket messages, including private orders and external reference feeds
 - Deterministic REST resilience: retries, exponential backoff+jitter, `429 Retry-After` support
 - Builder-based transport controls: timeout, connect timeout, headers, user-agent, proxy, custom `reqwest::Client`
 - Explicit WebSocket lifecycle controls: `close()` + configurable `shutdown_timeout(...)`
 - Pager/stream/all helpers for cursor endpoints
+- RSA-PSS and Ed25519 authentication with reusable signing keys
 
 ## Release Notes and Versioning
 
 - [`CHANGELOG.md`](CHANGELOG.md) records release history, compatibility blocks, and categorized change notes.
 - [`VERSIONING.md`](VERSIONING.md) defines crate version bump rules and explains how upstream Kalshi compatibility is tracked separately from the Cargo version.
 
+The unreleased `0.10.0` refresh uses the November 2, 2026 documentation snapshot
+(Predictions OpenAPI `3.35.0`; AsyncAPI `2.0.0`). See the changelog for the full
+compatibility tuple and [migration guidance](docs/README.md). Published
+future-dated schemas are not a claim that Kalshi has deployed those features.
+Retired APIs, deprecated quote-detail aliases, unpublished `x-excluded` REST
+operations, FIX, and the separate Clearing Member API are not exposed.
+
 ## Installation
+
+For the latest published release:
 
 ```sh
 cargo add kalshi-fast-rs
+```
+
+To use the unreleased `0.10.0` API from an adjacent local checkout instead:
+
+```sh
+cargo add kalshi-fast-rs --path ../kalshi-fast-rs
 ```
 
 ## REST Quick Start (Builder + Retry)
@@ -98,7 +114,7 @@ The `timed-reader` Cargo feature is disabled by default. Enable it when a backgr
 reader needs the process-local availability time captured before its bounded handoff:
 
 ```toml
-kalshi-fast-rs = { version = "0.7.1", features = ["timed-reader"] }
+kalshi-fast-rs = { path = "../kalshi-fast-rs", features = ["timed-reader"] }
 ```
 
 The feature adds an owned WebSocket event delivery API that includes this availability timestamp.
@@ -108,7 +124,7 @@ Existing WebSocket event-reading APIs remain available without enabling the feat
 
 - `examples/rest_retry_config.rs`
 - `examples/rfq_quotes_order_groups.rs`
-- `examples/ws_user_orders_v2.rs`
+- `examples/ws_user_orders.rs`
 - `examples/list_open_markets.rs`
 - `examples/orderbook_stream.rs`
 
@@ -121,6 +137,10 @@ Existing WebSocket event-reading APIs remain available without enabling the feat
 - `KALSHI_KEY_ID`
 - `KALSHI_PRIVATE_KEY_PATH`
 - Optional for some examples: `KALSHI_MARKET_TICKER`
+
+`KalshiAuth::from_pem_file` and `from_pem_str` detect Ed25519 PKCS#8 and RSA
+PKCS#8/PKCS#1 keys from their contents. A `BEGIN PRIVATE KEY` PEM header alone
+does not identify the algorithm.
 
 ## References
 
