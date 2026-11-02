@@ -2,7 +2,7 @@ use super::channel::WsChannelV2;
 use super::messages::*;
 use super::msg_type::WsMsgType;
 use super::subscription::{WsSubscriptionInfo, WsSubscriptionInfoRef};
-use super::wire::{WsWireMessage, WsWireMessageRef};
+use super::wire::{WsOkWire, WsOkWireRef, WsWireMessage, WsWireMessageRef};
 use crate::error::KalshiError;
 use bytes::Bytes;
 use serde::Deserialize;
@@ -16,12 +16,74 @@ pub struct WsListSubscriptions {
     pub subscriptions: Vec<WsSubscriptionInfo>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+/// Filters returned after a successful subscription update.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WsOkPayload {
+    pub market_tickers: Option<Vec<String>>,
+    pub market_ids: Option<Vec<String>>,
+    pub index_ids: Option<Vec<String>>,
+    pub underlying_tickers: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WsOkPayloadRef<'a> {
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
+    pub market_tickers: Option<Vec<Cow<'a, str>>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
+    pub market_ids: Option<Vec<Cow<'a, str>>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
+    pub index_ids: Option<Vec<Cow<'a, str>>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
+    pub underlying_tickers: Option<Vec<Cow<'a, str>>>,
+}
+
+fn optional_borrowed_strings<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<Cow<'de, str>>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Strings<'a>(
+        #[serde(
+            borrow,
+            deserialize_with = "super::messages::deserialize_borrowed_strings"
+        )]
+        Vec<Cow<'a, str>>,
+    );
+    Ok(Option::<Strings<'de>>::deserialize(deserializer)?.map(|value| value.0))
+}
+
+fn optional_borrowed_string<'de, D>(deserializer: D) -> Result<Option<Cow<'de, str>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Text<'a>(#[serde(borrow)] Cow<'a, str>);
+    Ok(Option::<Text<'de>>::deserialize(deserializer)?.map(|value| value.0))
+}
+
+impl<'a> WsOkPayloadRef<'a> {
+    pub fn into_owned(self) -> WsOkPayload {
+        fn own(values: Option<Vec<Cow<'_, str>>>) -> Option<Vec<String>> {
+            values.map(|values| values.into_iter().map(Cow::into_owned).collect())
+        }
+        WsOkPayload {
+            market_tickers: own(self.market_tickers),
+            market_ids: own(self.market_ids),
+            index_ids: own(self.index_ids),
+            underlying_tickers: own(self.underlying_tickers),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct WsError {
     #[serde(default)]
     pub code: Option<i64>,
-    #[serde(default)]
-    pub message: Option<String>,
+    pub msg: Option<String>,
+    pub market_ticker: Option<String>,
+    pub market_tickers: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,19 +104,27 @@ impl<'a> WsListSubscriptionsRef<'a> {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct WsErrorRef<'a> {
     #[serde(default)]
     pub code: Option<i64>,
-    #[serde(default, borrow)]
-    pub message: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_string")]
+    pub msg: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_string")]
+    pub market_ticker: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
+    pub market_tickers: Option<Vec<Cow<'a, str>>>,
 }
 
 impl<'a> WsErrorRef<'a> {
     pub fn into_owned(self) -> WsError {
         WsError {
             code: self.code,
-            message: self.message.map(Cow::into_owned),
+            msg: self.msg.map(Cow::into_owned),
+            market_ticker: self.market_ticker.map(Cow::into_owned),
+            market_tickers: self
+                .market_tickers
+                .map(|values| values.into_iter().map(Cow::into_owned).collect()),
         }
     }
 }
@@ -67,6 +137,7 @@ pub struct WsEnvelope {
     pub msg_type: WsMsgType,
     pub sid: Option<u64>,
     pub seq: Option<u64>,
+    pub sending_ts_ms: Option<i64>,
     pub msg: Option<Box<RawValue>>,
     #[serde(default)]
     pub subscriptions: Option<Vec<WsSubscriptionInfo>>,
@@ -89,7 +160,6 @@ impl WsEnvelope {
 
         #[derive(Deserialize)]
         struct SubscribedMsg {
-            #[allow(dead_code)]
             channel: Option<WsChannelV2>,
             sid: Option<u64>,
         }
@@ -99,32 +169,57 @@ impl WsEnvelope {
             msg_type,
             sid,
             seq,
+            sending_ts_ms,
             msg,
             subscriptions,
         } = self;
 
         match msg_type {
             WsMsgType::Subscribed => {
-                let sid = sid.or_else(|| {
-                    parse_msg::<SubscribedMsg>(&msg)
-                        .ok()
-                        .and_then(|value| value.sid)
-                });
-                Ok(WsMessageV2::Subscribed { id, sid, seq })
+                let subscribed = parse_msg::<SubscribedMsg>(&msg).ok();
+                let sid = sid.or_else(|| subscribed.as_ref().and_then(|value| value.sid));
+                let channel = subscribed.and_then(|value| value.channel);
+                Ok(WsMessageV2::Subscribed {
+                    id,
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    channel,
+                })
             }
-            WsMsgType::Unsubscribed => Ok(WsMessageV2::Unsubscribed { id, sid, seq }),
+            WsMsgType::Unsubscribed => Ok(WsMessageV2::Unsubscribed {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+            }),
             WsMsgType::Ok => {
-                if msg.is_some()
-                    && let Ok(subscriptions) = parse_msg::<Vec<WsSubscriptionInfo>>(&msg)
-                {
-                    return Ok(WsMessageV2::ListSubscriptions {
+                let msg = msg.as_ref().map(|_| parse_msg(&msg)).transpose()?;
+                match msg {
+                    Some(WsOkWire::Subscriptions(subscriptions)) => {
+                        Ok(WsMessageV2::ListSubscriptions {
+                            id,
+                            sid,
+                            seq,
+                            sending_ts_ms,
+                            subscriptions,
+                        })
+                    }
+                    Some(WsOkWire::Filters(msg)) => Ok(WsMessageV2::Ok {
                         id,
                         sid,
                         seq,
-                        subscriptions,
-                    });
+                        sending_ts_ms,
+                        msg: Some(msg),
+                    }),
+                    None => Ok(WsMessageV2::Ok {
+                        id,
+                        sid,
+                        seq,
+                        sending_ts_ms,
+                        msg: None,
+                    }),
                 }
-                Ok(WsMessageV2::Ok { id, sid, seq })
             }
             WsMsgType::ListSubscriptions => {
                 let subs = if msg.is_some() {
@@ -137,6 +232,7 @@ impl WsEnvelope {
                     id,
                     sid,
                     seq,
+                    sending_ts_ms,
                     subscriptions: subs,
                 })
             }
@@ -144,54 +240,59 @@ impl WsEnvelope {
                 let error = if msg.is_some() {
                     parse_msg(&msg)?
                 } else {
-                    WsError {
-                        code: None,
-                        message: None,
-                    }
+                    WsError::default()
                 };
                 Ok(WsMessageV2::Error {
                     id,
                     sid,
                     seq,
+                    sending_ts_ms,
                     error,
                 })
             }
             WsMsgType::Ticker => Ok(WsMessageV2::Data(WsDataMessageV2::Ticker {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
             WsMsgType::Trade => Ok(WsMessageV2::Data(WsDataMessageV2::Trade {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
             WsMsgType::OrderbookSnapshot => {
                 Ok(WsMessageV2::Data(WsDataMessageV2::OrderbookSnapshot {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_msg(&msg)?,
                 }))
             }
             WsMsgType::OrderbookDelta => Ok(WsMessageV2::Data(WsDataMessageV2::OrderbookDelta {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
             WsMsgType::Fill => Ok(WsMessageV2::Data(WsDataMessageV2::Fill {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
             WsMsgType::MarketPosition => Ok(WsMessageV2::Data(WsDataMessageV2::MarketPosition {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
             WsMsgType::MarketLifecycleV2 => {
                 Ok(WsMessageV2::Data(WsDataMessageV2::MarketLifecycleV2 {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_msg(&msg)?,
                 }))
             }
@@ -199,67 +300,71 @@ impl WsEnvelope {
                 WsDataMessageV2::MultivariateMarketLifecycle {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_msg(&msg)?,
                 },
             )),
             WsMsgType::EventLifecycle => Ok(WsMessageV2::Data(WsDataMessageV2::EventLifecycle {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
             WsMsgType::EventFeeUpdate => Ok(WsMessageV2::Data(WsDataMessageV2::EventFeeUpdate {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageV2::Data(WsDataMessageV2::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_msg(&msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunications::RfqCreated(parse_msg(&msg)?),
             })),
             WsMsgType::RfqDeleted => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunications::RfqDeleted(parse_msg(&msg)?),
             })),
             WsMsgType::QuoteCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunications::QuoteCreated(parse_msg(&msg)?),
             })),
             WsMsgType::QuoteAccepted => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunications::QuoteAccepted(parse_msg(&msg)?),
             })),
             WsMsgType::QuoteExecuted => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunications::QuoteExecuted(parse_msg(&msg)?),
             })),
             WsMsgType::OrderGroupUpdates => {
                 Ok(WsMessageV2::Data(WsDataMessageV2::OrderGroupUpdates {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_msg(&msg)?,
                 }))
             }
             WsMsgType::UserOrder => Ok(WsMessageV2::Data(WsDataMessageV2::UserOrder {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_msg(&msg)?,
             })),
             WsMsgType::CfbenchmarksValue => {
                 Ok(WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_msg(&msg)?,
                 }))
             }
@@ -267,19 +372,95 @@ impl WsEnvelope {
                 WsDataMessageV2::CfbenchmarksValueIndexlist {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_msg(&msg)?,
                 },
             )),
-            WsMsgType::Communications => Ok(WsMessageV2::Unknown {
-                msg_type: WsMsgType::Communications,
+            WsMsgType::RfqBatchCreated => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
                 sid,
                 seq,
-                raw: msg,
-            }),
+                sending_ts_ms,
+                msg: WsCommunications::RfqBatchCreated(parse_msg(&msg)?),
+            })),
+            WsMsgType::RfqBatchDeleted => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: WsCommunications::RfqBatchDeleted(parse_msg(&msg)?),
+            })),
+            WsMsgType::BatchQuoteCreated => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunications::BatchQuoteCreated(parse_msg(&msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchBestQuotes => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunications::RfqBatchBestQuotes(parse_msg(&msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteAccepted => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunications::BatchQuoteAccepted(parse_msg(&msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchExecuted => Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: WsCommunications::RfqBatchExecuted(parse_msg(&msg)?),
+            })),
+            WsMsgType::BatchQuoteExecuted => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunications::BatchQuoteExecuted(parse_msg(&msg)?),
+                }))
+            }
+            WsMsgType::CfbenchmarksValue5hz => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::CfbenchmarksValue5hz {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_msg(&msg)?,
+                }))
+            }
+            WsMsgType::CfbenchmarksValue5hzIndexlist => Ok(WsMessageV2::Data(
+                WsDataMessageV2::CfbenchmarksValue5hzIndexlist {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
+            WsMsgType::PythValue => Ok(WsMessageV2::Data(WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageV2::Data(
+                WsDataMessageV2::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_msg(&msg)?,
+                },
+            )),
             other => Ok(WsMessageV2::Unknown {
                 msg_type: other,
                 sid,
                 seq,
+                sending_ts_ms,
                 raw: msg,
             }),
         }
@@ -293,6 +474,7 @@ pub struct WsEnvelopeRef<'a> {
     pub msg_type: WsMsgType,
     pub sid: Option<u64>,
     pub seq: Option<u64>,
+    pub sending_ts_ms: Option<i64>,
     #[serde(borrow)]
     pub msg: Option<&'a RawValue>,
     #[serde(default, borrow)]
@@ -314,7 +496,6 @@ impl<'a> WsEnvelopeRef<'a> {
     pub fn into_message(self) -> Result<WsMessageRef<'a>, KalshiError> {
         #[derive(Deserialize)]
         struct SubscribedMsg {
-            #[allow(dead_code)]
             channel: Option<WsChannelV2>,
             sid: Option<u64>,
         }
@@ -324,32 +505,56 @@ impl<'a> WsEnvelopeRef<'a> {
             msg_type,
             sid,
             seq,
+            sending_ts_ms,
             msg,
             subscriptions,
         } = self;
         match msg_type {
             WsMsgType::Subscribed => {
-                let sid = sid.or_else(|| {
-                    parse_borrowed_msg::<SubscribedMsg>(msg)
-                        .ok()
-                        .and_then(|value| value.sid)
-                });
-                Ok(WsMessageRef::Subscribed { id, sid, seq })
+                let subscribed = parse_borrowed_msg::<SubscribedMsg>(msg).ok();
+                let sid = sid.or_else(|| subscribed.as_ref().and_then(|value| value.sid));
+                let channel = subscribed.and_then(|value| value.channel);
+                Ok(WsMessageRef::Subscribed {
+                    id,
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    channel,
+                })
             }
-            WsMsgType::Unsubscribed => Ok(WsMessageRef::Unsubscribed { id, sid, seq }),
+            WsMsgType::Unsubscribed => Ok(WsMessageRef::Unsubscribed {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+            }),
             WsMsgType::Ok => {
-                if msg.is_some()
-                    && let Ok(subscriptions) =
-                        parse_borrowed_msg::<Vec<WsSubscriptionInfoRef<'a>>>(msg)
-                {
-                    return Ok(WsMessageRef::ListSubscriptions {
+                let msg = msg.map(|_| parse_borrowed_msg(msg)).transpose()?;
+                match msg {
+                    Some(WsOkWireRef::Subscriptions(subscriptions)) => {
+                        Ok(WsMessageRef::ListSubscriptions {
+                            id,
+                            sid,
+                            seq,
+                            sending_ts_ms,
+                            subscriptions,
+                        })
+                    }
+                    Some(WsOkWireRef::Filters(msg)) => Ok(WsMessageRef::Ok {
                         id,
                         sid,
                         seq,
-                        subscriptions,
-                    });
+                        sending_ts_ms,
+                        msg: Some(msg),
+                    }),
+                    None => Ok(WsMessageRef::Ok {
+                        id,
+                        sid,
+                        seq,
+                        sending_ts_ms,
+                        msg: None,
+                    }),
                 }
-                Ok(WsMessageRef::Ok { id, sid, seq })
             }
             WsMsgType::ListSubscriptions => {
                 let subs = if msg.is_some() {
@@ -362,6 +567,7 @@ impl<'a> WsEnvelopeRef<'a> {
                     id,
                     sid,
                     seq,
+                    sending_ts_ms,
                     subscriptions: subs,
                 })
             }
@@ -369,54 +575,59 @@ impl<'a> WsEnvelopeRef<'a> {
                 let error = if msg.is_some() {
                     parse_borrowed_msg::<WsErrorRef<'a>>(msg)?
                 } else {
-                    WsErrorRef {
-                        code: None,
-                        message: None,
-                    }
+                    WsErrorRef::default()
                 };
                 Ok(WsMessageRef::Error {
                     id,
                     sid,
                     seq,
+                    sending_ts_ms,
                     error,
                 })
             }
             WsMsgType::Ticker => Ok(WsMessageRef::Data(WsDataMessageRef::Ticker {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
             WsMsgType::Trade => Ok(WsMessageRef::Data(WsDataMessageRef::Trade {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
             WsMsgType::OrderbookSnapshot => {
                 Ok(WsMessageRef::Data(WsDataMessageRef::OrderbookSnapshot {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_borrowed_msg(msg)?,
                 }))
             }
             WsMsgType::OrderbookDelta => Ok(WsMessageRef::Data(WsDataMessageRef::OrderbookDelta {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
             WsMsgType::Fill => Ok(WsMessageRef::Data(WsDataMessageRef::Fill {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
             WsMsgType::MarketPosition => Ok(WsMessageRef::Data(WsDataMessageRef::MarketPosition {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
             WsMsgType::MarketLifecycleV2 => {
                 Ok(WsMessageRef::Data(WsDataMessageRef::MarketLifecycleV2 {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_borrowed_msg(msg)?,
                 }))
             }
@@ -424,67 +635,71 @@ impl<'a> WsEnvelopeRef<'a> {
                 WsDataMessageRef::MultivariateMarketLifecycle {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
             WsMsgType::EventLifecycle => Ok(WsMessageRef::Data(WsDataMessageRef::EventLifecycle {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
             WsMsgType::EventFeeUpdate => Ok(WsMessageRef::Data(WsDataMessageRef::EventFeeUpdate {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
-            WsMsgType::Multivariate | WsMsgType::MultivariateLookup => {
-                Ok(WsMessageRef::Data(WsDataMessageRef::Multivariate {
-                    sid,
-                    seq,
-                    msg: parse_borrowed_msg(msg)?,
-                }))
-            }
             WsMsgType::RfqCreated => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunicationsRef::RfqCreated(parse_borrowed_msg(msg)?),
             })),
             WsMsgType::RfqDeleted => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunicationsRef::RfqDeleted(parse_borrowed_msg(msg)?),
             })),
             WsMsgType::QuoteCreated => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunicationsRef::QuoteCreated(parse_borrowed_msg(msg)?),
             })),
             WsMsgType::QuoteAccepted => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunicationsRef::QuoteAccepted(parse_borrowed_msg(msg)?),
             })),
             WsMsgType::QuoteExecuted => Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: WsCommunicationsRef::QuoteExecuted(parse_borrowed_msg(msg)?),
             })),
             WsMsgType::OrderGroupUpdates => {
                 Ok(WsMessageRef::Data(WsDataMessageRef::OrderGroupUpdates {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_borrowed_msg(msg)?,
                 }))
             }
             WsMsgType::UserOrder => Ok(WsMessageRef::Data(WsDataMessageRef::UserOrder {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: parse_borrowed_msg(msg)?,
             })),
             WsMsgType::CfbenchmarksValue => {
                 Ok(WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValue {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_borrowed_msg(msg)?,
                 }))
             }
@@ -492,19 +707,101 @@ impl<'a> WsEnvelopeRef<'a> {
                 WsDataMessageRef::CfbenchmarksValueIndexlist {
                     sid,
                     seq,
+                    sending_ts_ms,
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
-            WsMsgType::Communications => Ok(WsMessageRef::Unknown {
-                msg_type: WsMsgType::Communications,
+            WsMsgType::RfqBatchCreated => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunicationsRef::RfqBatchCreated(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchDeleted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunicationsRef::RfqBatchDeleted(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteCreated => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunicationsRef::BatchQuoteCreated(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchBestQuotes => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunicationsRef::RfqBatchBestQuotes(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteAccepted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunicationsRef::BatchQuoteAccepted(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::RfqBatchExecuted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunicationsRef::RfqBatchExecuted(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::BatchQuoteExecuted => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::Communications {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: WsCommunicationsRef::BatchQuoteExecuted(parse_borrowed_msg(msg)?),
+                }))
+            }
+            WsMsgType::CfbenchmarksValue5hz => {
+                Ok(WsMessageRef::Data(WsDataMessageRef::CfbenchmarksValue5hz {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_borrowed_msg(msg)?,
+                }))
+            }
+            WsMsgType::CfbenchmarksValue5hzIndexlist => Ok(WsMessageRef::Data(
+                WsDataMessageRef::CfbenchmarksValue5hzIndexlist {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
+            WsMsgType::PythValue => Ok(WsMessageRef::Data(WsDataMessageRef::PythValue {
                 sid,
                 seq,
-                raw: msg,
-            }),
+                sending_ts_ms,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::PythValueUnderlyingList => Ok(WsMessageRef::Data(
+                WsDataMessageRef::PythValueUnderlyingList {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             other => Ok(WsMessageRef::Unknown {
                 msg_type: other,
                 sid,
                 seq,
+                sending_ts_ms,
                 raw: msg,
             }),
         }
@@ -517,27 +814,34 @@ pub enum WsMessageV2 {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        channel: Option<WsChannelV2>,
     },
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
     },
     ListSubscriptions {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         subscriptions: Vec<WsSubscriptionInfo>,
     },
     Ok {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: Option<WsOkPayload>,
     },
     Error {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         error: WsError,
     },
     Data(WsDataMessageV2),
@@ -545,6 +849,7 @@ pub enum WsMessageV2 {
         msg_type: WsMsgType,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         raw: Option<Box<RawValue>>,
     },
 }
@@ -554,82 +859,116 @@ pub enum WsDataMessageV2 {
     Ticker {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsTicker,
     },
     Trade {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsTrade,
     },
     OrderbookSnapshot {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsOrderbookSnapshot,
     },
     OrderbookDelta {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsOrderbookDelta,
     },
     Fill {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsFill,
     },
     MarketPosition {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsMarketPosition,
     },
     MarketLifecycleV2 {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsMarketLifecycleV2,
     },
     MultivariateMarketLifecycle {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsMarketLifecycleV2,
     },
     EventLifecycle {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsEventLifecycle,
     },
     EventFeeUpdate {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsEventFeeUpdate,
-    },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariate,
     },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsCommunications,
     },
     OrderGroupUpdates {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsOrderGroupUpdate,
     },
     UserOrder {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsUserOrder,
     },
     CfbenchmarksValue {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsCfBenchmarksValue,
     },
     CfbenchmarksValueIndexlist {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsCfBenchmarksIndexList,
+    },
+    CfbenchmarksValue5hz {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsCfBenchmarksValue5Hz,
+    },
+    CfbenchmarksValue5hzIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsCfBenchmarksValue5HzIndexList,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsPythValue,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsPythUnderlyingList,
     },
 }
 
@@ -646,11 +985,14 @@ macro_rules! data_message_position {
             | Self::MultivariateMarketLifecycle { $field, .. }
             | Self::EventLifecycle { $field, .. }
             | Self::EventFeeUpdate { $field, .. }
-            | Self::Multivariate { $field, .. }
             | Self::Communications { $field, .. }
             | Self::OrderGroupUpdates { $field, .. }
             | Self::UserOrder { $field, .. }
             | Self::CfbenchmarksValue { $field, .. }
+            | Self::CfbenchmarksValue5hz { $field, .. }
+            | Self::CfbenchmarksValue5hzIndexlist { $field, .. }
+            | Self::PythValue { $field, .. }
+            | Self::PythValueUnderlyingList { $field, .. }
             | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
         }
     };
@@ -664,6 +1006,10 @@ impl WsDataMessageV2 {
     fn sequence(&self) -> Option<u64> {
         data_message_position!(self, seq)
     }
+
+    fn sending_ts_ms(&self) -> Option<i64> {
+        data_message_position!(self, sending_ts_ms)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -671,82 +1017,116 @@ pub enum WsDataMessageRef<'a> {
     Ticker {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsTickerRef<'a>,
     },
     Trade {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsTradeRef<'a>,
     },
     OrderbookSnapshot {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsOrderbookSnapshotRef<'a>,
     },
     OrderbookDelta {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsOrderbookDeltaRef<'a>,
     },
     Fill {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsFillRef<'a>,
     },
     MarketPosition {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsMarketPositionRef<'a>,
     },
     MarketLifecycleV2 {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsMarketLifecycleV2Ref<'a>,
     },
     MultivariateMarketLifecycle {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsMarketLifecycleV2Ref<'a>,
     },
     EventLifecycle {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsEventLifecycleRef<'a>,
     },
     EventFeeUpdate {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsEventFeeUpdateRef<'a>,
-    },
-    Multivariate {
-        sid: Option<u64>,
-        seq: Option<u64>,
-        msg: WsMultivariateRef<'a>,
     },
     Communications {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsCommunicationsRef<'a>,
     },
     OrderGroupUpdates {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsOrderGroupUpdateRef<'a>,
     },
     UserOrder {
         sid: Option<u64>,
         seq: Option<u64>,
-        msg: WsUserOrder,
+        sending_ts_ms: Option<i64>,
+        msg: WsUserOrderRef<'a>,
     },
     CfbenchmarksValue {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsCfBenchmarksValueRef<'a>,
     },
     CfbenchmarksValueIndexlist {
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         msg: WsCfBenchmarksIndexListRef<'a>,
+    },
+    CfbenchmarksValue5hz {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsCfBenchmarksValue5HzRef<'a>,
+    },
+    CfbenchmarksValue5hzIndexlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsCfBenchmarksValue5HzIndexListRef<'a>,
+    },
+    PythValue {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsPythValueRef<'a>,
+    },
+    PythValueUnderlyingList {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsPythUnderlyingListRef<'a>,
     },
 }
 
@@ -758,101 +1138,224 @@ impl<'a> WsDataMessageRef<'a> {
     fn sequence(&self) -> Option<u64> {
         data_message_position!(self, seq)
     }
+
+    fn sending_ts_ms(&self) -> Option<i64> {
+        data_message_position!(self, sending_ts_ms)
+    }
 }
 
 impl<'a> WsDataMessageRef<'a> {
     pub fn into_owned(self) -> WsDataMessageV2 {
         match self {
-            WsDataMessageRef::Ticker { sid, seq, msg } => WsDataMessageV2::Ticker {
+            WsDataMessageRef::Ticker {
                 sid,
                 seq,
-                msg: msg.into_owned(),
-            },
-            WsDataMessageRef::Trade { sid, seq, msg } => WsDataMessageV2::Trade {
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::Ticker {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::OrderbookSnapshot { sid, seq, msg } => {
-                WsDataMessageV2::OrderbookSnapshot {
-                    sid,
-                    seq,
-                    msg: msg.into_owned(),
-                }
-            }
-            WsDataMessageRef::OrderbookDelta { sid, seq, msg } => WsDataMessageV2::OrderbookDelta {
+            WsDataMessageRef::Trade {
                 sid,
                 seq,
-                msg: msg.into_owned(),
-            },
-            WsDataMessageRef::Fill { sid, seq, msg } => WsDataMessageV2::Fill {
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::Trade {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::MarketPosition { sid, seq, msg } => WsDataMessageV2::MarketPosition {
+            WsDataMessageRef::OrderbookSnapshot {
                 sid,
                 seq,
-                msg: msg.into_owned(),
-            },
-            WsDataMessageRef::MarketLifecycleV2 { sid, seq, msg } => {
-                WsDataMessageV2::MarketLifecycleV2 {
-                    sid,
-                    seq,
-                    msg: msg.into_owned(),
-                }
-            }
-            WsDataMessageRef::MultivariateMarketLifecycle { sid, seq, msg } => {
-                WsDataMessageV2::MultivariateMarketLifecycle {
-                    sid,
-                    seq,
-                    msg: msg.into_owned(),
-                }
-            }
-            WsDataMessageRef::EventLifecycle { sid, seq, msg } => WsDataMessageV2::EventLifecycle {
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::OrderbookSnapshot {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::EventFeeUpdate { sid, seq, msg } => WsDataMessageV2::EventFeeUpdate {
+            WsDataMessageRef::OrderbookDelta {
                 sid,
                 seq,
-                msg: msg.into_owned(),
-            },
-            WsDataMessageRef::Multivariate { sid, seq, msg } => WsDataMessageV2::Multivariate {
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::OrderbookDelta {
                 sid,
                 seq,
+                sending_ts_ms,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::Communications { sid, seq, msg } => WsDataMessageV2::Communications {
+            WsDataMessageRef::Fill {
                 sid,
                 seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::Fill {
+                sid,
+                seq,
+                sending_ts_ms,
                 msg: msg.into_owned(),
             },
-            WsDataMessageRef::OrderGroupUpdates { sid, seq, msg } => {
-                WsDataMessageV2::OrderGroupUpdates {
-                    sid,
-                    seq,
-                    msg: msg.into_owned(),
-                }
-            }
-            WsDataMessageRef::UserOrder { sid, seq, msg } => {
-                WsDataMessageV2::UserOrder { sid, seq, msg }
-            }
-            WsDataMessageRef::CfbenchmarksValue { sid, seq, msg } => {
-                WsDataMessageV2::CfbenchmarksValue {
-                    sid,
-                    seq,
-                    msg: msg.into_owned(),
-                }
-            }
-            WsDataMessageRef::CfbenchmarksValueIndexlist { sid, seq, msg } => {
-                WsDataMessageV2::CfbenchmarksValueIndexlist {
-                    sid,
-                    seq,
-                    msg: msg.into_owned(),
-                }
-            }
+            WsDataMessageRef::MarketPosition {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::MarketPosition {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::MarketLifecycleV2 {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::MarketLifecycleV2 {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::MultivariateMarketLifecycle {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::MultivariateMarketLifecycle {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::EventLifecycle {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::EventLifecycle {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::EventFeeUpdate {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::EventFeeUpdate {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::Communications {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::Communications {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::OrderGroupUpdates {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::OrderGroupUpdates {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::UserOrder {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::UserOrder {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::CfbenchmarksValue {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::CfbenchmarksValue {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::CfbenchmarksValue5hz {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::CfbenchmarksValue5hz {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::CfbenchmarksValue5hzIndexlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::CfbenchmarksValue5hzIndexlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValue {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::PythValue {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::PythValueUnderlyingList {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::PythValueUnderlyingList {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::CfbenchmarksValueIndexlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::CfbenchmarksValueIndexlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
         }
     }
 }
@@ -867,27 +1370,34 @@ pub enum WsMessageRef<'a> {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        channel: Option<WsChannelV2>,
     },
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
     },
     ListSubscriptions {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         subscriptions: Vec<WsSubscriptionInfoRef<'a>>,
     },
     Ok {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: Option<WsOkPayloadRef<'a>>,
     },
     Error {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         error: WsErrorRef<'a>,
     },
     Data(WsDataMessageRef<'a>),
@@ -895,6 +1405,7 @@ pub enum WsMessageRef<'a> {
         msg_type: WsMsgType,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
         raw: Option<&'a RawValue>,
     },
 }
@@ -916,6 +1427,19 @@ impl<'a> WsMessageRef<'a> {
         }
     }
 
+    /// Unix milliseconds at which Kalshi queued this frame at the network layer.
+    pub fn sending_ts_ms(&self) -> Option<i64> {
+        match self {
+            Self::Subscribed { sending_ts_ms, .. }
+            | Self::Unsubscribed { sending_ts_ms, .. }
+            | Self::ListSubscriptions { sending_ts_ms, .. }
+            | Self::Ok { sending_ts_ms, .. }
+            | Self::Error { sending_ts_ms, .. }
+            | Self::Unknown { sending_ts_ms, .. } => *sending_ts_ms,
+            Self::Data(data) => data.sending_ts_ms(),
+        }
+    }
+
     /// Sequence number carried by any frame that has one.
     ///
     /// Consumers MUST use this instead of matching on variants, so a newly
@@ -934,34 +1458,70 @@ impl<'a> WsMessageRef<'a> {
 
     pub fn into_owned(self) -> Result<WsMessageV2, KalshiError> {
         let owned = match self {
-            WsMessageRef::Subscribed { id, sid, seq } => WsMessageV2::Subscribed { id, sid, seq },
-            WsMessageRef::Unsubscribed { id, sid, seq } => {
-                WsMessageV2::Unsubscribed { id, sid, seq }
-            }
+            WsMessageRef::Subscribed {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+                channel,
+            } => WsMessageV2::Subscribed {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+                channel,
+            },
+            WsMessageRef::Unsubscribed {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+            } => WsMessageV2::Unsubscribed {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+            },
             WsMessageRef::ListSubscriptions {
                 id,
                 sid,
                 seq,
+                sending_ts_ms,
                 subscriptions,
             } => WsMessageV2::ListSubscriptions {
                 id,
                 sid,
                 seq,
+                sending_ts_ms,
                 subscriptions: subscriptions
                     .into_iter()
                     .map(WsSubscriptionInfoRef::into_owned)
                     .collect(),
             },
-            WsMessageRef::Ok { id, sid, seq } => WsMessageV2::Ok { id, sid, seq },
+            WsMessageRef::Ok {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsMessageV2::Ok {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.map(WsOkPayloadRef::into_owned),
+            },
             WsMessageRef::Error {
                 id,
                 sid,
                 seq,
+                sending_ts_ms,
                 error,
             } => WsMessageV2::Error {
                 id,
                 sid,
                 seq,
+                sending_ts_ms,
                 error: error.into_owned(),
             },
             WsMessageRef::Data(data) => WsMessageV2::Data(data.into_owned()),
@@ -969,6 +1529,7 @@ impl<'a> WsMessageRef<'a> {
                 msg_type,
                 sid,
                 seq,
+                sending_ts_ms,
                 raw,
             } => {
                 let raw_owned = match raw {
@@ -979,6 +1540,7 @@ impl<'a> WsMessageRef<'a> {
                     msg_type,
                     sid,
                     seq,
+                    sending_ts_ms,
                     raw: raw_owned,
                 }
             }
@@ -1032,6 +1594,19 @@ impl WsMessageV2 {
             | Self::Error { sid, .. } => *sid,
             Self::Data(data) => data.subscription_id(),
             Self::Unknown { sid, .. } => *sid,
+        }
+    }
+
+    /// Unix milliseconds at which Kalshi queued this frame at the network layer.
+    pub fn sending_ts_ms(&self) -> Option<i64> {
+        match self {
+            Self::Subscribed { sending_ts_ms, .. }
+            | Self::Unsubscribed { sending_ts_ms, .. }
+            | Self::ListSubscriptions { sending_ts_ms, .. }
+            | Self::Ok { sending_ts_ms, .. }
+            | Self::Error { sending_ts_ms, .. }
+            | Self::Unknown { sending_ts_ms, .. } => *sending_ts_ms,
+            Self::Data(data) => data.sending_ts_ms(),
         }
     }
 
@@ -1235,16 +1810,14 @@ mod tests {
     }
 
     #[test]
-    fn ws_message_from_bytes_list_subscriptions_accepts_numeric_shard_key() {
+    fn ws_message_from_bytes_list_subscriptions() {
         let json = r#"{
             "id":3,
             "type":"ok",
             "msg":[
                 {
                     "channel":"communications",
-                    "sid":11,
-                    "shard_factor":4,
-                    "shard_key":2
+                    "sid":11
                 }
             ]
         }"#;
@@ -1256,8 +1829,8 @@ mod tests {
             } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
-                assert_eq!(subscriptions[0].shard_factor, Some(4));
-                assert_eq!(subscriptions[0].shard_key, Some(2));
+                assert_eq!(subscriptions[0].sid, 11);
+                assert_eq!(subscriptions[0].channel, "communications");
             }
             other => panic!("expected list_subscriptions response, got {other:?}"),
         }
@@ -1269,8 +1842,8 @@ mod tests {
             } => {
                 assert_eq!(id, Some(3));
                 assert_eq!(subscriptions.len(), 1);
-                assert_eq!(subscriptions[0].shard_factor, Some(4));
-                assert_eq!(subscriptions[0].shard_key, Some(2));
+                assert_eq!(subscriptions[0].sid, 11);
+                assert_eq!(subscriptions[0].channel, "communications");
             }
             other => panic!("expected borrowed list_subscriptions response, got {other:?}"),
         }
@@ -1354,6 +1927,9 @@ mod tests {
                 "yes_price_dollars":"0.10",
                 "no_price_dollars":"0.90",
                 "taker_side":"yes",
+                "taker_outcome_side":"yes",
+                "taker_book_side":"bid",
+                "is_block_trade":false,
                 "ts":1704067200,
                 "ts_ms":1704067200000
             }

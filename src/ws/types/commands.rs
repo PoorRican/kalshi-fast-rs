@@ -24,8 +24,8 @@ pub(crate) struct WsListSubscriptionsCmd {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct WsUpdateSubscriptionCmd {
+pub(crate) struct WsUpdateSubscriptionCmd<P = WsUpdateSubscriptionParamsV2> {
     pub id: u64,
     pub cmd: &'static str,
-    pub params: WsUpdateSubscriptionParamsV2,
+    pub params: P,
 }

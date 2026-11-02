@@ -2,11 +2,45 @@ use crate::types::YesNo;
 use serde::Deserialize;
 use std::borrow::Cow;
 
+fn deserialize_price_levels<'de, D>(
+    deserializer: D,
+) -> Result<Vec<(Cow<'de, str>, Cow<'de, str>)>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Level<'a>(#[serde(borrow)] Cow<'a, str>, #[serde(borrow)] Cow<'a, str>);
+
+    struct LevelsVisitor;
+    impl<'de> serde::de::Visitor<'de> for LevelsVisitor {
+        type Value = Vec<(Cow<'de, str>, Cow<'de, str>)>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an array of price and quantity pairs")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut levels = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+            while let Some(Level(price, quantity)) = seq.next_element()? {
+                levels.push((price, quantity));
+            }
+            Ok(levels)
+        }
+    }
+
+    deserializer.deserialize_seq(LevelsVisitor)
+}
+
 /// Orderbook snapshot message (type: "orderbook_snapshot")
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsOrderbookSnapshot {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock. Captured older frames can omit this field.
+    pub clock: Option<i64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
     #[serde(default)]
     pub yes_dollars_fp: Vec<(String, String)>,
@@ -20,6 +54,8 @@ pub struct WsOrderbookSnapshot {
 pub struct WsOrderbookDelta {
     pub market_ticker: String,
     pub market_id: String,
+    /// Exchange clock. Captured older frames can omit this field.
+    pub clock: Option<i64>,
     pub price_dollars: String,
     pub delta_fp: String,
     pub side: YesNo,
@@ -41,11 +77,12 @@ pub struct WsOrderbookSnapshotRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    pub clock: Option<i64>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
-    #[serde(default, borrow)]
+    #[serde(default, borrow, deserialize_with = "deserialize_price_levels")]
     pub yes_dollars_fp: Vec<(Cow<'a, str>, Cow<'a, str>)>,
     /// Price levels: (price_dollars, quantity_fp) - fully fixed-point
-    #[serde(default, borrow)]
+    #[serde(default, borrow, deserialize_with = "deserialize_price_levels")]
     pub no_dollars_fp: Vec<(Cow<'a, str>, Cow<'a, str>)>,
 }
 
@@ -54,6 +91,7 @@ impl<'a> WsOrderbookSnapshotRef<'a> {
         WsOrderbookSnapshot {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             yes_dollars_fp: self
                 .yes_dollars_fp
                 .into_iter()
@@ -75,16 +113,25 @@ pub struct WsOrderbookDeltaRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub market_id: Cow<'a, str>,
+    pub clock: Option<i64>,
     #[serde(borrow)]
     pub price_dollars: Cow<'a, str>,
     #[serde(borrow)]
     pub delta_fp: Cow<'a, str>,
     pub side: YesNo,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(default)]
     pub subaccount: Option<i64>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub ts: Option<Cow<'a, str>>,
     #[serde(default)]
     pub ts_ms: Option<i64>,
@@ -98,6 +145,7 @@ impl<'a> WsOrderbookDeltaRef<'a> {
         WsOrderbookDelta {
             market_ticker: self.market_ticker.into_owned(),
             market_id: self.market_id.into_owned(),
+            clock: self.clock,
             price_dollars: self.price_dollars.into_owned(),
             delta_fp: self.delta_fp.into_owned(),
             side: self.side,

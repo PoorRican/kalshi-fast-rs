@@ -72,28 +72,26 @@ impl fmt::Display for MarketStatusConversionError {
 
 impl std::error::Error for MarketStatusConversionError {}
 
-/// Best-effort compatibility conversion between response lifecycle status and
-/// query status filters.
+/// Convert a lifecycle status to its best matching query status.
 ///
-/// Prefer using the source enum directly when possible. This mapping is lossy.
+/// This mapping is lossy for determined, disputed and amended markets.
 impl From<MarketStatus> for MarketStatusQuery {
     fn from(status: MarketStatus) -> Self {
         match status {
             MarketStatus::Initialized => MarketStatusQuery::Unopened,
             MarketStatus::Inactive => MarketStatusQuery::Paused,
             MarketStatus::Active => MarketStatusQuery::Open,
-            MarketStatus::Closed => MarketStatusQuery::Closed,
-            MarketStatus::Determined => MarketStatusQuery::Closed,
-            MarketStatus::Disputed => MarketStatusQuery::Closed,
-            MarketStatus::Amended => MarketStatusQuery::Closed,
+            MarketStatus::Closed
+            | MarketStatus::Determined
+            | MarketStatus::Disputed
+            | MarketStatus::Amended => MarketStatusQuery::Closed,
             MarketStatus::Finalized => MarketStatusQuery::Settled,
             MarketStatus::Unknown => MarketStatusQuery::Unknown,
         }
     }
 }
 
-/// Best-effort compatibility conversion between query status filters and
-/// response lifecycle status.
+/// Convert query status filters to their response lifecycle status.
 ///
 /// Prefer using the source enum directly when possible. This mapping is lossy.
 impl From<MarketStatusQuery> for MarketStatus {
@@ -157,11 +155,8 @@ pub struct MveSelectedLeg {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PriceRange {
-    #[serde(alias = "min_price")]
     pub start: String,
-    #[serde(alias = "max_price")]
     pub end: String,
-    #[serde(alias = "increment")]
     pub step: String,
 }
 
@@ -171,8 +166,6 @@ pub struct Market {
     #[serde(default)]
     pub event_ticker: Option<String>,
     #[serde(default)]
-    pub market_id: Option<String>,
-    #[serde(default)]
     pub status: Option<MarketStatus>,
     #[serde(default)]
     pub market_type: Option<String>,
@@ -180,8 +173,6 @@ pub struct Market {
     pub title: Option<String>,
     #[serde(default)]
     pub subtitle: Option<String>,
-    #[serde(default)]
-    pub event_title: Option<String>,
     #[serde(default)]
     pub yes_sub_title: Option<String>,
     #[serde(default)]
@@ -191,35 +182,13 @@ pub struct Market {
     #[serde(default)]
     pub rules_secondary: Option<String>,
     #[serde(default)]
-    pub resolution_source: Option<String>,
-    #[serde(default)]
     pub result: Option<String>,
     #[serde(default)]
-    pub can_trade: Option<bool>,
-    #[serde(default)]
-    pub can_settle: Option<bool>,
-    #[serde(default)]
     pub can_close_early: Option<bool>,
-    #[serde(default)]
-    pub series_ticker: Option<String>,
-    #[serde(default)]
-    pub series_id: Option<i64>,
-    #[serde(default)]
-    pub event_id: Option<i64>,
-    #[serde(default)]
-    pub response_price_units: Option<String>,
     #[serde(default)]
     pub settlement_timer_seconds: Option<i64>,
     #[serde(default)]
     pub price_level_structure: Option<String>,
-    #[serde(default)]
-    pub open_ts: Option<i64>,
-    #[serde(default)]
-    pub close_ts: Option<i64>,
-    #[serde(default)]
-    pub settled_ts: Option<i64>,
-    #[serde(default)]
-    pub expiration_ts: Option<i64>,
     #[serde(default)]
     pub open_time: Option<String>,
     #[serde(default)]
@@ -231,33 +200,13 @@ pub struct Market {
     #[serde(default)]
     pub latest_expiration_time: Option<String>,
     #[serde(default)]
-    pub created_ts: Option<i64>,
-    #[serde(default)]
-    pub updated_ts: Option<i64>,
-    #[serde(default)]
     pub created_time: Option<String>,
     #[serde(default)]
     pub updated_time: Option<String>,
     #[serde(default)]
-    pub floor_price: Option<i64>,
-    #[serde(default)]
-    pub cap_price: Option<i64>,
-    #[serde(default)]
-    pub yes_bid: Option<i64>,
-    #[serde(default)]
     pub yes_bid_size_fp: Option<FixedPointCount>,
     #[serde(default)]
-    pub yes_ask: Option<i64>,
-    #[serde(default)]
     pub yes_ask_size_fp: Option<FixedPointCount>,
-    #[serde(default)]
-    pub no_bid: Option<i64>,
-    #[serde(default)]
-    pub no_ask: Option<i64>,
-    #[serde(default)]
-    pub price: Option<i64>,
-    #[serde(default)]
-    pub last_price: Option<i64>,
     #[serde(default)]
     pub yes_bid_dollars: Option<FixedPointDollars>,
     #[serde(default)]
@@ -269,55 +218,33 @@ pub struct Market {
     #[serde(default)]
     pub last_price_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub price_dollars: Option<FixedPointDollars>,
+    pub volume_fp: Option<FixedPointCount>,
     #[serde(default)]
-    pub volume: Option<i64>,
+    pub volume_24h_fp: Option<FixedPointCount>,
     #[serde(default)]
-    pub volume_fp: Option<String>,
-    #[serde(default)]
-    pub volume_24h: Option<i64>,
-    #[serde(default)]
-    pub volume_24h_fp: Option<String>,
-    #[serde(default)]
-    pub open_interest: Option<i64>,
-    #[serde(default)]
-    pub open_interest_fp: Option<String>,
-    #[serde(default)]
-    pub fractional_trading_enabled: Option<bool>,
-    #[serde(default)]
-    pub notional_value: Option<i64>,
+    pub open_interest_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub notional_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub previous_yes_bid: Option<i64>,
-    #[serde(default)]
     pub previous_yes_bid_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub previous_yes_ask: Option<i64>,
     #[serde(default)]
     pub previous_yes_ask_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub previous_price: Option<i64>,
-    #[serde(default)]
     pub previous_price_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub liquidity: Option<i64>,
-    #[serde(default)]
-    pub liquidity_fp: Option<String>,
-    #[serde(default)]
-    pub liquidity_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub expiration_value: Option<String>,
     #[serde(default)]
     pub occurrence_datetime: Option<String>,
     #[serde(default)]
-    pub tick_size: Option<i64>,
-    #[serde(default)]
-    pub settlement_value: Option<i64>,
-    #[serde(default)]
     pub settlement_value_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub settlement_ts: Option<String>,
+    /// Published settlement bound kind (`default` or `floor`); floor rollout
+    /// is not implied by its presence in the schema.
+    #[serde(default)]
+    pub settlement_bounds_type: Option<String>,
+    #[serde(default)]
+    pub settlement_floor_dollars: Option<FixedPointDollars>,
     #[serde(default)]
     pub fee_waiver_expiration_time: Option<String>,
     #[serde(default)]
@@ -342,6 +269,8 @@ pub struct Market {
     pub is_provisional: Option<bool>,
     #[serde(default)]
     pub price_ranges: Option<Vec<PriceRange>>,
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -354,12 +283,9 @@ pub struct GetMarketsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 
-    /// Event tickers comma-separated (max 10)
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_csv_opt"
-    )]
-    pub event_ticker: Option<Vec<String>>,
+    /// Filter by one event ticker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
@@ -369,9 +295,12 @@ pub struct GetMarketsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_created_ts: Option<i64>,
 
-    /// min_updated_ts is incompatible with any other filters besides mve_filter=exclude.
+    /// Updated-time filters can be combined with each other and with
+    /// `mve_filter=exclude`; `series_ticker` additionally requires that filter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_updated_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_updated_ts: Option<i64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>,
@@ -401,24 +330,17 @@ pub struct GetMarketsParams {
 impl GetMarketsParams {
     pub fn validate(&self) -> Result<(), KalshiError> {
         if let Some(limit) = self.limit
-            && (limit == 0 || limit > 1000)
+            && limit > 1000
         {
             return Err(KalshiError::InvalidParams(
-                "GET /markets: limit must be 1..=1000".to_string(),
-            ));
-        }
-        if let Some(evts) = &self.event_ticker
-            && evts.len() > 10
-        {
-            return Err(KalshiError::InvalidParams(
-                "GET /markets: event_ticker supports up to 10 tickers".to_string(),
+                "GET /markets: limit must be 0..=1000".to_string(),
             ));
         }
 
         let created = self.min_created_ts.is_some() || self.max_created_ts.is_some();
         let close = self.min_close_ts.is_some() || self.max_close_ts.is_some();
         let settled = self.min_settled_ts.is_some() || self.max_settled_ts.is_some();
-        let updated = self.min_updated_ts.is_some();
+        let updated = self.min_updated_ts.is_some() || self.max_updated_ts.is_some();
 
         let groups = [created, close, settled, updated]
             .iter()
@@ -433,7 +355,6 @@ impl GetMarketsParams {
 
         if updated {
             if self.status.is_some()
-                || self.series_ticker.is_some()
                 || self.event_ticker.is_some()
                 || self.tickers.is_some()
                 || created
@@ -441,13 +362,20 @@ impl GetMarketsParams {
                 || settled
             {
                 return Err(KalshiError::InvalidParams(
-                    "GET /markets: min_updated_ts cannot be combined with other filters (except mve_filter=exclude)"
+                    "GET /markets: updated timestamp filters cannot be combined with these filters"
                         .to_string(),
                 ));
             }
             if matches!(self.mve_filter, Some(MveFilter::Only)) {
                 return Err(KalshiError::InvalidParams(
-                    "GET /markets: with min_updated_ts, only mve_filter=exclude is allowed"
+                    "GET /markets: with updated timestamps, only mve_filter=exclude is allowed"
+                        .to_string(),
+                ));
+            }
+            if self.series_ticker.is_some() && !matches!(self.mve_filter, Some(MveFilter::Exclude))
+            {
+                return Err(KalshiError::InvalidParams(
+                    "GET /markets: series_ticker with updated timestamps requires mve_filter=exclude"
                         .to_string(),
                 ));
             }
@@ -571,17 +499,33 @@ pub struct GetMarketCandlesticksHistoricalParams {
     pub period_interval: u32,
 }
 
+fn validate_candlestick_interval(interval: u32) -> Result<(), KalshiError> {
+    if matches!(interval, 1 | 60 | 1440) {
+        Ok(())
+    } else {
+        Err(KalshiError::InvalidParams(
+            "candlestick period_interval must be 1, 60, or 1440 minutes".to_string(),
+        ))
+    }
+}
+
+fn validate_batch_candlestick_interval(interval: u32) -> Result<(), KalshiError> {
+    if (1..=i32::MAX as u32).contains(&interval) {
+        Ok(())
+    } else {
+        Err(KalshiError::InvalidParams(
+            "batch candlestick period_interval must be a positive 32-bit integer".to_string(),
+        ))
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MarketCandlestick {
     pub end_period_ts: i64,
     pub yes_bid: BidAskDistribution,
     pub yes_ask: BidAskDistribution,
     pub price: PriceDistribution,
-    #[serde(default)]
-    pub volume: Option<i64>,
     pub volume_fp: FixedPointCount,
-    #[serde(default)]
-    pub open_interest: Option<i64>,
     pub open_interest_fp: FixedPointCount,
 }
 
@@ -611,19 +555,11 @@ pub struct BatchGetMarketCandlesticksResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BidAskDistribution {
     #[serde(default)]
-    pub open: Option<i64>,
-    #[serde(default)]
     pub open_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub low: Option<i64>,
     #[serde(default)]
     pub low_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub high: Option<i64>,
-    #[serde(default)]
     pub high_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub close: Option<i64>,
     #[serde(default)]
     pub close_dollars: Option<FixedPointDollars>,
 }
@@ -631,35 +567,19 @@ pub struct BidAskDistribution {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PriceDistribution {
     #[serde(default)]
-    pub open: Option<i64>,
-    #[serde(default)]
     pub open_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub low: Option<i64>,
     #[serde(default)]
     pub low_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub high: Option<i64>,
-    #[serde(default)]
     pub high_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub close: Option<i64>,
     #[serde(default)]
     pub close_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub mean: Option<i64>,
-    #[serde(default)]
     pub mean_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub previous: Option<i64>,
     #[serde(default)]
     pub previous_dollars: Option<FixedPointDollars>,
     #[serde(default)]
-    pub min: Option<i64>,
-    #[serde(default)]
     pub min_dollars: Option<FixedPointDollars>,
-    #[serde(default)]
-    pub max: Option<i64>,
     #[serde(default)]
     pub max_dollars: Option<FixedPointDollars>,
 }
@@ -789,7 +709,12 @@ impl KalshiRestClient {
         params: GetMarketOrderbooksParams,
     ) -> Result<GetMarketOrderbooksResponse, KalshiError> {
         let path = Self::full_path("/markets/orderbooks");
-        self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
+        let query: Vec<(&str, &str)> = params
+            .tickers
+            .iter()
+            .map(|ticker| ("tickers", ticker.as_str()))
+            .collect();
+        self.send(Method::GET, &path, Some(&query), Option::<&()>::None, false)
             .await
     }
 
@@ -797,6 +722,7 @@ impl KalshiRestClient {
         &self,
         params: BatchGetMarketCandlesticksParams,
     ) -> Result<BatchGetMarketCandlesticksResponse, KalshiError> {
+        validate_batch_candlestick_interval(params.period_interval)?;
         let path = Self::full_path("/markets/candlesticks");
         self.send(
             Method::GET,
@@ -813,6 +739,7 @@ impl KalshiRestClient {
         ticker: &str,
         params: GetMarketCandlesticksHistoricalParams,
     ) -> Result<GetMarketCandlesticksHistoricalResponse, KalshiError> {
+        validate_candlestick_interval(params.period_interval)?;
         let path = Self::full_path(&format!("/historical/markets/{ticker}/candlesticks"));
         self.send(
             Method::GET,
@@ -839,6 +766,7 @@ impl KalshiRestClient {
         ticker: &str,
         params: GetMarketCandlesticksParams,
     ) -> Result<GetMarketCandlesticksResponse, KalshiError> {
+        validate_candlestick_interval(params.period_interval)?;
         let path = Self::full_path(&format!(
             "/series/{series_ticker}/markets/{ticker}/candlesticks"
         ));
@@ -906,5 +834,117 @@ impl KalshiRestClient {
             }
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn updated_time_filters_allow_series_only_with_mve_exclusion() {
+        let mut params = GetMarketsParams {
+            min_updated_ts: Some(100),
+            max_updated_ts: Some(200),
+            series_ticker: Some("SERIES".into()),
+            ..Default::default()
+        };
+        assert!(params.validate().is_err());
+        params.mve_filter = Some(MveFilter::Exclude);
+        assert!(params.validate().is_ok());
+        params.status = Some(MarketStatusQuery::Open);
+        assert!(params.validate().is_err());
+        params.status = None;
+        params.min_updated_ts = None;
+        assert!(params.validate().is_ok());
+        params.mve_filter = Some(MveFilter::Only);
+        assert!(params.validate().is_err());
+    }
+
+    #[test]
+    fn candlestick_interval_constraints_match_each_operation() {
+        for interval in [1, 60, 1440] {
+            assert!(validate_candlestick_interval(interval).is_ok());
+        }
+        for interval in [0, 2, 59, 61, 1439, 1441] {
+            assert!(validate_candlestick_interval(interval).is_err());
+        }
+        for interval in [1, 2, 60, 1440, i32::MAX as u32] {
+            assert!(validate_batch_candlestick_interval(interval).is_ok());
+        }
+        for interval in [0, i32::MAX as u32 + 1, u32::MAX] {
+            assert!(validate_batch_candlestick_interval(interval).is_err());
+        }
+    }
+
+    #[test]
+    fn market_fixed_point_metadata_and_price_ranges_are_lossless() {
+        let market: Market = serde_json::from_value(json!({
+            "ticker": "M",
+            "settlement_bounds_type": "floor",
+            "settlement_floor_dollars": "0.012345",
+            "exchange_index": 4,
+            "yes_bid_size_fp": "12.3456",
+            "yes_ask_size_fp": "0.125",
+            "occurrence_datetime": "2026-11-02T00:00:00Z",
+            "strike_type": "structured",
+            "price_ranges": [{"start": "0.0001", "end": "0.9999", "step": "0.0001"}]
+        }))
+        .unwrap();
+        assert_eq!(market.settlement_floor_dollars.as_deref(), Some("0.012345"));
+        assert_eq!(market.yes_bid_size_fp.as_deref(), Some("12.3456"));
+        assert_eq!(market.yes_ask_size_fp.as_deref(), Some("0.125"));
+        assert_eq!(market.exchange_index, Some(4));
+        assert_eq!(market.strike_type.as_deref(), Some("structured"));
+        assert_eq!(market.price_ranges.unwrap()[0].step, "0.0001");
+        assert!(
+            serde_json::from_value::<PriceRange>(json!({
+                "min_price": "0.0001", "max_price": "0.9999", "increment": "0.0001"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn orderbook_null_sides_and_fixed_point_levels() {
+        let book: GetMarketOrderbookResponse = serde_json::from_value(json!({
+            "orderbook_fp": {"yes_dollars": [["0.012345", "1.2345"]], "no_dollars": null}
+        }))
+        .unwrap();
+        assert_eq!(
+            book.orderbook_fp.yes_dollars[0],
+            ("0.012345".into(), "1.2345".into())
+        );
+        assert!(book.orderbook_fp.no_dollars.is_empty());
+        let batch: GetMarketOrderbooksResponse = serde_json::from_value(json!({
+            "orderbooks": [{
+                "ticker": "M",
+                "orderbook_fp": {"yes_dollars": null, "no_dollars": [["0.987654", "0.125"]]}
+            }]
+        }))
+        .unwrap();
+        assert_eq!(batch.orderbooks[0].ticker, "M");
+        assert!(batch.orderbooks[0].orderbook_fp.yes_dollars.is_empty());
+        assert_eq!(
+            batch.orderbooks[0].orderbook_fp.no_dollars[0],
+            ("0.987654".into(), "0.125".into())
+        );
+    }
+
+    #[test]
+    fn historical_candles_use_unsuffixed_strings_and_nullable_trade_prices() {
+        let candle: MarketCandlestickHistorical = serde_json::from_value(json!({
+            "end_period_ts": 123,
+            "yes_bid": {"open": "0.12345", "low": "0.12345", "high": "0.12345", "close": "0.12345"},
+            "yes_ask": {"open": "0.23456", "low": "0.23456", "high": "0.23456", "close": "0.23456"},
+            "price": {"open": null, "low": null, "high": null, "close": null, "mean": null, "previous": "0.10001"},
+            "volume": "1.2345",
+            "open_interest": "7.8901"
+        })).unwrap();
+        assert_eq!(candle.yes_bid.open, "0.12345");
+        assert_eq!(candle.price.previous.as_deref(), Some("0.10001"));
+        assert_eq!(candle.price.mean, None);
+        assert_eq!(candle.volume, "1.2345");
     }
 }

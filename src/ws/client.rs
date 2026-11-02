@@ -38,7 +38,6 @@ pub struct GenericWsClient<P: WsProtocol> {
     shutdown: Option<watch::Sender<bool>>,
     reader_task: Option<JoinHandle<()>>,
     reader_shutdown_timeout: Duration,
-    next_id: u64,
     _protocol: PhantomData<P>,
 }
 
@@ -66,15 +65,14 @@ impl<P: WsProtocol> GenericWsClient<P> {
             shutdown: None,
             reader_task: None,
             reader_shutdown_timeout: Duration::from_secs(5),
-            next_id: 1,
             _protocol: PhantomData,
         })
     }
 
     /// Subscribe to one or more channels using this protocol's subscription params.
     pub async fn subscribe(&mut self, params: P::SubscribeParams) -> Result<u64, KalshiError> {
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
+        P::validate_subscribe(&params)?;
+        let id = self.tracker.lock().await.next_cmd_id();
 
         let cmd = WsSubscribeCmd {
             id,
@@ -121,8 +119,7 @@ impl<P: WsProtocol> GenericWsClient<P> {
             ));
         }
 
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
+        let id = self.tracker.lock().await.next_cmd_id();
 
         let cmd = WsUnsubscribeCmd {
             id,
@@ -147,8 +144,7 @@ impl<P: WsProtocol> GenericWsClient<P> {
 
     /// Request a list of active subscriptions from the server.
     pub async fn list_subscriptions(&mut self) -> Result<u64, KalshiError> {
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
+        let id = self.tracker.lock().await.next_cmd_id();
 
         let cmd = WsListSubscriptionsCmd {
             id,
@@ -363,12 +359,13 @@ impl<P: WsProtocol> GenericWsClient<P> {
                     .client
                     .as_mut()
                     .ok_or_else(|| KalshiError::Ws("websocket client not connected".to_string()))?;
-                let id = client.next_cmd_id();
-                {
+                let id = {
                     let mut tracker = self.tracker.lock().await;
+                    let id = tracker.next_cmd_id();
                     tracker.record_subscribe_cmd(id, p.clone());
-                }
-                if let Err(err) = client.subscribe(p).await {
+                    id
+                };
+                if let Err(err) = client.subscribe_with_id(id, p).await {
                     let mut tracker = self.tracker.lock().await;
                     tracker.drop_pending_subscribe(id);
                     return Err(err);
@@ -434,8 +431,7 @@ impl GenericWsClient<EventContractProtocol> {
         params: WsUpdateSubscriptionParamsV2,
     ) -> Result<u64, KalshiError> {
         validate_update(&params)?;
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
+        let id = self.tracker.lock().await.next_cmd_id();
 
         let cmd = WsUpdateSubscriptionCmd {
             id,
@@ -478,6 +474,29 @@ impl GenericWsClient<EventContractProtocol> {
     #[cfg(feature = "timed-reader")]
     pub async fn next_event_v2_timed(&mut self) -> Result<WsTimedEvent, KalshiError> {
         self.next_event_timed().await
+    }
+}
+
+impl GenericWsClient<super::protocol::MarginProtocol> {
+    /// Update a margin subscription; changes become replay intent after the ACK.
+    pub async fn update_subscription(
+        &mut self,
+        params: crate::margin::ws::subscription::MarginUpdateSubscriptionParams,
+    ) -> Result<u64, KalshiError> {
+        crate::margin::ws::subscription::validate_update(&params)?;
+        let id = self.tracker.lock().await.next_cmd_id();
+        let cmd = WsUpdateSubscriptionCmd {
+            id,
+            cmd: "update_subscription",
+            params: params.clone(),
+        };
+        let text = serde_json::to_string(&cmd)?;
+        self.tracker.lock().await.record_update_cmd(id, params);
+        if let Err(err) = self.send_command(Message::Text(text)).await {
+            self.tracker.lock().await.drop_pending_update(id);
+            return Err(err);
+        }
+        Ok(id)
     }
 }
 
@@ -630,8 +649,8 @@ mod tests {
                 market_id: None,
                 market_ids: None,
                 send_initial_snapshot: None,
-                skip_ticker_ack: None,
                 index_ids: None,
+                underlying_tickers: None,
             })
             .await
             .expect("update");
@@ -734,7 +753,7 @@ mod tests {
                 .await
                 .expect("resubscribe acknowledgement"),
             WsEvent::Message(WsMessageV2::Subscribed {
-                id: Some(1),
+                id: Some(2),
                 sid: Some(42),
                 ..
             })
@@ -749,8 +768,8 @@ mod tests {
                 market_id: None,
                 market_ids: None,
                 send_initial_snapshot: None,
-                skip_ticker_ack: None,
                 index_ids: None,
+                underlying_tickers: None,
             })
             .await
             .expect("update after reconnect");
@@ -761,6 +780,187 @@ mod tests {
         );
 
         server.await.expect("server");
+    }
+
+    async fn multi_channel_reconnect_preserves_ids(background: bool) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (close_initial, initial_closed) = tokio::sync::oneshot::channel::<()>();
+        let (close_replay, replay_closed) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            async fn command(
+                ws: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+            ) -> serde_json::Value {
+                let frame = ws
+                    .next()
+                    .await
+                    .expect("command frame")
+                    .expect("valid frame");
+                let Message::Text(text) = frame else {
+                    panic!("expected text command")
+                };
+                serde_json::from_str(&text).expect("command JSON")
+            }
+            async fn ack(
+                ws: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+                id: u64,
+                sid: u64,
+                channel: &str,
+            ) {
+                ws.send(Message::Text(
+                    json!({
+                        "type": "subscribed", "id": id,
+                        "msg": {"sid": sid, "channel": channel}
+                    })
+                    .to_string(),
+                ))
+                .await
+                .expect("send ACK");
+            }
+            let (stream, _) = listener.accept().await.expect("initial connection");
+            let mut ws = accept_async(stream).await.expect("initial handshake");
+            let initial = command(&mut ws).await;
+            let initial_id = initial["id"].as_u64().expect("initial id");
+            assert_eq!(initial["params"]["channels"], json!(["ticker", "trade"]));
+            ack(&mut ws, initial_id, 10, "ticker").await;
+            ack(&mut ws, initial_id, 11, "trade").await;
+            initial_closed.await.expect("initial ACKs consumed");
+            ws.close(None).await.expect("close initial");
+
+            let (stream, _) = listener.accept().await.expect("first reconnect");
+            let mut ws = accept_async(stream).await.expect("first handshake");
+            let mut commands = Vec::new();
+            for _ in 0..6 {
+                commands.push(command(&mut ws).await);
+            }
+            let mut ids = std::collections::HashSet::from([initial_id]);
+            for cmd in &commands {
+                assert!(
+                    ids.insert(cmd["id"].as_u64().expect("command id")),
+                    "duplicate command ID"
+                );
+            }
+            assert_eq!(commands[0]["cmd"], "subscribe");
+            assert_eq!(commands[1]["cmd"], "subscribe");
+            assert_eq!(commands[2]["params"]["channels"], json!(["fill"]));
+            assert_eq!(commands[3]["cmd"], "list_subscriptions");
+            assert_eq!(commands[4]["cmd"], "update_subscription");
+            assert_eq!(commands[5]["cmd"], "unsubscribe");
+            for (i, cmd) in commands.iter().take(3).enumerate() {
+                let channel = cmd["params"]["channels"][0].as_str().expect("channel");
+                ack(&mut ws, cmd["id"].as_u64().unwrap(), 20 + i as u64, channel).await;
+            }
+            replay_closed.await.expect("replay ACKs consumed");
+            ws.close(None).await.expect("close replay");
+
+            let (stream, _) = listener.accept().await.expect("second reconnect");
+            let mut ws = accept_async(stream).await.expect("second handshake");
+            let mut replay_channels = Vec::new();
+            for _ in 0..3 {
+                let cmd = command(&mut ws).await;
+                assert!(ids.insert(cmd["id"].as_u64().expect("second replay id")));
+                replay_channels.push(cmd["params"]["channels"][0].as_str().unwrap().to_owned());
+            }
+            replay_channels.sort();
+            assert_eq!(replay_channels, ["fill", "ticker", "trade"]);
+        });
+
+        let config = WsReconnectConfig {
+            max_retries: Some(2),
+            base_delay: Duration::ZERO,
+            max_delay: Duration::ZERO,
+            jitter: 0.0,
+            ..Default::default()
+        };
+        let mut client =
+            KalshiWsClient::connect_authenticated(test_env(addr), load_test_auth(), config)
+                .await
+                .expect("connect");
+        if background {
+            client
+                .start_reader(WsReaderConfig::default())
+                .await
+                .expect("start reader");
+        }
+        let initial_id = client
+            .subscribe_v2(WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::Ticker, WsChannelV2::Trade],
+                ..Default::default()
+            })
+            .await
+            .expect("initial subscribe");
+        assert_eq!(initial_id, 1);
+        for _ in 0..2 {
+            assert!(matches!(
+                client.next_event().await.expect("initial ACK"),
+                WsEvent::Message(WsMessageV2::Subscribed { .. })
+            ));
+        }
+        close_initial.send(()).expect("allow initial close");
+        assert!(matches!(
+            client.next_event().await.expect("first reconnect"),
+            WsEvent::Reconnected { .. }
+        ));
+        let fill_id = client
+            .subscribe_v2(WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::Fill],
+                ..Default::default()
+            })
+            .await
+            .expect("fill subscribe");
+        let list_id = client.list_subscriptions().await.expect("list");
+        let update_id = client
+            .update_subscription_v2(WsUpdateSubscriptionParamsV2 {
+                action: WsUpdateAction::AddMarkets,
+                sid: Some(999),
+                sids: None,
+                market_ticker: Some("Z".into()),
+                market_tickers: None,
+                market_id: None,
+                market_ids: None,
+                send_initial_snapshot: None,
+                index_ids: None,
+                underlying_tickers: None,
+            })
+            .await
+            .expect("update");
+        let unsubscribe_id = client
+            .unsubscribe(WsUnsubscribeParamsV2 { sids: vec![999] })
+            .await
+            .expect("unsubscribe");
+        assert_eq!([fill_id, list_id, update_id, unsubscribe_id], [4, 5, 6, 7]);
+        for _ in 0..3 {
+            assert!(matches!(
+                client.next_event().await.expect("replay ACK"),
+                WsEvent::Message(WsMessageV2::Subscribed { .. })
+            ));
+        }
+        close_replay.send(()).expect("allow replay close");
+        assert!(matches!(
+            client.next_event().await.expect("second reconnect"),
+            WsEvent::Reconnected { .. }
+        ));
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn direct_multi_channel_reconnect_preserves_ids() {
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            multi_channel_reconnect_preserves_ids(false),
+        )
+        .await
+        .expect("test timed out");
+    }
+
+    #[tokio::test]
+    async fn background_multi_channel_reconnect_preserves_ids() {
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            multi_channel_reconnect_preserves_ids(true),
+        )
+        .await
+        .expect("test timed out");
     }
 
     #[tokio::test]

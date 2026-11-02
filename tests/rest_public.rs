@@ -3,11 +3,11 @@
 mod common;
 
 use kalshi_fast::{
-    BatchGetMarketCandlesticksParams, EventStatus, GetEventCandlesticksParams, GetEventsParams,
-    GetIncentiveProgramsParams, GetMarketCandlesticksParams, GetMarketsParams, GetMilestonesParams,
-    GetMultivariateEventCollectionLookupHistoryParams, GetMultivariateEventCollectionsParams,
-    GetMultivariateEventsParams, GetSeriesFeeChangesParams, GetSeriesListParams,
-    GetStructuredTargetsParams, GetTradesParams, MarketStatusQuery,
+    BatchGetMarketCandlesticksParams, EventStatus, GetEventCandlesticksParams, GetEventParams,
+    GetEventsParams, GetIncentiveProgramsParams, GetMarketCandlesticksParams, GetMarketsParams,
+    GetMilestonesParams, GetMultivariateEventCollectionsParams, GetMultivariateEventsParams,
+    GetSeriesFeeChangesParams, GetSeriesListParams, GetStructuredTargetsParams, GetTradesParams,
+    MarketStatusQuery,
 };
 
 fn assert_market_list_shape(market: &kalshi_fast::Market) {
@@ -69,7 +69,7 @@ async fn test_get_series_by_ticker() {
 
     let ticker = list_resp.series[0].ticker.clone();
     let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_series(&ticker).await
+        client.get_series(&ticker, None).await
     })
     .await
     .expect("timeout")
@@ -145,7 +145,15 @@ async fn test_get_event_by_ticker() {
     let event_ticker = events_resp.events[0].event_ticker.clone();
 
     let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_event(&event_ticker, Some(true)).await
+        client
+            .get_event(
+                &event_ticker,
+                GetEventParams {
+                    with_nested_markets: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
     })
     .await
     .expect("timeout")
@@ -302,21 +310,6 @@ async fn test_get_exchange_status() {
 }
 
 #[tokio::test]
-async fn test_get_exchange_announcements() {
-    let client = common::demo_client();
-    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client.get_exchange_announcements().await
-    })
-    .await
-    .expect("timeout")
-    .expect("request failed");
-
-    if let Some(first) = resp.announcements.first() {
-        assert!(!first.message.is_empty());
-    }
-}
-
-#[tokio::test]
 async fn test_get_exchange_schedule() {
     let client = common::demo_client();
     let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
@@ -358,7 +351,9 @@ async fn test_get_series_fee_changes() {
     .expect("request failed");
 
     if let Some(first) = resp.series_fee_change_arr.first() {
-        assert!(first.scheduled_ts > 0);
+        let scheduled = chrono::DateTime::parse_from_rfc3339(&first.scheduled_ts)
+            .expect("series fee change has invalid scheduled timestamp");
+        assert!(scheduled.timestamp() > 0);
     }
 }
 
@@ -514,42 +509,6 @@ async fn test_get_multivariate_event_collection() {
 }
 
 #[tokio::test]
-async fn test_get_multivariate_event_collection_lookup_history() {
-    let client = common::demo_client();
-
-    let collections_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client
-            .get_multivariate_event_collections(GetMultivariateEventCollectionsParams {
-                limit: Some(1),
-                ..Default::default()
-            })
-            .await
-    })
-    .await
-    .expect("timeout")
-    .expect("request failed");
-
-    if collections_resp.multivariate_contracts.is_empty() {
-        return;
-    }
-
-    let ticker = collections_resp.multivariate_contracts[0]
-        .collection_ticker
-        .clone();
-    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client
-            .get_multivariate_event_collection_lookup_history(
-                &ticker,
-                GetMultivariateEventCollectionLookupHistoryParams::default(),
-            )
-            .await
-    })
-    .await
-    .expect("timeout")
-    .expect("request failed");
-}
-
-#[tokio::test]
 async fn test_get_structured_targets() {
     let client = common::demo_client();
     let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
@@ -652,10 +611,10 @@ async fn test_batch_get_market_candlesticks() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
             .batch_get_market_candlesticks(BatchGetMarketCandlesticksParams {
-                market_tickers: ticker,
+                market_tickers: ticker.clone(),
                 start_ts: now - 86400,
                 end_ts: now,
                 period_interval: 60,
@@ -666,6 +625,8 @@ async fn test_batch_get_market_candlesticks() {
     .await
     .expect("timeout")
     .expect("request failed");
+    assert_eq!(resp.markets.len(), 1);
+    assert_eq!(resp.markets[0].market_ticker, ticker);
 }
 
 #[tokio::test]
@@ -690,17 +651,31 @@ async fn test_get_market_candlesticks() {
     }
 
     let market = &markets_resp.markets[0];
-    let series_ticker = match &market.series_ticker {
-        Some(st) => st.clone(),
-        None => return,
-    };
+    let event_ticker = market
+        .event_ticker
+        .as_deref()
+        .expect("open market missing event ticker");
+    let event = tokio::time::timeout(common::TEST_TIMEOUT, async {
+        client
+            .get_event(event_ticker, GetEventParams::default())
+            .await
+    })
+    .await
+    .expect("timeout fetching market event")
+    .expect("failed to fetch market event");
+    assert_eq!(event.event.event_ticker, event_ticker);
+    let series_ticker = event
+        .event
+        .series_ticker
+        .expect("market event missing series ticker");
+    assert!(!series_ticker.is_empty());
     let ticker = market.ticker.clone();
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
             .get_market_candlesticks(
                 &series_ticker,
@@ -717,6 +692,7 @@ async fn test_get_market_candlesticks() {
     .await
     .expect("timeout")
     .expect("request failed");
+    assert_eq!(resp.ticker, ticker);
 }
 
 #[tokio::test]
@@ -741,20 +717,21 @@ async fn test_get_event_market_candlesticks() {
     }
 
     let event = &events_resp.events[0];
-    let series_ticker = match &event.series_ticker {
-        Some(st) => st.clone(),
-        None => return,
-    };
+    let series_ticker = event
+        .series_ticker
+        .as_deref()
+        .expect("event missing series ticker");
+    assert!(!series_ticker.is_empty());
     let event_ticker = event.event_ticker.clone();
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    let _resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
+    let resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
             .get_event_market_candlesticks(
-                &series_ticker,
+                series_ticker,
                 &event_ticker,
                 GetEventCandlesticksParams {
                     start_ts: now - 86400,
@@ -767,6 +744,8 @@ async fn test_get_event_market_candlesticks() {
     .await
     .expect("timeout")
     .expect("request failed");
+    assert_eq!(resp.market_tickers.len(), resp.market_candlesticks.len());
+    assert!(resp.market_tickers.iter().all(|ticker| !ticker.is_empty()));
 }
 
 #[tokio::test]
@@ -807,7 +786,7 @@ async fn test_get_markets_all() {
         client
             .get_markets_all(GetMarketsParams {
                 limit: Some(100),
-                event_ticker: Some(vec![first_event.event_ticker.clone()]),
+                event_ticker: Some(first_event.event_ticker.clone()),
                 ..Default::default()
             })
             .await
@@ -860,7 +839,7 @@ async fn test_get_markets_can_roundtrip_event_filter_for_open_market() {
         client
             .get_markets(GetMarketsParams {
                 limit: Some(100),
-                event_ticker: Some(vec![event_ticker.clone()]),
+                event_ticker: Some(event_ticker.clone()),
                 status: Some(MarketStatusQuery::Open),
                 ..Default::default()
             })

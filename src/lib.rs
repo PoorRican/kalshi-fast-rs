@@ -11,12 +11,12 @@
 
 //! ## Features
 //!
-//! - **OpenAPI parity** — full REST operation coverage for the current published docs
-//! - **AsyncAPI parity** — WebSocket commands, responses, and `user_orders`
+//! - **REST alignment** — current published Predictions and perps operations
+//! - **WebSocket alignment** — typed owned/borrowed channel messages and subscription controls
 //! - **Pagination helpers** — page-level ([`CursorPager`]) and item-level (`stream_*`) iteration
 //! - **REST reliability controls** — retry/backoff/jitter with `429 Retry-After` support
 //! - **Transport builder** — timeout/connect-timeout/headers/user-agent/proxy/custom client
-//! - **RSA-PSS authentication** — secure signing for private endpoints
+//! - **RSA-PSS and Ed25519 authentication** — parsed signing keys retained for reuse
 //! - **Timed reader** (`timed-reader` feature) — timestamps WebSocket events
 //!   when they become available to the process
 //!
@@ -87,7 +87,7 @@
 //!
 //! ## Authentication
 //!
-//! Private endpoints (portfolio, orders, WebSocket fills) require RSA-PSS signing.
+//! Private endpoints and every WebSocket handshake require RSA-PSS or Ed25519 signing.
 //! Load your key with [`KalshiAuth::from_pem_file`] or [`KalshiAuth::from_pem_str`]:
 //!
 //! ```no_run
@@ -96,7 +96,7 @@
 //! // From a .key file on disk
 //! let auth = KalshiAuth::from_pem_file("your-key-id", "/path/to/private.key")?;
 //!
-//! // Or from PEM content directly (supports PKCS#8 and PKCS#1)
+//! // Or PEM content directly (Ed25519 PKCS#8; RSA PKCS#8 or PKCS#1)
 //! let pem = std::fs::read_to_string("/path/to/private.key").unwrap();
 //! let auth = KalshiAuth::from_pem_str("your-key-id", &pem)?;
 //! # Ok(())
@@ -105,7 +105,7 @@
 //!
 //! Environment variables used by the examples:
 //! - `KALSHI_KEY_ID` — your API key ID
-//! - `KALSHI_PRIVATE_KEY_PATH` — path to your RSA private key (PEM format)
+//! - `KALSHI_PRIVATE_KEY_PATH` — path to your RSA or Ed25519 private key (PEM format)
 //!
 //! ## Pagination
 //!
@@ -188,6 +188,11 @@
 //! Short notes on known spec-to-crate distinctions live in
 //! `docs/spec-parity.md`.
 //!
+//! The unreleased `0.10.0` snapshot is dated November 2, 2026 (Predictions
+//! OpenAPI `3.35.0`; AsyncAPI `2.0.0`). Published future-dated schemas do not
+//! establish a live rollout. Deprecated quote aliases, unpublished `x-excluded`
+//! REST operations, FIX, and the separate Clearing Member API are not exposed.
+//!
 //! Release history is documented in
 //! [`CHANGELOG.md`](https://github.com/PoorRican/kalshi-fast-rs/blob/main/CHANGELOG.md),
 //! and crate versioning policy is documented in
@@ -200,7 +205,10 @@ pub mod env;
 pub mod error;
 pub mod margin;
 
-pub use margin::{MarginChannel, MarginDataMessage, MarginSubscribeParams};
+pub use margin::{
+    MarginChannel, MarginDataMessage, MarginSubscribeParams, MarginUpdateAction,
+    MarginUpdateSubscriptionParams,
+};
 pub mod rest;
 pub mod types;
 pub mod utils;

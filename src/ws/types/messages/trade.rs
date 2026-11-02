@@ -11,23 +11,15 @@ pub struct WsTrade {
     pub count_fp: String,
     pub yes_price_dollars: String,
     pub no_price_dollars: String,
-    /// Deprecated 2026-05-07. Use `taker_outcome_side` / `taker_book_side`.
-    /// Optional to tolerate eventual removal by the exchange.
-    #[serde(default)]
-    pub taker_side: Option<TradeTakerSide>,
-    /// Normalized taker outcome side (yes | no). Added 2026-05-07.
-    #[serde(default)]
-    pub taker_outcome_side: Option<TradeTakerSide>,
-    /// Normalized taker book side (bid | ask). Added 2026-05-07.
-    #[serde(default)]
-    pub taker_book_side: Option<BookSide>,
+    pub taker_side: TradeTakerSide,
+    pub taker_outcome_side: TradeTakerSide,
+    pub taker_book_side: BookSide,
+    pub is_block_trade: bool,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
     #[serde(default)]
     pub ts_ms: Option<i64>,
-    #[serde(default)]
-    pub created_time: Option<String>,
 }
 
 /// Trade channel message (type: "trade")
@@ -43,23 +35,15 @@ pub struct WsTradeRef<'a> {
     pub yes_price_dollars: Cow<'a, str>,
     #[serde(borrow)]
     pub no_price_dollars: Cow<'a, str>,
-    /// Deprecated 2026-05-07. Use `taker_outcome_side` / `taker_book_side`.
-    /// Optional to tolerate eventual removal by the exchange.
-    #[serde(default)]
-    pub taker_side: Option<TradeTakerSide>,
-    /// Normalized taker outcome side (yes | no). Added 2026-05-07.
-    #[serde(default)]
-    pub taker_outcome_side: Option<TradeTakerSide>,
-    /// Normalized taker book side (bid | ask). Added 2026-05-07.
-    #[serde(default)]
-    pub taker_book_side: Option<BookSide>,
+    pub taker_side: TradeTakerSide,
+    pub taker_outcome_side: TradeTakerSide,
+    pub taker_book_side: BookSide,
+    pub is_block_trade: bool,
     pub ts: i64,
     /// Spec marks `ts_ms` as required, but the exchange occasionally omits it.
     /// See `docs/spec-parity.md`.
     #[serde(default)]
     pub ts_ms: Option<i64>,
-    #[serde(default, borrow)]
-    pub created_time: Option<Cow<'a, str>>,
 }
 
 impl<'a> WsTradeRef<'a> {
@@ -73,9 +57,9 @@ impl<'a> WsTradeRef<'a> {
             taker_side: self.taker_side,
             taker_outcome_side: self.taker_outcome_side,
             taker_book_side: self.taker_book_side,
+            is_block_trade: self.is_block_trade,
             ts: self.ts,
             ts_ms: self.ts_ms,
-            created_time: self.created_time.map(Cow::into_owned),
         }
     }
 }

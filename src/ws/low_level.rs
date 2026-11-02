@@ -183,9 +183,27 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
 
     /// Subscribe to one or more channels. Returns the command `id`.
     pub async fn subscribe(&mut self, params: P::SubscribeParams) -> Result<u64, KalshiError> {
+        P::validate_subscribe(&params)?;
         let id = self.next_id;
         self.next_id += 1;
+        self.send_subscribe(id, params).await?;
+        Ok(id)
+    }
 
+    pub(crate) async fn subscribe_with_id(
+        &mut self,
+        id: u64,
+        params: P::SubscribeParams,
+    ) -> Result<(), KalshiError> {
+        P::validate_subscribe(&params)?;
+        self.send_subscribe(id, params).await
+    }
+
+    async fn send_subscribe(
+        &mut self,
+        id: u64,
+        params: P::SubscribeParams,
+    ) -> Result<(), KalshiError> {
         let cmd = WsSubscribeCmd {
             id,
             cmd: "subscribe",
@@ -198,7 +216,7 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
             .await
             .map_err(|e| KalshiError::Ws(e.to_string()))?;
 
-        Ok(id)
+        Ok(())
     }
 
     pub async fn unsubscribe(&mut self, params: WsUnsubscribeParamsV2) -> Result<u64, KalshiError> {
@@ -330,6 +348,29 @@ impl WsLowLevelClient<super::protocol::EventContractProtocol> {
 
     pub async fn next_message_v2(&mut self) -> Result<WsMessageV2, KalshiError> {
         self.next_message().await
+    }
+}
+
+impl WsLowLevelClient<super::protocol::MarginProtocol> {
+    /// Update a margin subscription.
+    pub async fn update_subscription(
+        &mut self,
+        params: crate::margin::ws::subscription::MarginUpdateSubscriptionParams,
+    ) -> Result<u64, KalshiError> {
+        crate::margin::ws::subscription::validate_update(&params)?;
+        let id = self.next_id;
+        self.next_id += 1;
+        let cmd = WsUpdateSubscriptionCmd {
+            id,
+            cmd: "update_subscription",
+            params,
+        };
+        let text = serde_json::to_string(&cmd)?;
+        self.write
+            .send(Message::Text(text))
+            .await
+            .map_err(|e| KalshiError::Ws(e.to_string()))?;
+        Ok(id)
     }
 }
 

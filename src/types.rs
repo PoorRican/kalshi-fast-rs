@@ -126,8 +126,6 @@ pub struct ErrorResponse {
     pub message: Option<String>,
     #[serde(default)]
     pub details: Option<String>,
-    #[serde(default)]
-    pub service: Option<String>,
 }
 
 /// --- Fee Type ---
@@ -137,6 +135,7 @@ pub struct ErrorResponse {
 pub enum FeeType {
     Quadratic,
     QuadraticWithMakerFees,
+    QuadraticWithComboMakerFees,
     Flat,
     #[serde(other)]
     Unknown,
@@ -147,6 +146,7 @@ pub enum FeeType {
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventStatus {
+    Unopened,
     Open,
     Closed,
     Settled,
@@ -157,6 +157,7 @@ pub enum EventStatus {
 impl EventStatus {
     pub fn as_str(self) -> &'static str {
         match self {
+            EventStatus::Unopened => "unopened",
             EventStatus::Open => "open",
             EventStatus::Closed => "closed",
             EventStatus::Settled => "settled",

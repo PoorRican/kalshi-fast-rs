@@ -3,6 +3,7 @@ use crate::ws::protocol::{ControlAction, EventContractProtocol, WsProtocol};
 use std::collections::{BTreeMap, HashMap};
 
 pub(crate) struct SubscriptionTracker<P: WsProtocol = EventContractProtocol> {
+    next_id: u64,
     pending: HashMap<u64, P::SubscribeParams>,
     active: HashMap<u64, P::SubscribeParams>,
     pending_unsubscribes: BTreeMap<u64, Vec<u64>>,
@@ -12,6 +13,7 @@ pub(crate) struct SubscriptionTracker<P: WsProtocol = EventContractProtocol> {
 impl<P: WsProtocol> Default for SubscriptionTracker<P> {
     fn default() -> Self {
         Self {
+            next_id: 1,
             pending: HashMap::new(),
             active: HashMap::new(),
             pending_unsubscribes: BTreeMap::new(),
@@ -21,6 +23,15 @@ impl<P: WsProtocol> Default for SubscriptionTracker<P> {
 }
 
 impl<P: WsProtocol> SubscriptionTracker<P> {
+    pub(crate) fn next_cmd_id(&mut self) -> u64 {
+        let id = self.next_id;
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .expect("websocket command IDs exhausted");
+        id
+    }
+
     pub(crate) fn record_subscribe_cmd(&mut self, id: u64, params: P::SubscribeParams) {
         self.pending.insert(id, params);
     }
@@ -53,8 +64,12 @@ impl<P: WsProtocol> SubscriptionTracker<P> {
 
     pub(crate) fn handle_control_action(&mut self, action: ControlAction) {
         match action {
-            ControlAction::Subscribed { cmd_id, sid } => {
-                self.handle_subscribed(cmd_id, Some(sid));
+            ControlAction::Subscribed {
+                cmd_id,
+                sid,
+                channel,
+            } => {
+                self.handle_subscribed_channel(cmd_id, Some(sid), channel.as_deref());
             }
             ControlAction::Unsubscribed { cmd_id, sid } => {
                 self.handle_unsubscribed(cmd_id, sid);
@@ -70,13 +85,27 @@ impl<P: WsProtocol> SubscriptionTracker<P> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn handle_subscribed(&mut self, id: Option<u64>, sid: Option<u64>) {
+        self.handle_subscribed_channel(id, sid, None);
+    }
+
+    fn handle_subscribed_channel(
+        &mut self,
+        id: Option<u64>,
+        sid: Option<u64>,
+        channel: Option<&str>,
+    ) {
         let (id, sid) = match (id, sid) {
             (Some(id), Some(sid)) => (id, sid),
             _ => return,
         };
-        if let Some(params) = self.pending.remove(&id) {
-            self.active.insert(sid, params);
+        if let Some(params) = P::take_subscribed(&mut self.pending, id, channel) {
+            if let Some(active) = self.active.get_mut(&sid) {
+                P::merge_subscribe(active, params);
+            } else {
+                self.active.insert(sid, params);
+            }
         }
     }
 
@@ -201,8 +230,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: Some(true),
-            skip_ticker_ack: Some(true),
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -222,7 +251,6 @@ mod tests {
                 .contains(&"B".to_string())
         );
         assert_eq!(updated.send_initial_snapshot, Some(true));
-        assert_eq!(updated.skip_ticker_ack, Some(true));
     }
 
     #[test]
@@ -247,8 +275,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -275,8 +303,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.apply_update(&update);
 
@@ -303,8 +331,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: Some(vec!["ETHUSD_RR".to_string()]),
+            underlying_tickers: None,
         };
         tracker.apply_update(&add);
         let updated = tracker.active.get(&7).unwrap();
@@ -321,8 +349,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         tracker.apply_update(&remove);
         let updated = tracker.active.get(&7).unwrap();
@@ -350,8 +378,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.record_update_cmd(99, update);
 
@@ -388,8 +416,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.record_update_cmd(99, update);
         tracker.drop_pending_update(99);
@@ -453,8 +481,8 @@ mod tests {
                 market_id: None,
                 market_ids: None,
                 send_initial_snapshot: None,
-                skip_ticker_ack: None,
                 index_ids: None,
+                underlying_tickers: None,
             },
         );
         tracker.record_unsubscribe_cmd(88, vec![20]);
@@ -490,8 +518,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         tracker.record_update_cmd(99, update);
         assert_eq!(tracker.pending_updates.len(), 1);
@@ -524,8 +552,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         let mut indexlist = update.clone();
         indexlist.action = WsUpdateAction::Indexlist;
@@ -549,16 +577,6 @@ mod tests {
             ..Default::default()
         };
         assert!(crate::ws::types::validate_subscription(&params).is_ok());
-    }
-
-    #[test]
-    fn validate_subscription_send_initial_snapshot_only_for_orderbook_delta() {
-        let params = WsSubscriptionParamsV2 {
-            channels: vec![WsChannelV2::Ticker],
-            send_initial_snapshot: Some(true),
-            ..Default::default()
-        };
-        assert!(crate::ws::types::validate_subscription(&params).is_err());
     }
 
     #[test]
@@ -588,5 +606,290 @@ mod tests {
             ..Default::default()
         };
         assert!(crate::ws::types::validate_subscription(&params).is_err());
+    }
+    fn update(action: WsUpdateAction, sid: u64) -> WsUpdateSubscriptionParamsV2 {
+        WsUpdateSubscriptionParamsV2 {
+            action,
+            sid: Some(sid),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            index_ids: None,
+            underlying_tickers: None,
+        }
+    }
+
+    #[test]
+    fn repeated_orderbook_sid_unions_and_replays_all_targets_and_options() {
+        let mut tracker = SubscriptionTracker::default();
+        let first = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_ticker: Some("A".into()),
+            use_yes_price: Some(true),
+            update_interval_ms: Some(100),
+            ..Default::default()
+        };
+        let second = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_tickers: Some(vec!["B".into(), "A".into()]),
+            use_yes_price: Some(true),
+            update_interval_ms: Some(100),
+            ..Default::default()
+        };
+        tracker.record_subscribe_cmd(1, first);
+        tracker.handle_subscribed(Some(1), Some(9));
+        tracker.record_subscribe_cmd(2, second);
+        tracker.handle_subscribed(Some(2), Some(9));
+        let mut add = update(WsUpdateAction::AddMarkets, 9);
+        add.market_ticker = Some("C".into());
+        tracker.record_update_cmd(3, add);
+        let replay = tracker.prepare_resubscribe();
+        assert_eq!(replay.len(), 1);
+        assert_eq!(
+            replay[0].market_tickers.as_deref(),
+            Some(&["A".to_owned(), "B".to_owned(), "C".to_owned()][..])
+        );
+        assert_eq!(replay[0].use_yes_price, Some(true));
+        assert_eq!(replay[0].update_interval_ms, Some(100));
+    }
+
+    #[test]
+    fn each_channel_ack_retains_other_pending_channels() {
+        let mut tracker = SubscriptionTracker::default();
+        tracker.record_subscribe_cmd(
+            1,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::Ticker, WsChannelV2::PythValue],
+                underlying_tickers: Some(vec!["Metal.XAU/USD".into()]),
+                ..Default::default()
+            },
+        );
+        tracker.handle_control_action(ControlAction::Subscribed {
+            cmd_id: Some(1),
+            sid: 5,
+            channel: Some("ticker".into()),
+        });
+        tracker.handle_control_action(ControlAction::Subscribed {
+            cmd_id: Some(1),
+            sid: 6,
+            channel: Some("pyth_value".into()),
+        });
+        let replay = tracker.prepare_resubscribe();
+        assert_eq!(replay.len(), 2);
+        assert!(replay.iter().any(|p| p.channels == [WsChannelV2::PythValue]
+            && p.underlying_tickers == Some(vec!["Metal.XAU/USD".into()])));
+        assert!(replay.iter().any(|p| p.channels == [WsChannelV2::Ticker]));
+    }
+
+    #[test]
+    fn pyth_updates_acknowledge_and_fold_without_losing_explicit_all_mode_selections() {
+        let mut tracker = SubscriptionTracker::default();
+        tracker.active.insert(
+            7,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::PythValue],
+                underlying_tickers: Some(vec!["Metal.XAU/USD".into()]),
+                ..Default::default()
+            },
+        );
+        let mut all = update(WsUpdateAction::SubscribeUnderlyings, 7);
+        all.underlying_tickers = Some(vec!["all".into()]);
+        tracker.record_update_cmd(10, all);
+        tracker.handle_control_action(ControlAction::Ok { cmd_id: 10 });
+        let mut remove_all = update(WsUpdateAction::UnsubscribeUnderlyings, 7);
+        remove_all.underlying_tickers = Some(vec!["all".into()]);
+        tracker.record_update_cmd(11, remove_all);
+        let replay = tracker.prepare_resubscribe();
+        assert_eq!(
+            replay[0].underlying_tickers,
+            Some(vec!["Metal.XAU/USD".into()])
+        );
+    }
+    #[test]
+    fn margin_repeated_orderbook_and_pending_update_replay_union() {
+        use crate::margin::ws::channel::MarginChannel;
+        use crate::margin::ws::subscription::{
+            MarginSubscribeParams, MarginUpdateAction, MarginUpdateSubscriptionParams,
+        };
+        let mut tracker =
+            super::SubscriptionTracker::<crate::ws::protocol::MarginProtocol>::default();
+        tracker.record_subscribe_cmd(
+            1,
+            MarginSubscribeParams {
+                channels: vec![MarginChannel::OrderbookDelta],
+                market_ticker: Some("A".into()),
+                update_interval_ms: Some(100),
+                ..Default::default()
+            },
+        );
+        tracker.handle_subscribed(Some(1), Some(9));
+        tracker.record_subscribe_cmd(
+            2,
+            MarginSubscribeParams {
+                channels: vec![MarginChannel::OrderbookDelta],
+                market_tickers: Some(vec!["B".into()]),
+                update_interval_ms: Some(100),
+                ..Default::default()
+            },
+        );
+        tracker.handle_subscribed(Some(2), Some(9));
+        tracker.record_update_cmd(
+            3,
+            MarginUpdateSubscriptionParams {
+                action: MarginUpdateAction::AddMarkets,
+                sid: Some(9),
+                sids: None,
+                market_ticker: Some("C".into()),
+                market_tickers: None,
+                send_initial_snapshot: None,
+            },
+        );
+        let replay = tracker.prepare_resubscribe();
+        assert_eq!(replay.len(), 1);
+        assert_eq!(
+            replay[0].market_tickers,
+            Some(vec!["A".into(), "B".into(), "C".into()])
+        );
+        assert_eq!(replay[0].update_interval_ms, Some(100));
+    }
+    #[test]
+    fn event_replay_projects_options_after_partial_and_complete_channel_acks() {
+        use WsChannelV2 as C;
+        let channels = [
+            C::Ticker,
+            C::OrderbookDelta,
+            C::Communications,
+            C::CfbenchmarksValue,
+            C::CfbenchmarksValue5hz,
+            C::PythValue,
+        ];
+        for reverse in [false, true] {
+            let mut order = channels;
+            if reverse {
+                order.reverse();
+            }
+            for ack_count in 1..=order.len() {
+                let mut tracker = SubscriptionTracker::default();
+                let params = WsSubscriptionParamsV2 {
+                    channels: channels.to_vec(),
+                    market_ticker: Some("MARKET".into()),
+                    send_initial_snapshot: Some(true),
+                    skip_ticker_ack: Some(true),
+                    use_yes_price: Some(true),
+                    update_interval_ms: Some(100),
+                    shard_factor: Some(4),
+                    shard_key: Some(2),
+                    user_filter: Some("self".into()),
+                    index_ids: Some(vec!["BRTI".into()]),
+                    underlying_tickers: Some(vec!["Crypto.BTC/USD".into()]),
+                    ..Default::default()
+                };
+                EventContractProtocol::validate_subscribe(&params).expect("original valid");
+                tracker.record_subscribe_cmd(1, params);
+                for (i, channel) in order.iter().take(ack_count).enumerate() {
+                    tracker.handle_control_action(ControlAction::Subscribed {
+                        cmd_id: Some(1),
+                        sid: i as u64 + 10,
+                        channel: Some(channel.as_str().into()),
+                    });
+                }
+                let replay = tracker.prepare_resubscribe();
+                assert_eq!(
+                    replay.len(),
+                    ack_count + usize::from(ack_count < order.len())
+                );
+                for p in replay {
+                    EventContractProtocol::validate_subscribe(&p).expect("replay valid");
+                    let has = |c| p.channels.contains(&c);
+                    assert_eq!(p.market_ticker.as_deref(), Some("MARKET"));
+                    assert_eq!(
+                        p.send_initial_snapshot.is_some(),
+                        has(C::Ticker) || has(C::OrderbookDelta)
+                    );
+                    assert_eq!(p.skip_ticker_ack, Some(true));
+                    assert_eq!(p.use_yes_price.is_some(), has(C::OrderbookDelta));
+                    assert_eq!(p.update_interval_ms.is_some(), has(C::OrderbookDelta));
+                    assert_eq!(p.shard_factor.is_some(), has(C::Communications));
+                    assert_eq!(p.shard_key.is_some(), has(C::Communications));
+                    assert_eq!(p.user_filter.is_some(), has(C::Communications));
+                    assert_eq!(
+                        p.index_ids.is_some(),
+                        has(C::CfbenchmarksValue) || has(C::CfbenchmarksValue5hz)
+                    );
+                    assert_eq!(p.underlying_tickers.is_some(), has(C::PythValue));
+                    if has(C::OrderbookDelta) {
+                        assert_eq!(p.use_yes_price, Some(true));
+                        assert_eq!(p.update_interval_ms, Some(100));
+                    }
+                    if has(C::Communications) {
+                        assert_eq!(p.shard_factor, Some(4));
+                        assert_eq!(p.shard_key, Some(2));
+                        assert_eq!(p.user_filter.as_deref(), Some("self"));
+                    }
+                    if has(C::CfbenchmarksValue) || has(C::CfbenchmarksValue5hz) {
+                        assert_eq!(p.index_ids.as_deref(), Some(&["BRTI".to_owned()][..]));
+                    }
+                    if has(C::PythValue) {
+                        assert_eq!(
+                            p.underlying_tickers.as_deref(),
+                            Some(&["Crypto.BTC/USD".to_owned()][..])
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn margin_replay_projects_options_after_partial_and_complete_channel_acks() {
+        use crate::margin::ws::channel::MarginChannel as C;
+        use crate::margin::ws::subscription::MarginSubscribeParams;
+        use crate::ws::protocol::{Channel, MarginProtocol};
+        for first in [C::Ticker, C::OrderbookDelta] {
+            for complete in [false, true] {
+                let mut tracker = super::SubscriptionTracker::<MarginProtocol>::default();
+                let params = MarginSubscribeParams {
+                    channels: vec![C::Ticker, C::OrderbookDelta],
+                    market_tickers: Some(vec!["BTC".into()]),
+                    send_initial_snapshot: Some(true),
+                    skip_ticker_ack: Some(true),
+                    update_interval_ms: Some(100),
+                    ..Default::default()
+                };
+                MarginProtocol::validate_subscribe(&params).expect("original valid");
+                tracker.record_subscribe_cmd(1, params);
+                let second = if first == C::Ticker {
+                    C::OrderbookDelta
+                } else {
+                    C::Ticker
+                };
+                for (i, channel) in [first.clone(), second]
+                    .iter()
+                    .take(if complete { 2 } else { 1 })
+                    .enumerate()
+                {
+                    tracker.handle_control_action(ControlAction::Subscribed {
+                        cmd_id: Some(1),
+                        sid: i as u64 + 10,
+                        channel: Some(channel.as_str().into()),
+                    });
+                }
+                let replay = tracker.prepare_resubscribe();
+                assert_eq!(replay.len(), 2);
+                for p in replay {
+                    MarginProtocol::validate_subscribe(&p).expect("replay valid");
+                    assert_eq!(p.market_tickers.as_deref(), Some(&["BTC".to_owned()][..]));
+                    assert_eq!(p.send_initial_snapshot, Some(true));
+                    assert_eq!(p.skip_ticker_ack, Some(true));
+                    assert_eq!(
+                        p.update_interval_ms.is_some(),
+                        p.channels.contains(&C::OrderbookDelta)
+                    );
+                }
+            }
+        }
     }
 }

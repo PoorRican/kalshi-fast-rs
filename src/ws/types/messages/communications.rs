@@ -5,12 +5,9 @@ use std::borrow::Cow;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsMveSelectedLeg {
-    #[serde(default)]
-    pub event_ticker: Option<String>,
-    #[serde(default)]
-    pub market_ticker: Option<String>,
-    #[serde(default)]
-    pub side: Option<YesNo>,
+    pub event_ticker: String,
+    pub market_ticker: String,
+    pub side: YesNo,
     #[serde(default)]
     pub yes_settlement_value_dollars: Option<FixedPointDollars>,
 }
@@ -31,6 +28,8 @@ pub struct WsRfqCreated {
     pub mve_collection_ticker: Option<String>,
     #[serde(default)]
     pub mve_selected_legs: Option<Vec<WsMveSelectedLeg>>,
+    #[serde(default)]
+    pub rfq_batch_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,6 +44,8 @@ pub struct WsRfqDeleted {
     #[serde(default)]
     pub target_cost_dollars: Option<FixedPointDollars>,
     pub deleted_ts: String,
+    #[serde(default)]
+    pub rfq_batch_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -52,6 +53,7 @@ pub struct WsQuoteCreated {
     pub quote_id: String,
     pub rfq_id: String,
     pub quote_creator_id: String,
+    pub rfq_creator_id: String,
     pub market_ticker: String,
     #[serde(default)]
     pub event_ticker: Option<String>,
@@ -64,6 +66,8 @@ pub struct WsQuoteCreated {
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
     pub created_ts: String,
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,6 +75,7 @@ pub struct WsQuoteAccepted {
     pub quote_id: String,
     pub rfq_id: String,
     pub quote_creator_id: String,
+    pub rfq_creator_id: String,
     pub market_ticker: String,
     #[serde(default)]
     pub event_ticker: Option<String>,
@@ -86,6 +91,8 @@ pub struct WsQuoteAccepted {
     pub no_contracts_offered_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub rfq_target_cost_dollars: Option<FixedPointDollars>,
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,6 +105,10 @@ pub struct WsQuoteExecuted {
     pub client_order_id: String,
     pub market_ticker: String,
     pub executed_ts: String,
+    #[serde(default)]
+    pub subaccount: Option<i64>,
+    #[serde(default)]
+    pub rfq_batch_id: Option<String>,
 }
 
 /// Communications message payloads (RFQs and quotes).
@@ -108,25 +119,35 @@ pub enum WsCommunications {
     QuoteCreated(WsQuoteCreated),
     QuoteAccepted(WsQuoteAccepted),
     QuoteExecuted(WsQuoteExecuted),
+    RfqBatchCreated(super::WsRfqBatchCreated),
+    RfqBatchDeleted(super::WsRfqBatchDeleted),
+    BatchQuoteCreated(super::WsBatchQuoteCreated),
+    RfqBatchBestQuotes(super::WsRfqBatchBestQuotes),
+    BatchQuoteAccepted(super::WsBatchQuoteAccepted),
+    RfqBatchExecuted(super::WsRfqBatchExecuted),
+    BatchQuoteExecuted(super::WsBatchQuoteExecuted),
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsMveSelectedLegRef<'a> {
-    #[serde(default, borrow)]
-    pub event_ticker: Option<Cow<'a, str>>,
-    #[serde(default, borrow)]
-    pub market_ticker: Option<Cow<'a, str>>,
-    #[serde(default)]
-    pub side: Option<YesNo>,
-    #[serde(default, borrow)]
+    #[serde(borrow)]
+    pub event_ticker: Cow<'a, str>,
+    #[serde(borrow)]
+    pub market_ticker: Cow<'a, str>,
+    pub side: YesNo,
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub yes_settlement_value_dollars: Option<FixedPointDollarsRef<'a>>,
 }
 
 impl<'a> WsMveSelectedLegRef<'a> {
     pub fn into_owned(self) -> WsMveSelectedLeg {
         WsMveSelectedLeg {
-            event_ticker: self.event_ticker.map(Cow::into_owned),
-            market_ticker: self.market_ticker.map(Cow::into_owned),
+            event_ticker: self.event_ticker.into_owned(),
+            market_ticker: self.market_ticker.into_owned(),
             side: self.side,
             yes_settlement_value_dollars: self.yes_settlement_value_dollars.map(Cow::into_owned),
         }
@@ -141,18 +162,40 @@ pub struct WsRfqCreatedRef<'a> {
     pub creator_id: Cow<'a, str>,
     #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub event_ticker: Option<Cow<'a, str>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub contracts_fp: Option<FixedPointCountRef<'a>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
     #[serde(borrow)]
     pub created_ts: Cow<'a, str>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub mve_collection_ticker: Option<Cow<'a, str>>,
     #[serde(default, borrow)]
     pub mve_selected_legs: Option<Vec<WsMveSelectedLegRef<'a>>>,
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
+    pub rfq_batch_id: Option<Cow<'a, str>>,
 }
 
 impl<'a> WsRfqCreatedRef<'a> {
@@ -171,6 +214,7 @@ impl<'a> WsRfqCreatedRef<'a> {
                     .map(WsMveSelectedLegRef::into_owned)
                     .collect()
             }),
+            rfq_batch_id: self.rfq_batch_id.map(Cow::into_owned),
         }
     }
 }
@@ -183,14 +227,32 @@ pub struct WsRfqDeletedRef<'a> {
     pub creator_id: Cow<'a, str>,
     #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub event_ticker: Option<Cow<'a, str>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub contracts_fp: Option<FixedPointCountRef<'a>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
     #[serde(borrow)]
     pub deleted_ts: Cow<'a, str>,
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
+    pub rfq_batch_id: Option<Cow<'a, str>>,
 }
 
 impl<'a> WsRfqDeletedRef<'a> {
@@ -203,6 +265,7 @@ impl<'a> WsRfqDeletedRef<'a> {
             contracts_fp: self.contracts_fp.map(Cow::into_owned),
             target_cost_dollars: self.target_cost_dollars.map(Cow::into_owned),
             deleted_ts: self.deleted_ts.into_owned(),
+            rfq_batch_id: self.rfq_batch_id.map(Cow::into_owned),
         }
     }
 }
@@ -216,21 +279,41 @@ pub struct WsQuoteCreatedRef<'a> {
     #[serde(borrow)]
     pub quote_creator_id: Cow<'a, str>,
     #[serde(borrow)]
+    pub rfq_creator_id: Cow<'a, str>,
+    #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub event_ticker: Option<Cow<'a, str>>,
     #[serde(borrow)]
     pub yes_bid_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
     pub no_bid_dollars: FixedPointDollarsRef<'a>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub yes_contracts_offered_fp: Option<FixedPointCountRef<'a>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub no_contracts_offered_fp: Option<FixedPointCountRef<'a>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub rfq_target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
     #[serde(borrow)]
     pub created_ts: Cow<'a, str>,
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 impl<'a> WsQuoteCreatedRef<'a> {
@@ -239,6 +322,7 @@ impl<'a> WsQuoteCreatedRef<'a> {
             quote_id: self.quote_id.into_owned(),
             rfq_id: self.rfq_id.into_owned(),
             quote_creator_id: self.quote_creator_id.into_owned(),
+            rfq_creator_id: self.rfq_creator_id.into_owned(),
             market_ticker: self.market_ticker.into_owned(),
             event_ticker: self.event_ticker.map(Cow::into_owned),
             yes_bid_dollars: self.yes_bid_dollars.into_owned(),
@@ -247,6 +331,7 @@ impl<'a> WsQuoteCreatedRef<'a> {
             no_contracts_offered_fp: self.no_contracts_offered_fp.map(Cow::into_owned),
             rfq_target_cost_dollars: self.rfq_target_cost_dollars.map(Cow::into_owned),
             created_ts: self.created_ts.into_owned(),
+            subaccount: self.subaccount,
         }
     }
 }
@@ -260,8 +345,14 @@ pub struct WsQuoteAcceptedRef<'a> {
     #[serde(borrow)]
     pub quote_creator_id: Cow<'a, str>,
     #[serde(borrow)]
+    pub rfq_creator_id: Cow<'a, str>,
+    #[serde(borrow)]
     pub market_ticker: Cow<'a, str>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub event_ticker: Option<Cow<'a, str>>,
     #[serde(borrow)]
     pub yes_bid_dollars: FixedPointDollarsRef<'a>,
@@ -269,14 +360,32 @@ pub struct WsQuoteAcceptedRef<'a> {
     pub no_bid_dollars: FixedPointDollarsRef<'a>,
     #[serde(default)]
     pub accepted_side: Option<YesNo>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub contracts_accepted_fp: Option<FixedPointCountRef<'a>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub yes_contracts_offered_fp: Option<FixedPointCountRef<'a>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub no_contracts_offered_fp: Option<FixedPointCountRef<'a>>,
-    #[serde(default, borrow)]
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
     pub rfq_target_cost_dollars: Option<FixedPointDollarsRef<'a>>,
+    #[serde(default)]
+    pub subaccount: Option<i64>,
 }
 
 impl<'a> WsQuoteAcceptedRef<'a> {
@@ -285,6 +394,7 @@ impl<'a> WsQuoteAcceptedRef<'a> {
             quote_id: self.quote_id.into_owned(),
             rfq_id: self.rfq_id.into_owned(),
             quote_creator_id: self.quote_creator_id.into_owned(),
+            rfq_creator_id: self.rfq_creator_id.into_owned(),
             market_ticker: self.market_ticker.into_owned(),
             event_ticker: self.event_ticker.map(Cow::into_owned),
             yes_bid_dollars: self.yes_bid_dollars.into_owned(),
@@ -294,6 +404,7 @@ impl<'a> WsQuoteAcceptedRef<'a> {
             yes_contracts_offered_fp: self.yes_contracts_offered_fp.map(Cow::into_owned),
             no_contracts_offered_fp: self.no_contracts_offered_fp.map(Cow::into_owned),
             rfq_target_cost_dollars: self.rfq_target_cost_dollars.map(Cow::into_owned),
+            subaccount: self.subaccount,
         }
     }
 }
@@ -316,6 +427,14 @@ pub struct WsQuoteExecutedRef<'a> {
     pub market_ticker: Cow<'a, str>,
     #[serde(borrow)]
     pub executed_ts: Cow<'a, str>,
+    #[serde(default)]
+    pub subaccount: Option<i64>,
+    #[serde(
+        default,
+        borrow,
+        deserialize_with = "super::deserialize_borrowed_option"
+    )]
+    pub rfq_batch_id: Option<Cow<'a, str>>,
 }
 
 impl<'a> WsQuoteExecutedRef<'a> {
@@ -329,6 +448,8 @@ impl<'a> WsQuoteExecutedRef<'a> {
             client_order_id: self.client_order_id.into_owned(),
             market_ticker: self.market_ticker.into_owned(),
             executed_ts: self.executed_ts.into_owned(),
+            subaccount: self.subaccount,
+            rfq_batch_id: self.rfq_batch_id.map(Cow::into_owned),
         }
     }
 }
@@ -341,6 +462,13 @@ pub enum WsCommunicationsRef<'a> {
     QuoteCreated(WsQuoteCreatedRef<'a>),
     QuoteAccepted(WsQuoteAcceptedRef<'a>),
     QuoteExecuted(WsQuoteExecutedRef<'a>),
+    RfqBatchCreated(super::WsRfqBatchCreatedRef<'a>),
+    RfqBatchDeleted(super::WsRfqBatchDeletedRef<'a>),
+    BatchQuoteCreated(super::WsBatchQuoteCreatedRef<'a>),
+    RfqBatchBestQuotes(super::WsRfqBatchBestQuotesRef<'a>),
+    BatchQuoteAccepted(super::WsBatchQuoteAcceptedRef<'a>),
+    RfqBatchExecuted(super::WsRfqBatchExecutedRef<'a>),
+    BatchQuoteExecuted(super::WsBatchQuoteExecutedRef<'a>),
 }
 
 impl<'a> WsCommunicationsRef<'a> {
@@ -356,6 +484,27 @@ impl<'a> WsCommunicationsRef<'a> {
             }
             WsCommunicationsRef::QuoteExecuted(msg) => {
                 WsCommunications::QuoteExecuted(msg.into_owned())
+            }
+            WsCommunicationsRef::RfqBatchCreated(msg) => {
+                WsCommunications::RfqBatchCreated(msg.into_owned())
+            }
+            WsCommunicationsRef::RfqBatchDeleted(msg) => {
+                WsCommunications::RfqBatchDeleted(msg.into_owned())
+            }
+            WsCommunicationsRef::BatchQuoteCreated(msg) => {
+                WsCommunications::BatchQuoteCreated(msg.into_owned())
+            }
+            WsCommunicationsRef::RfqBatchBestQuotes(msg) => {
+                WsCommunications::RfqBatchBestQuotes(msg.into_owned())
+            }
+            WsCommunicationsRef::BatchQuoteAccepted(msg) => {
+                WsCommunications::BatchQuoteAccepted(msg.into_owned())
+            }
+            WsCommunicationsRef::RfqBatchExecuted(msg) => {
+                WsCommunications::RfqBatchExecuted(msg.into_owned())
+            }
+            WsCommunicationsRef::BatchQuoteExecuted(msg) => {
+                WsCommunications::BatchQuoteExecuted(msg.into_owned())
             }
         }
     }
