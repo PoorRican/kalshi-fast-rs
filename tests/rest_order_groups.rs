@@ -2,9 +2,7 @@
 
 mod common;
 
-use kalshi_fast::{
-    CreateOrderGroupRequest, KalshiRestClient, SubaccountQueryParams, UpdateOrderGroupLimitRequest,
-};
+use kalshi_fast::{CreateOrderGroupRequest, SubaccountQueryParams, UpdateOrderGroupLimitRequest};
 use std::time::Duration;
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -19,7 +17,7 @@ async fn test_order_group_lifecycle() {
     let create_resp = tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
         client
             .create_order_group(CreateOrderGroupRequest {
-                contracts_limit: Some(100),
+                contracts_limit_fp: Some("100.00".into()),
                 ..Default::default()
             })
             .await
@@ -33,23 +31,22 @@ async fn test_order_group_lifecycle() {
 
     // 2. Get order group and verify
     let get_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client
-            .get_order_group(&group_id, SubaccountQueryParams::default())
-            .await
+        client.get_order_group(&group_id, None).await
     })
     .await
     .expect("timeout")
     .expect("get_order_group failed");
 
-    assert_eq!(get_resp.contracts_limit, Some(100));
+    assert_eq!(get_resp.contracts_limit_fp.as_deref(), Some("100.00"));
 
     // 3. Update the order group limit
     let _update_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {
         client
             .update_order_group_limit(
                 &group_id,
+                SubaccountQueryParams::default(),
                 UpdateOrderGroupLimitRequest {
-                    contracts_limit: Some(200),
+                    contracts_limit_fp: Some("200.00".into()),
                     ..Default::default()
                 },
             )
@@ -61,15 +58,13 @@ async fn test_order_group_lifecycle() {
 
     // Verify the update
     let get_resp2 = tokio::time::timeout(common::TEST_TIMEOUT, async {
-        client
-            .get_order_group(&group_id, SubaccountQueryParams::default())
-            .await
+        client.get_order_group(&group_id, None).await
     })
     .await
     .expect("timeout")
     .expect("get_order_group after update failed");
 
-    assert_eq!(get_resp2.contracts_limit, Some(200));
+    assert_eq!(get_resp2.contracts_limit_fp.as_deref(), Some("200.00"));
 
     // 4. Reset order group
     let _reset_resp = tokio::time::timeout(common::TEST_TIMEOUT, async {

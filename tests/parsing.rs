@@ -2,18 +2,48 @@
 
 pub(crate) use cargo_husky as _;
 use kalshi_fast::{
-    ApplySubaccountTransferResponse, BookSide, BuySell, CreateOrderRequest,
-    CreateSubaccountResponse, ErrorResponse, EventData, EventMetadata, EventStatus,
-    GetAccountApiLimitsResponse, GetAccountEndpointCostsResponse, GetEventsParams,
-    GetExchangeAnnouncementsResponse, GetExchangeScheduleResponse, GetExchangeStatusResponse,
-    GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse, GetMarketsParams,
-    GetOrderQueuePositionsParams, GetOrdersParams, GetPositionsParams, GetSeriesFeeChangesParams,
+    ApplySubaccountTransferResponse, BookSide, BuySell, CreateSubaccountResponse, ErrorResponse,
+    EventData, EventMetadata, EventStatus, GetAccountApiLimitsResponse,
+    GetAccountEndpointCostsResponse, GetEventsParams, GetExchangeScheduleResponse,
+    GetExchangeStatusResponse, GetFillsParams, GetFillsResponse, GetMarketOrderbookResponse,
+    GetMarketsParams, GetOrderQueuePositionsParams, GetPositionsParams, GetSeriesFeeChangesParams,
     GetSeriesFeeChangesResponse, GetSettlementsParams, GetSettlementsResponse,
     GetSubaccountBalancesResponse, GetSubaccountTransfersParams, GetSubaccountTransfersResponse,
     GetTradesParams, GetTradesResponse, GetUserDataTimestampResponse, MarketMetadata, MarketStatus,
-    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, OrderType,
-    PositionCountFilter, PriceRange, SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
+    MarketStatusConversionError, MarketStatusQuery, MveFilter, OrderStatus, PositionCountFilter,
+    SelfTradePreventionType, TimeInForce, TradeTakerSide, YesNo,
 };
+
+fn market_fixture(ticker: &str) -> serde_json::Value {
+    serde_json::json!({
+        "ticker": ticker, "event_ticker": "EVT-1", "market_type": "binary",
+        "yes_sub_title": "Yes", "no_sub_title": "No",
+        "created_time": "2026-04-01T00:00:00Z", "updated_time": "2026-04-01T00:00:00Z",
+        "open_time": "2026-04-01T00:00:00Z", "close_time": "2026-04-30T00:00:00Z",
+        "latest_expiration_time": "2026-05-01T00:00:00Z",
+        "settlement_timer_seconds": 60, "status": "active",
+        "notional_value_dollars": "1.0000",
+        "yes_bid_dollars": "0.5000", "yes_ask_dollars": "0.5500",
+        "no_bid_dollars": "0.4500", "no_ask_dollars": "0.5000",
+        "yes_bid_size_fp": "10.00", "yes_ask_size_fp": "11.00",
+        "last_price_dollars": "0.5200", "previous_yes_bid_dollars": "0.5000",
+        "previous_yes_ask_dollars": "0.5500", "previous_price_dollars": "0.5200",
+        "volume_fp": "125.50", "volume_24h_fp": "101.25", "open_interest_fp": "500.00",
+        "result": "", "can_close_early": false, "expiration_value": "",
+        "rules_primary": "Market rules", "rules_secondary": "",
+        "price_level_structure": "linear_cent",
+        "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}],
+        "settlement_bounds_type": "default"
+    })
+}
+
+fn event_fixture() -> serde_json::Value {
+    serde_json::json!({
+        "event_ticker": "EVT-1", "series_ticker": "SER-1",
+        "sub_title": "Sub", "title": "Title", "collateral_return_type": "MECNET",
+        "mutually_exclusive": true, "settlement_sources": []
+    })
+}
 
 // ============================================================================
 // Enum Serialization Tests
@@ -45,42 +75,19 @@ fn market_status_query_serializes_correctly() {
 
 #[test]
 fn market_status_from_lifecycle_is_best_effort() {
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Initialized),
-        MarketStatusQuery::Unopened
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Inactive),
-        MarketStatusQuery::Paused
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Active),
-        MarketStatusQuery::Open
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Closed),
-        MarketStatusQuery::Closed
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Determined),
-        MarketStatusQuery::Closed
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Disputed),
-        MarketStatusQuery::Closed
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Amended),
-        MarketStatusQuery::Closed
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Finalized),
-        MarketStatusQuery::Settled
-    );
-    assert_eq!(
-        MarketStatusQuery::from(MarketStatus::Unknown),
-        MarketStatusQuery::Unknown
-    );
+    for (lifecycle, query) in [
+        (MarketStatus::Initialized, MarketStatusQuery::Unopened),
+        (MarketStatus::Inactive, MarketStatusQuery::Paused),
+        (MarketStatus::Active, MarketStatusQuery::Open),
+        (MarketStatus::Closed, MarketStatusQuery::Closed),
+        (MarketStatus::Determined, MarketStatusQuery::Closed),
+        (MarketStatus::Disputed, MarketStatusQuery::Closed),
+        (MarketStatus::Amended, MarketStatusQuery::Closed),
+        (MarketStatus::Finalized, MarketStatusQuery::Settled),
+        (MarketStatus::Unknown, MarketStatusQuery::Unknown),
+    ] {
+        assert_eq!(MarketStatusQuery::from(lifecycle), query);
+    }
 }
 
 #[test]
@@ -121,7 +128,6 @@ fn market_status_query_try_from_lifecycle_is_strict() {
         MarketStatusQuery::try_from(&MarketStatus::Unknown).unwrap(),
         MarketStatusQuery::Unknown
     );
-
     assert!(matches!(
         MarketStatusQuery::try_from(&MarketStatus::Active),
         Err(MarketStatusConversionError::LifecycleToQuery(
@@ -140,7 +146,6 @@ fn market_status_try_from_query_is_strict() {
         MarketStatus::try_from(&MarketStatusQuery::Unknown).unwrap(),
         MarketStatus::Unknown
     );
-
     assert!(matches!(
         MarketStatus::try_from(&MarketStatusQuery::Open),
         Err(MarketStatusConversionError::QueryToLifecycle(
@@ -151,6 +156,10 @@ fn market_status_try_from_query_is_strict() {
 
 #[test]
 fn event_status_serializes_correctly() {
+    assert_eq!(
+        serde_json::to_string(&EventStatus::Unopened).unwrap(),
+        "\"unopened\""
+    );
     assert_eq!(
         serde_json::to_string(&EventStatus::Open).unwrap(),
         "\"open\""
@@ -191,18 +200,6 @@ fn yes_no_serializes_correctly() {
 fn buy_sell_serializes_correctly() {
     assert_eq!(serde_json::to_string(&BuySell::Buy).unwrap(), "\"buy\"");
     assert_eq!(serde_json::to_string(&BuySell::Sell).unwrap(), "\"sell\"");
-}
-
-#[test]
-fn order_type_serializes_correctly() {
-    assert_eq!(
-        serde_json::to_string(&OrderType::Limit).unwrap(),
-        "\"limit\""
-    );
-    assert_eq!(
-        serde_json::to_string(&OrderType::Market).unwrap(),
-        "\"market\""
-    );
 }
 
 #[test]
@@ -251,7 +248,7 @@ fn get_markets_params_serializes_with_csv_fields() {
     let params = GetMarketsParams {
         limit: Some(50),
         status: Some(MarketStatusQuery::Open),
-        event_ticker: Some(vec!["EVT1".into(), "EVT2".into()]),
+        event_ticker: Some("EVT1".into()),
         tickers: Some(vec!["TKR1".into(), "TKR2".into(), "TKR3".into()]),
         ..Default::default()
     };
@@ -259,7 +256,7 @@ fn get_markets_params_serializes_with_csv_fields() {
     let json = serde_json::to_value(&params).unwrap();
     assert_eq!(json["limit"], 50);
     assert_eq!(json["status"], "open");
-    assert_eq!(json["event_ticker"], "EVT1,EVT2");
+    assert_eq!(json["event_ticker"], "EVT1");
     assert_eq!(json["tickers"], "TKR1,TKR2,TKR3");
 }
 
@@ -307,35 +304,6 @@ fn get_positions_params_serializes_count_filter_csv() {
 }
 
 #[test]
-fn create_order_request_serializes_all_fields() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-123".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        client_order_id: Some("my-order-1".into()),
-        count: Some(10),
-        r#type: Some(OrderType::Limit),
-        yes_price: Some(50),
-        time_in_force: Some(TimeInForce::GoodTillCanceled),
-        post_only: Some(true),
-        subaccount: Some(1),
-        ..Default::default()
-    };
-
-    let json = serde_json::to_value(&req).unwrap();
-    assert_eq!(json["ticker"], "TICK-123");
-    assert_eq!(json["side"], "yes");
-    assert_eq!(json["action"], "buy");
-    assert_eq!(json["client_order_id"], "my-order-1");
-    assert_eq!(json["count"], 10);
-    assert_eq!(json["type"], "limit");
-    assert_eq!(json["yes_price"], 50);
-    assert_eq!(json["time_in_force"], "good_till_canceled");
-    assert_eq!(json["post_only"], true);
-    assert_eq!(json["subaccount"], 1);
-}
-
-#[test]
 fn get_trades_params_serializes_correctly() {
     let params = GetTradesParams {
         ticker: Some("MKT-1".into()),
@@ -356,14 +324,14 @@ fn get_trades_params_serializes_correctly() {
 fn get_fills_params_serializes_correctly() {
     let params = GetFillsParams {
         limit: Some(10),
-        ticker: Some("MKT-1".into()),
+        ticker: Some(vec!["MKT-1".into(), "MKT-2".into()]),
         subaccount: Some(1),
         ..Default::default()
     };
 
     let json = serde_json::to_value(&params).unwrap();
     assert_eq!(json["limit"], 10);
-    assert_eq!(json["ticker"], "MKT-1");
+    assert_eq!(json["ticker"], "MKT-1,MKT-2");
     assert_eq!(json["subaccount"], 1);
 }
 
@@ -390,15 +358,6 @@ fn error_response_deserializes_details_string() {
     let err: ErrorResponse = serde_json::from_str(json).unwrap();
     assert_eq!(err.code.as_deref(), Some("bad"));
     assert_eq!(err.details.as_deref(), Some("extra info"));
-}
-
-#[test]
-fn price_range_deserializes_with_aliases() {
-    let json = r#"{"min_price":"0.10","max_price":"0.90","increment":"0.05"}"#;
-    let range: PriceRange = serde_json::from_str(json).unwrap();
-    assert_eq!(range.start, "0.10");
-    assert_eq!(range.end, "0.90");
-    assert_eq!(range.step, "0.05");
 }
 
 #[test]
@@ -447,6 +406,7 @@ fn historical_params_serialize_correctly() {
         max_ts: Some(1700000000),
         limit: Some(25),
         cursor: Some("c3".into()),
+        ..Default::default()
     };
     let fills_json = serde_json::to_value(&fills).unwrap();
     assert_eq!(fills_json["ticker"], "MKT-1");
@@ -459,6 +419,7 @@ fn historical_params_serialize_correctly() {
         max_ts: Some(1700000100),
         limit: Some(15),
         cursor: Some("c4".into()),
+        ..Default::default()
     };
     let orders_json = serde_json::to_value(&orders).unwrap();
     assert_eq!(orders_json["ticker"], "MKT-1");
@@ -486,38 +447,28 @@ fn get_balance_response_deserializes() {
     let json = r#"{
         "balance": 100000,
         "portfolio_value": 50000,
+        "balance_dollars": "1000.0000",
         "updated_ts": 1700000000
     }"#;
 
     let resp: kalshi_fast::GetBalanceResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.balance, 100000);
+    assert_eq!(resp.balance_dollars, "1000.0000");
     assert_eq!(resp.portfolio_value, 50000);
     assert_eq!(resp.updated_ts, 1700000000);
 }
 
 #[test]
 fn get_markets_response_deserializes() {
-    let json = r#"{
-        "markets": [
-            {
-                "ticker": "MKT-1",
-                "event_ticker": "EVT-1",
-                "series_ticker": "SERIES-1",
-                "status": "active",
-                "volume_fp": "125.50",
-                "volume_24h_fp": "101.25",
-                "open_interest_fp": "500.00",
-                "occurrence_datetime": "2026-04-16T18:30:00Z"
-            },
-            {"ticker": "MKT-2"}
-        ],
+    let mut market = market_fixture("MKT-1");
+    market["occurrence_datetime"] = "2026-04-16T18:30:00Z".into();
+    let json = serde_json::json!({
+        "markets": [market, market_fixture("MKT-2")],
         "cursor": "next_cursor_token"
-    }"#;
-
-    let resp: kalshi_fast::GetMarketsResponse = serde_json::from_str(json).unwrap();
+    });
+    let resp: kalshi_fast::GetMarketsResponse = serde_json::from_value(json).unwrap();
     assert_eq!(resp.markets.len(), 2);
     assert_eq!(resp.markets[0].event_ticker.as_deref(), Some("EVT-1"));
-    assert_eq!(resp.markets[0].series_ticker.as_deref(), Some("SERIES-1"));
     assert_eq!(
         resp.markets[0].status,
         Some(kalshi_fast::MarketStatus::Active)
@@ -535,7 +486,13 @@ fn get_markets_response_deserializes() {
 #[test]
 fn get_series_response_deserializes() {
     let json = r#"{
-        "series": {"ticker": "SERIES-1", "title": "Example Series"}
+        "series": {
+            "ticker": "SERIES-1", "title": "Example Series", "frequency": "daily",
+            "category": "Politics", "categories": ["Politics"], "tags": [],
+            "settlement_sources": [], "contract_url": "https://example.com/contract",
+            "contract_terms_url": "https://example.com/terms", "fee_type": "quadratic",
+            "fee_multiplier": 1.0, "additional_prohibitions": []
+        }
     }"#;
 
     let resp: kalshi_fast::GetSeriesResponse = serde_json::from_str(json).unwrap();
@@ -544,31 +501,22 @@ fn get_series_response_deserializes() {
 }
 
 #[test]
-fn get_markets_response_deserializes_without_cursor() {
-    let json = r#"{"markets": []}"#;
-
-    let resp: kalshi_fast::GetMarketsResponse = serde_json::from_str(json).unwrap();
-    assert!(resp.markets.is_empty());
-    assert!(resp.cursor.is_none());
-}
-
-#[test]
 fn get_events_response_deserializes() {
-    let json = r#"{
-        "events": [{"event_ticker": "EVT-1"}],
-        "cursor": null
-    }"#;
-
-    let resp: kalshi_fast::GetEventsResponse = serde_json::from_str(json).unwrap();
+    let json = serde_json::json!({"events": [event_fixture()], "cursor": ""});
+    let resp: kalshi_fast::GetEventsResponse = serde_json::from_value(json).unwrap();
     assert_eq!(resp.events.len(), 1);
     assert!(resp.milestones.is_empty());
-    assert!(resp.cursor.is_none());
+    assert_eq!(resp.cursor.as_deref(), Some(""));
 }
 
 #[test]
 fn get_events_response_deserializes_with_milestones() {
     let json = r#"{
-        "events": [{"event_ticker": "EVT-1"}],
+        "events": [{
+            "event_ticker": "EVT-1", "series_ticker": "SER-1", "sub_title": "Sub",
+            "title": "Title", "collateral_return_type": "MECNET",
+            "mutually_exclusive": true, "settlement_sources": []
+        }],
         "cursor": "next",
         "milestones": [{
             "id": "ms-1",
@@ -597,70 +545,21 @@ fn get_events_response_deserializes_with_milestones() {
 
 #[test]
 fn get_event_response_deserializes_rich_schema_fields() {
-    let json = r#"{
-        "event": {
-            "event_ticker": "EVT-1",
-            "series_ticker": "SER-1",
-            "sub_title": "Sub",
-            "title": "Title",
-            "collateral_return_type": "binary",
-            "mutually_exclusive": true,
-            "category": "Politics",
-            "available_on_brokers": true,
-            "product_metadata": {},
-            "strike_date": "2023-11-07T05:31:56Z",
-            "strike_period": "day",
-            "last_updated_ts": "2023-11-07T05:31:56Z",
-            "markets": []
-        },
-        "markets": [{
-            "ticker": "MKT-1",
-            "event_ticker": "EVT-1",
-            "market_type": "binary",
-            "yes_bid_size_fp": "10.00",
-            "yes_ask_size_fp": "11.00",
-            "settlement_timer_seconds": 123,
-            "fractional_trading_enabled": true,
-            "notional_value": 100,
-            "notional_value_dollars": "1.0000",
-            "previous_yes_bid": 50,
-            "previous_yes_bid_dollars": "0.5000",
-            "previous_yes_ask": 55,
-            "previous_yes_ask_dollars": "0.5500",
-            "previous_price": 52,
-            "previous_price_dollars": "0.5200",
-            "liquidity": 1000,
-            "liquidity_dollars": "10.0000",
-            "expiration_value": "123.4",
-            "occurrence_datetime": "2026-04-16T18:30:00Z",
-            "tick_size": 1,
-            "expected_expiration_time": "2023-11-07T05:31:56Z",
-            "settlement_value": 100,
-            "settlement_value_dollars": "1.0000",
-            "settlement_ts": "2023-11-07T05:31:56Z",
-            "fee_waiver_expiration_time": "2023-11-07T05:31:56Z",
-            "early_close_condition": "close when event occurs",
-            "strike_type": "greater",
-            "floor_strike": 100.0,
-            "cap_strike": 200.0,
-            "functional_strike": "f(x)",
-            "mve_collection_ticker": "COL-1",
-            "primary_participant_key": "pk-1",
-            "is_provisional": true,
-            "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}]
-        }]
-    }"#;
-
-    let resp: kalshi_fast::GetEventResponse = serde_json::from_str(json).unwrap();
+    let mut event = event_fixture();
+    event["category"] = "Politics".into();
+    event["product_metadata"] = serde_json::json!({"category": "election"});
+    event["strike_date"] = "2026-04-16T18:30:00Z".into();
+    let mut market = market_fixture("MKT-1");
+    market["occurrence_datetime"] = "2026-04-16T18:30:00Z".into();
+    market["strike_type"] = "greater".into();
+    market["floor_strike"] = 100.0.into();
+    let json = serde_json::json!({"event": event, "markets": [market]});
+    let resp: kalshi_fast::GetEventResponse = serde_json::from_value(json).unwrap();
     assert_eq!(resp.event.event_ticker, "EVT-1");
-    assert_eq!(resp.event.collateral_return_type.as_deref(), Some("binary"));
+    assert_eq!(resp.event.collateral_return_type.as_deref(), Some("MECNET"));
     assert_eq!(resp.event.mutually_exclusive, Some(true));
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].yes_bid_size_fp.as_deref(), Some("10.00"));
-    assert_eq!(
-        resp.markets[0].liquidity_dollars.as_deref(),
-        Some("10.0000")
-    );
     assert_eq!(
         resp.markets[0].occurrence_datetime.as_deref(),
         Some("2026-04-16T18:30:00Z")
@@ -676,30 +575,28 @@ fn batch_get_market_candlesticks_response_deserializes_typed() {
             "candlesticks": [{
                 "end_period_ts": 123,
                 "yes_bid": {
-                    "open": 10, "open_dollars": "0.1000",
-                    "low": 9, "low_dollars": "0.0900",
-                    "high": 11, "high_dollars": "0.1100",
-                    "close": 10, "close_dollars": "0.1000"
+                    "open_dollars": "0.1000",
+                    "low_dollars": "0.0900",
+                    "high_dollars": "0.1100",
+                    "close_dollars": "0.1000"
                 },
                 "yes_ask": {
-                    "open": 20, "open_dollars": "0.2000",
-                    "low": 19, "low_dollars": "0.1900",
-                    "high": 21, "high_dollars": "0.2100",
-                    "close": 20, "close_dollars": "0.2000"
+                    "open_dollars": "0.2000",
+                    "low_dollars": "0.1900",
+                    "high_dollars": "0.2100",
+                    "close_dollars": "0.2000"
                 },
                 "price": {
-                    "open": 15, "open_dollars": "0.1500",
-                    "low": 14, "low_dollars": "0.1400",
-                    "high": 16, "high_dollars": "0.1600",
-                    "close": 15, "close_dollars": "0.1500",
-                    "mean": 15, "mean_dollars": "0.1500",
-                    "previous": 13, "previous_dollars": "0.1300",
-                    "min": 12, "min_dollars": "0.1200",
-                    "max": 17, "max_dollars": "0.1700"
+                    "open_dollars": "0.1500",
+                    "low_dollars": "0.1400",
+                    "high_dollars": "0.1600",
+                    "close_dollars": "0.1500",
+                    "mean_dollars": "0.1505",
+                    "previous_dollars": "0.1300",
+                    "min_dollars": "0.1200",
+                    "max_dollars": "0.1700"
                 },
-                "volume": 123,
                 "volume_fp": "10.00",
-                "open_interest": 456,
                 "open_interest_fp": "20.00"
             }]
         }]
@@ -709,7 +606,13 @@ fn batch_get_market_candlesticks_response_deserializes_typed() {
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].market_ticker, "MKT-1");
     assert_eq!(resp.markets[0].candlesticks.len(), 1);
-    assert_eq!(resp.markets[0].candlesticks[0].price.mean, Some(15));
+    assert_eq!(
+        resp.markets[0].candlesticks[0]
+            .price
+            .mean_dollars
+            .as_deref(),
+        Some("0.1505")
+    );
 }
 
 #[test]
@@ -719,30 +622,28 @@ fn get_event_candlesticks_response_deserializes_nested_market_arrays() {
         "market_candlesticks": [[{
             "end_period_ts": 123,
             "yes_bid": {
-                "open": 10, "open_dollars": "0.1000",
-                "low": 9, "low_dollars": "0.0900",
-                "high": 11, "high_dollars": "0.1100",
-                "close": 10, "close_dollars": "0.1000"
+                "open_dollars": "0.1000",
+                "low_dollars": "0.0900",
+                "high_dollars": "0.1100",
+                "close_dollars": "0.1000"
             },
             "yes_ask": {
-                "open": 20, "open_dollars": "0.2000",
-                "low": 19, "low_dollars": "0.1900",
-                "high": 21, "high_dollars": "0.2100",
-                "close": 20, "close_dollars": "0.2000"
+                "open_dollars": "0.2000",
+                "low_dollars": "0.1900",
+                "high_dollars": "0.2100",
+                "close_dollars": "0.2000"
             },
             "price": {
-                "open": 15, "open_dollars": "0.1500",
-                "low": 14, "low_dollars": "0.1400",
-                "high": 16, "high_dollars": "0.1600",
-                "close": 15, "close_dollars": "0.1500",
-                "mean": 15, "mean_dollars": "0.1500",
-                "previous": 13, "previous_dollars": "0.1300",
-                "min": 12, "min_dollars": "0.1200",
-                "max": 17, "max_dollars": "0.1700"
+                "open_dollars": "0.1500",
+                "low_dollars": "0.1400",
+                "high_dollars": "0.1600",
+                "close_dollars": "0.1500",
+                "mean_dollars": "0.1500",
+                "previous_dollars": "0.1300",
+                "min_dollars": "0.1200",
+                "max_dollars": "0.1700"
             },
-            "volume": 123,
             "volume_fp": "10.00",
-            "open_interest": 456,
             "open_interest_fp": "20.00"
         }]],
         "adjusted_end_ts": 123
@@ -763,30 +664,28 @@ fn batch_get_market_candlesticks_response_deserializes_synthetic_null_ohlc() {
             "candlesticks": [{
                 "end_period_ts": 124,
                 "yes_bid": {
-                    "open": null, "open_dollars": null,
-                    "low": null, "low_dollars": null,
-                    "high": null, "high_dollars": null,
-                    "close": null, "close_dollars": null
+                    "open_dollars": "0.1000",
+                    "low_dollars": "0.0900",
+                    "high_dollars": "0.1100",
+                    "close_dollars": "0.1000"
                 },
                 "yes_ask": {
-                    "open": null, "open_dollars": null,
-                    "low": null, "low_dollars": null,
-                    "high": null, "high_dollars": null,
-                    "close": null, "close_dollars": null
+                    "open_dollars": "0.2000",
+                    "low_dollars": "0.1900",
+                    "high_dollars": "0.2100",
+                    "close_dollars": "0.2000"
                 },
                 "price": {
-                    "open": null, "open_dollars": null,
-                    "low": null, "low_dollars": null,
-                    "high": null, "high_dollars": null,
-                    "close": null, "close_dollars": null,
-                    "mean": null, "mean_dollars": null,
-                    "previous": null, "previous_dollars": null,
-                    "min": null, "min_dollars": null,
-                    "max": null, "max_dollars": null
+                    "open_dollars": null,
+                    "low_dollars": null,
+                    "high_dollars": null,
+                    "close_dollars": null,
+                    "mean_dollars": null,
+                    "previous_dollars": null,
+                    "min_dollars": null,
+                    "max_dollars": null
                 },
-                "volume": 0,
                 "volume_fp": "0.00",
-                "open_interest": 0,
                 "open_interest_fp": "0.00"
             }]
         }]
@@ -794,9 +693,9 @@ fn batch_get_market_candlesticks_response_deserializes_synthetic_null_ohlc() {
 
     let resp: kalshi_fast::BatchGetMarketCandlesticksResponse = serde_json::from_str(json).unwrap();
     let candle = &resp.markets[0].candlesticks[0];
-    assert_eq!(candle.yes_bid.open, None);
-    assert_eq!(candle.yes_ask.close_dollars, None);
-    assert_eq!(candle.price.open, None);
+    assert_eq!(candle.yes_bid.open_dollars.as_deref(), Some("0.1000"));
+    assert_eq!(candle.yes_ask.close_dollars.as_deref(), Some("0.2000"));
+    assert_eq!(candle.price.open_dollars, None);
     assert_eq!(candle.price.mean_dollars, None);
 }
 
@@ -863,7 +762,7 @@ fn get_positions_response_deserializes() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
+            "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -894,7 +793,7 @@ fn positions_page_from_response() {
             "position_fp": "5.00",
             "market_exposure_dollars": "3.2100",
             "realized_pnl_dollars": "1.1100",
-            "resting_orders_count": 2,
+            "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
             "last_updated_ts": "2026-04-16T12:00:00Z"
         }],
@@ -914,97 +813,6 @@ fn positions_page_from_response() {
     assert_eq!(page.market_positions.len(), 1);
     assert_eq!(page.event_positions.len(), 1);
     assert_eq!(page.event_positions[0].total_cost_shares_fp, "10.00");
-}
-
-#[test]
-fn get_orders_response_deserializes() {
-    let json = r#"{
-        "orders": [{
-            "order_id": "ord-1",
-            "user_id": "user-1",
-            "client_order_id": "client-1",
-            "ticker": "MKT-1",
-            "side": "yes",
-            "action": "buy",
-            "type": "limit",
-            "status": "resting",
-            "yes_price_dollars": "0.5500",
-            "no_price_dollars": "0.4500",
-            "fill_count_fp": "0.00",
-            "remaining_count_fp": "10.00",
-            "initial_count_fp": "10.00",
-            "taker_fill_cost_dollars": "0.0000",
-            "maker_fill_cost_dollars": "0.0000",
-            "taker_fees_dollars": "0.0000",
-            "maker_fees_dollars": "0.0000"
-        }]
-    }"#;
-
-    let resp: kalshi_fast::GetOrdersResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.orders.len(), 1);
-    assert_eq!(resp.orders[0].client_order_id, "client-1");
-    assert!(resp.cursor.is_none());
-}
-
-#[test]
-fn create_order_response_deserializes() {
-    let json = r#"{
-        "order": {
-            "order_id": "ord-123",
-            "user_id": "user-1",
-            "client_order_id": "client-1",
-            "ticker": "MKT-1",
-            "side": "yes",
-            "action": "buy",
-            "type": "limit",
-            "status": "resting",
-            "yes_price_dollars": "0.5500",
-            "no_price_dollars": "0.4500",
-            "fill_count_fp": "0.00",
-            "remaining_count_fp": "10.00",
-            "initial_count_fp": "10.00",
-            "taker_fill_cost_dollars": "0.0000",
-            "maker_fill_cost_dollars": "0.0000",
-            "taker_fees_dollars": "0.0000",
-            "maker_fees_dollars": "0.0000"
-        }
-    }"#;
-
-    let resp: kalshi_fast::CreateOrderResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.order.order_id, "ord-123");
-    assert_eq!(resp.order.ticker, "MKT-1");
-}
-
-#[test]
-fn cancel_order_response_deserializes() {
-    let json = r#"{
-        "order": {
-            "order_id": "ord-123",
-            "user_id": "user-1",
-            "client_order_id": "client-1",
-            "ticker": "MKT-1",
-            "side": "yes",
-            "action": "buy",
-            "type": "limit",
-            "status": "canceled",
-            "yes_price_dollars": "0.5500",
-            "no_price_dollars": "0.4500",
-            "fill_count_fp": "0.00",
-            "remaining_count_fp": "5.00",
-            "initial_count_fp": "10.00",
-            "taker_fill_cost_dollars": "0.0000",
-            "maker_fill_cost_dollars": "0.0000",
-            "taker_fees_dollars": "0.0000",
-            "maker_fees_dollars": "0.0000"
-        },
-        "reduced_by": 5,
-        "reduced_by_fp": "5.00"
-    }"#;
-
-    let resp: kalshi_fast::CancelOrderResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.order.status, OrderStatus::Canceled);
-    assert_eq!(resp.reduced_by, 5);
-    assert_eq!(resp.reduced_by_fp, "5.00");
 }
 
 #[test]
@@ -1032,6 +840,7 @@ fn get_trades_response_deserializes() {
             "taker_side": "yes",
             "taker_outcome_side": "yes",
             "taker_book_side": "bid",
+            "is_block_trade": false,
             "created_time": "2026-04-16T12:00:00Z"
         }],
         "cursor": "c1"
@@ -1043,12 +852,9 @@ fn get_trades_response_deserializes() {
     // Normalized direction fields added 2026-05-07.
     assert!(matches!(
         resp.trades[0].taker_outcome_side,
-        Some(TradeTakerSide::Yes)
+        TradeTakerSide::Yes
     ));
-    assert!(matches!(
-        resp.trades[0].taker_book_side,
-        Some(BookSide::Bid)
-    ));
+    assert!(matches!(resp.trades[0].taker_book_side, BookSide::Bid));
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
@@ -1067,19 +873,6 @@ fn get_exchange_status_response_deserializes() {
         resp.exchange_estimated_resume_time.as_deref(),
         Some("2025-01-01T00:00:00Z")
     );
-}
-
-#[test]
-fn get_exchange_announcements_response_deserializes() {
-    let json = r#"{
-        "announcements": [
-            {"type":"info","message":"hello","delivery_time":"2025-01-01T00:00:00Z","status":"active"}
-        ]
-    }"#;
-
-    let resp: GetExchangeAnnouncementsResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.announcements.len(), 1);
-    assert_eq!(resp.announcements[0].message, "hello");
 }
 
 #[test]
@@ -1116,13 +909,23 @@ fn get_user_data_timestamp_response_deserializes() {
 fn get_series_fee_changes_response_deserializes() {
     let json = r#"{
         "series_fee_change_arr": [
-            {"id":1,"series_ticker":"SERIES-1","fee_type":"flat","fee_multiplier":5,"scheduled_ts":1700000000}
+            {"id":"fee-1","series_ticker":"SERIES-1","fee_type":"quadratic_with_combo_maker_fees","fee_multiplier":0.5,"scheduled_ts":"2025-01-01T00:00:00Z"}
         ]
     }"#;
 
     let resp: GetSeriesFeeChangesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.series_fee_change_arr.len(), 1);
+    assert!(matches!(
+        resp.series_fee_change_arr[0].fee_type,
+        kalshi_fast::FeeType::QuadraticWithComboMakerFees
+    ));
     assert_eq!(resp.series_fee_change_arr[0].series_ticker, "SERIES-1");
+    assert_eq!(resp.series_fee_change_arr[0].id, "fee-1");
+    assert_eq!(resp.series_fee_change_arr[0].fee_multiplier, 0.5);
+    assert_eq!(
+        resp.series_fee_change_arr[0].scheduled_ts,
+        "2025-01-01T00:00:00Z"
+    );
 }
 
 #[test]
@@ -1133,6 +936,9 @@ fn get_fills_response_deserializes() {
             "order_id": "o1",
             "trade_id": "t1",
             "ticker": "MKT-1",
+            "exchange_index": 0,
+            "outcome_side": "yes",
+            "book_side": "bid",
             "market_ticker": "MKT-1",
             "side": "yes",
             "action": "buy",
@@ -1147,7 +953,7 @@ fn get_fills_response_deserializes() {
 
     let resp: GetFillsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.fills.len(), 1);
-    assert_eq!(resp.cursor, Some("c1".into()));
+    assert_eq!(resp.cursor, "c1");
 }
 
 #[test]
@@ -1155,6 +961,7 @@ fn get_settlements_response_deserializes() {
     let json = r#"{
         "settlements": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "event_ticker": "EVT-1",
             "market_result": "yes",
             "yes_count_fp": "1.00",
@@ -1165,12 +972,12 @@ fn get_settlements_response_deserializes() {
             "settled_time": "2026-04-02T00:00:00Z",
             "fee_cost": "0.0100"
         }],
-        "cursor": null
+        "cursor": ""
     }"#;
 
     let resp: GetSettlementsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.settlements.len(), 1);
-    assert!(resp.cursor.is_none());
+    assert_eq!(resp.cursor.as_deref(), Some(""));
 }
 
 #[test]
@@ -1214,8 +1021,8 @@ fn get_account_endpoint_costs_response_deserializes() {
     let json = r#"{
         "default_cost": 10,
         "endpoint_costs": [
-            {"method":"POST","path":"/portfolio/orders","cost":100},
-            {"method":"DELETE","path":"/portfolio/orders/batched","cost":50}
+            {"method":"POST","path":"/portfolio/events/orders","cost":100},
+            {"method":"DELETE","path":"/portfolio/events/orders/batched","cost":50}
         ]
     }"#;
 
@@ -1223,7 +1030,7 @@ fn get_account_endpoint_costs_response_deserializes() {
     assert_eq!(resp.default_cost, 10);
     assert_eq!(resp.endpoint_costs.len(), 2);
     assert_eq!(resp.endpoint_costs[0].method, "POST");
-    assert_eq!(resp.endpoint_costs[0].path, "/portfolio/orders");
+    assert_eq!(resp.endpoint_costs[0].path, "/portfolio/events/orders");
     assert_eq!(resp.endpoint_costs[0].cost, 100);
 
     // Tolerates missing/null endpoint_costs.
@@ -1235,12 +1042,12 @@ fn get_account_endpoint_costs_response_deserializes() {
 #[test]
 fn get_subaccount_balances_response_deserializes() {
     let json = r#"{
-        "subaccount_balances": [{"subaccount_number":1,"balance":100,"updated_ts":1700000000}]
+        "subaccount_balances": [{"subaccount_number":1,"exchange_index":0,"balance":"100.0000","updated_ts":1700000000}]
     }"#;
 
     let resp: GetSubaccountBalancesResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.subaccount_balances.len(), 1);
-    assert_eq!(resp.subaccount_balances[0].balance, "100");
+    assert_eq!(resp.subaccount_balances[0].balance, "100.0000");
 }
 
 #[test]
@@ -1254,14 +1061,14 @@ fn create_subaccount_response_deserializes() {
 #[test]
 fn get_subaccount_transfers_response_deserializes() {
     let json = r#"{
-        "subaccount_transfers": [
-            {"transfer_id":"t1","from_subaccount":0,"to_subaccount":1,"amount_cents":100,"created_ts":1700000000}
+        "transfers": [
+            {"transfer_id":"t1","from_subaccount":0,"to_subaccount":1,"amount_cents":100,"created_ts":1700000000,"exchange_index":0}
         ],
         "cursor": "c1"
     }"#;
 
     let resp: GetSubaccountTransfersResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.subaccount_transfers.len(), 1);
+    assert_eq!(resp.transfers[0].transfer_id, "t1");
     assert_eq!(resp.cursor, Some("c1".into()));
 }
 
@@ -1277,12 +1084,12 @@ fn apply_subaccount_transfer_response_deserializes() {
 
 #[test]
 fn get_markets_params_validates_limit_bounds() {
-    // Zero is invalid
+    // Zero is valid.
     let params = GetMarketsParams {
         limit: Some(0),
         ..Default::default()
     };
-    assert!(params.validate().is_err());
+    assert!(params.validate().is_ok());
 
     // Over 1000 is invalid
     let params = GetMarketsParams {
@@ -1304,35 +1111,6 @@ fn get_markets_params_validates_limit_bounds() {
         ..Default::default()
     };
     assert!(params.validate().is_ok());
-}
-
-#[test]
-fn get_markets_params_validates_event_ticker_count() {
-    // 10 is ok
-    let params = GetMarketsParams {
-        event_ticker: Some(
-            vec!["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-        ),
-        ..Default::default()
-    };
-    assert!(params.validate().is_ok());
-
-    // 11 is too many
-    let params = GetMarketsParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
-        ..Default::default()
-    };
-    assert!(params.validate().is_err());
 }
 
 #[test]
@@ -1400,198 +1178,8 @@ fn get_events_params_validates_limit_bounds() {
 }
 
 #[test]
-fn get_positions_params_validates_subaccount_bounds() {
-    let params = GetPositionsParams {
-        subaccount: Some(32),
-        ..Default::default()
-    };
-    assert!(params.validate().is_ok());
-
-    let params = GetPositionsParams {
-        subaccount: Some(33),
-        ..Default::default()
-    };
-    assert!(params.validate().is_err());
-}
-
-#[test]
 fn get_order_queue_positions_params_allows_unfiltered_requests() {
     assert!(GetOrderQueuePositionsParams::default().validate().is_ok());
-}
-
-#[test]
-fn get_orders_params_validates_limit_bounds() {
-    let params = GetOrdersParams {
-        limit: Some(0),
-        ..Default::default()
-    };
-    assert!(params.validate().is_err());
-
-    let params = GetOrdersParams {
-        limit: Some(201),
-        ..Default::default()
-    };
-    assert!(params.validate().is_err());
-
-    let params = GetOrdersParams {
-        limit: Some(200),
-        ..Default::default()
-    };
-    assert!(params.validate().is_ok());
-}
-
-#[test]
-fn get_orders_params_validates_event_ticker_count() {
-    let params = GetOrdersParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
-        ..Default::default()
-    };
-    assert!(params.validate().is_err());
-}
-
-#[test]
-fn get_orders_params_validates_subaccount_bounds() {
-    let params = GetOrdersParams {
-        subaccount: Some(33),
-        ..Default::default()
-    };
-    assert!(params.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_requires_count_or_count_fp() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_rejects_count_mismatch() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(2),
-        count_fp: Some("1.0".into()),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_rejects_conflicting_prices() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        yes_price_dollars: Some("0.10".into()),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        no_price: Some(90),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_market_order_no_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Market),
-        yes_price: Some(10),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_limit_order_requires_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        r#type: Some(OrderType::Limit),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_subaccount_bounds() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        subaccount: Some(32),
-        ..Default::default()
-    };
-    assert!(req.validate().is_ok());
-
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        subaccount: Some(33),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_sell_position_floor() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        sell_position_floor: Some(1),
-        ..Default::default()
-    };
-    assert!(req.validate().is_err());
-}
-
-#[test]
-fn create_order_request_validate_ok_with_yes_price() {
-    let req = CreateOrderRequest {
-        ticker: "TICK-1".into(),
-        side: YesNo::Yes,
-        action: BuySell::Buy,
-        count: Some(1),
-        yes_price: Some(10),
-        r#type: Some(OrderType::Limit),
-        ..Default::default()
-    };
-    assert!(req.validate().is_ok());
 }
 
 // ============================================================================
@@ -1659,85 +1247,34 @@ fn market_metadata_deserializes_without_image_url() {
 
 #[test]
 fn event_data_deserializes_with_partial_product_metadata() {
-    let json = r#"{
-        "event_ticker": "EVT-1",
-        "product_metadata": {
-            "market_details": [],
-            "settlement_sources": [],
-            "new_product_flag": true
-        }
-    }"#;
-
-    let event: EventData = serde_json::from_str(json).unwrap();
+    let mut json = event_fixture();
+    json["product_metadata"] = serde_json::json!({
+        "market_details": [], "settlement_sources": [], "new_product_flag": true
+    });
+    let event: EventData = serde_json::from_value(json).unwrap();
     assert_eq!(event.event_ticker, "EVT-1");
     let meta = event.product_metadata.unwrap();
-    assert!(meta.image_url.is_none());
     assert_eq!(
-        meta.extra.get("new_product_flag").and_then(|v| v.as_bool()),
+        meta.get("new_product_flag").and_then(|v| v.as_bool()),
         Some(true)
     );
 }
 
 #[test]
 fn get_event_response_deserializes_nested_event_markets() {
-    let json = r#"{
-        "event": {
-            "event_ticker": "EVT-1",
-            "markets": [{
-                "ticker": "MKT-NESTED-1",
-                "market_type": "binary",
-                "yes_bid_dollars": "0.5600",
-                "yes_ask_dollars": "0.5700",
-                "volume_fp": "10.00",
-                "open_interest_fp": "10.00"
-            }]
-        },
-        "markets": [{
-            "ticker": "MKT-TOP-1",
-            "market_type": "binary",
-            "yes_bid_dollars": "0.6600",
-            "yes_ask_dollars": "0.6700",
-            "volume_fp": "11.00",
-            "open_interest_fp": "11.00"
-        }]
-    }"#;
-
-    let resp: kalshi_fast::GetEventResponse = serde_json::from_str(json).unwrap();
+    let mut event = event_fixture();
+    let mut nested_market = market_fixture("MKT-NESTED-1");
+    nested_market["yes_bid_dollars"] = "0.5600".into();
+    let mut top_market = market_fixture("MKT-TOP-1");
+    top_market["yes_bid_dollars"] = "0.6600".into();
+    event["markets"] = serde_json::json!([nested_market]);
+    let json = serde_json::json!({"event": event, "markets": [top_market]});
+    let resp: kalshi_fast::GetEventResponse = serde_json::from_value(json).unwrap();
     let nested = resp.event.markets.as_ref().unwrap();
     assert_eq!(nested.len(), 1);
     assert_eq!(nested[0].ticker, "MKT-NESTED-1");
     assert_eq!(resp.markets.len(), 1);
     assert_eq!(resp.markets[0].ticker, "MKT-TOP-1");
-}
-
-#[test]
-fn get_event_response_deserializes_without_removed_cent_fields() {
-    let json = r#"{
-        "event": {
-            "event_ticker": "EVT-2",
-            "markets": [{
-                "ticker": "MKT-2",
-                "market_type": "binary",
-                "yes_bid_dollars": "0.5600",
-                "yes_ask_dollars": "0.5700",
-                "volume_fp": "10.00",
-                "open_interest_fp": "10.00",
-                "notional_value_dollars": "1.0000",
-                "liquidity_dollars": "20.0000",
-                "price_level_structure": "linear_cent",
-                "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
-            }]
-        },
-        "markets": []
-    }"#;
-
-    let resp: kalshi_fast::GetEventResponse = serde_json::from_str(json).unwrap();
-    let market = &resp.event.markets.as_ref().unwrap()[0];
-    assert_eq!(market.yes_bid, None);
-    assert_eq!(market.yes_ask, None);
-    assert_eq!(market.notional_value, None);
-    assert_eq!(market.yes_bid_dollars.as_deref(), Some("0.5600"));
-    assert_eq!(market.liquidity_dollars.as_deref(), Some("20.0000"));
 }
 
 #[test]
@@ -1802,7 +1339,7 @@ fn quotes_and_rfqs_responses_deserialize_typed() {
 }
 
 #[test]
-fn multivariate_collections_and_lookup_responses_deserialize_typed() {
+fn multivariate_collections_response_deserializes_typed() {
     let json = r#"{
         "multivariate_contracts": [{
             "collection_ticker": "COL-1",
@@ -1822,7 +1359,9 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
             "is_all_yes": false,
             "size_min": 1,
             "size_max": 2,
-            "functional_description": "f(x)"
+            "functional_description": "f(x)",
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start":"0.0000","end":"1.0000","step":"0.0100"}]
         }]
     }"#;
 
@@ -1833,94 +1372,6 @@ fn multivariate_collections_and_lookup_responses_deserialize_typed() {
         resp.multivariate_contracts[0].associated_events[0].ticker,
         "EVT-1"
     );
-
-    let lookup_json = r#"{
-        "lookup_points": [{
-            "event_ticker": "EVT-1",
-            "market_ticker": "MKT-1",
-            "selected_markets": [{
-                "event_ticker": "EVT-1",
-                "market_ticker": "MKT-1",
-                "side": "yes"
-            }],
-            "last_queried_ts": "2023-11-07T05:31:56Z"
-        }]
-    }"#;
-    let lookup: kalshi_fast::GetMultivariateEventCollectionLookupHistoryResponse =
-        serde_json::from_str(lookup_json).unwrap();
-    assert_eq!(lookup.lookup_points.len(), 1);
-    assert_eq!(lookup.lookup_points[0].selected_markets.len(), 1);
-}
-
-#[test]
-fn batch_order_responses_deserialize_typed() {
-    let create_json = r#"{
-        "orders": [{
-            "client_order_id": "c-1",
-            "order": {
-                "order_id": "o-1",
-                "user_id": "user-1",
-                "client_order_id": "c-1",
-                "ticker": "MKT-1",
-                "side": "yes",
-                "action": "buy",
-                "type": "limit",
-                "status": "resting",
-                "yes_price_dollars": "0.5500",
-                "no_price_dollars": "0.4500",
-                "fill_count_fp": "0.00",
-                "remaining_count_fp": "10.00",
-                "initial_count_fp": "10.00",
-                "taker_fill_cost_dollars": "0.0000",
-                "maker_fill_cost_dollars": "0.0000",
-                "taker_fees_dollars": "0.0000",
-                "maker_fees_dollars": "0.0000"
-            },
-            "error": null
-        }]
-    }"#;
-    let created: kalshi_fast::BatchCreateOrdersResponse =
-        serde_json::from_str(create_json).unwrap();
-    assert_eq!(created.orders.len(), 1);
-    assert_eq!(
-        created.orders[0]
-            .order
-            .as_ref()
-            .map(|o| o.order_id.as_str()),
-        Some("o-1")
-    );
-
-    let cancel_json = r#"{
-        "orders": [{
-            "order_id": "o-1",
-            "order": {
-                "order_id": "o-1",
-                "user_id": "user-1",
-                "client_order_id": "c-1",
-                "ticker": "MKT-1",
-                "side": "yes",
-                "action": "buy",
-                "type": "limit",
-                "status": "canceled",
-                "yes_price_dollars": "0.5500",
-                "no_price_dollars": "0.4500",
-                "fill_count_fp": "0.00",
-                "remaining_count_fp": "0.00",
-                "initial_count_fp": "10.00",
-                "taker_fill_cost_dollars": "0.0000",
-                "maker_fill_cost_dollars": "0.0000",
-                "taker_fees_dollars": "0.0000",
-                "maker_fees_dollars": "0.0000"
-            },
-            "reduced_by": 1,
-            "reduced_by_fp": "1.00",
-            "error": null
-        }]
-    }"#;
-    let canceled: kalshi_fast::BatchCancelOrdersResponse =
-        serde_json::from_str(cancel_json).unwrap();
-    assert_eq!(canceled.orders.len(), 1);
-    assert_eq!(canceled.orders[0].reduced_by_fp, "1.00");
 }
 
 #[test]
@@ -1932,6 +1383,9 @@ fn fills_deserialize_current_schema() {
             "trade_id": "t-1",
             "ticker": "MKT-1",
             "market_ticker": "MKT-1",
+            "exchange_index": 0,
+            "outcome_side": "yes",
+            "book_side": "bid",
             "side": "yes",
             "action": "buy",
             "count_fp": "1.00",
@@ -1940,7 +1394,8 @@ fn fills_deserialize_current_schema() {
             "is_taker": true,
             "fee_cost": "0.0100",
             "ts": 1771113600
-        }]
+        }],
+        "cursor": ""
     }"#;
     let current: kalshi_fast::GetFillsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(current.fills[0].yes_price_dollars, "0.5500");
@@ -1953,8 +1408,9 @@ fn settlements_deserialize_current_schema() {
     let json = r#"{
         "settlements": [{
             "ticker": "MKT-1",
+            "exchange_index": 0,
             "event_ticker": "EVT-1",
-            "market_result": "yes",
+            "market_result": "scalar",
             "yes_count_fp": "1.00",
             "yes_total_cost_dollars": "0.5500",
             "no_count_fp": "0.00",
@@ -1969,6 +1425,10 @@ fn settlements_deserialize_current_schema() {
     assert_eq!(current.settlements[0].yes_total_cost_dollars, "0.5500");
     assert_eq!(current.settlements[0].no_total_cost_dollars, "0.0000");
     assert_eq!(current.settlements[0].revenue, 100);
+    assert_eq!(
+        current.settlements[0].market_result,
+        kalshi_fast::SettlementResult::Scalar
+    );
     assert_eq!(current.settlements[0].value, Some(99));
 }
 
@@ -1978,17 +1438,13 @@ fn queue_positions_forecast_and_structured_targets_deserialize_typed() {
         "queue_positions": [{
             "order_id": "o-1",
             "market_ticker": "MKT-1",
-            "queue_position": 4,
             "queue_position_fp": "4.00"
         }]
     }"#;
     let queue: kalshi_fast::GetOrderQueuePositionsResponse =
         serde_json::from_str(queue_json).unwrap();
     assert_eq!(queue.queue_positions.len(), 1);
-    assert_eq!(
-        queue.queue_positions[0].queue_position_fp.as_deref(),
-        Some("4.00")
-    );
+    assert_eq!(queue.queue_positions[0].queue_position_fp, "4.00");
 
     let forecast_json = r#"{
         "forecast_history": [{

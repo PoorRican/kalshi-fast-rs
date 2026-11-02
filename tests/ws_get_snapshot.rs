@@ -59,8 +59,8 @@ async fn ws_demo_orderbook_get_snapshot_returns_snapshot_without_mutating_subscr
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         })
         .await
         .expect("get_snapshot update failed");
@@ -116,13 +116,7 @@ async fn ws_demo_orderbook_get_snapshot_returns_snapshot_without_mutating_subscr
                 .into_iter()
                 .find(|sub| sub.sid == sid)
                 .expect("subscription missing after get_snapshot");
-            assert!(
-                subscription.channels.contains(&WsChannelV2::OrderbookDelta)
-                    || subscription.channel == Some(WsChannelV2::OrderbookDelta)
-            );
-            if let Some(market_tickers) = subscription.market_tickers {
-                assert_eq!(market_tickers, vec![market_ticker]);
-            }
+            assert_eq!(subscription.channel, "orderbook_delta");
         }
         other => panic!("expected list_subscriptions response, got {other:?}"),
     }

@@ -270,9 +270,13 @@ pub(crate) async fn handle_reconnect<P: WsProtocol>(
                     let params = tracker.lock().await.prepare_resubscribe();
                     let mut resubscribe_err: Option<KalshiError> = None;
                     for p in params {
-                        let id = client.next_cmd_id();
-                        tracker.lock().await.record_subscribe_cmd(id, p.clone());
-                        if let Err(err) = client.subscribe(p).await {
+                        let id = {
+                            let mut tracker = tracker.lock().await;
+                            let id = tracker.next_cmd_id();
+                            tracker.record_subscribe_cmd(id, p.clone());
+                            id
+                        };
+                        if let Err(err) = client.subscribe_with_id(id, p).await {
                             tracker.lock().await.drop_pending_subscribe(id);
                             resubscribe_err = Some(err);
                             break;

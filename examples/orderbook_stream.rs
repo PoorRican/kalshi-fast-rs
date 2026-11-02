@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
     let event_markets = client
         .get_markets(GetMarketsParams {
             limit: Some(100),
-            event_ticker: Some(vec![event_ticker.to_string()]),
+            event_ticker: Some(event_ticker.to_string()),
             status: Some(MarketStatusQuery::Open),
             ..Default::default()
         })

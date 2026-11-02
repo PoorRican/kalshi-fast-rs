@@ -1,8 +1,7 @@
-/// Paginate through settled events with custom termination logic.
+/// Paginate events using the documented settled-status and minimum-close filters.
 ///
-/// Uses CursorPager for page-by-page control, stopping when all events in a
-/// batch closed before December 2025. The API has no `max_close_ts` filter,
-/// so we check `close_ts` client-side.
+/// Event objects have no aggregate close timestamp. Apply the lower close bound
+/// on the server rather than inferring a timestamp or pagination ordering.
 use chrono::{TimeZone, Utc};
 use kalshi_fast::{EventStatus, GetEventsParams, KalshiEnvironment, KalshiRestClient};
 
@@ -19,21 +18,13 @@ async fn main() -> anyhow::Result<()> {
     let mut pager = client.events_pager(GetEventsParams {
         status: Some(EventStatus::Settled),
         limit: Some(200),
+        min_close_ts: Some(cutoff_ts),
         ..Default::default()
     });
 
     while let Some(events) = pager.next_page().await? {
-        let all_before_cutoff = events
-            .iter()
-            .all(|e| e.close_ts.is_some_and(|ts| ts < cutoff_ts));
-
         for event in &events {
-            println!("{} | close_ts: {:?}", event.event_ticker, event.close_ts);
-        }
-
-        if all_before_cutoff {
-            println!("All events closed before Dec 2025 - stopping");
-            break;
+            println!("{} | series: {:?}", event.event_ticker, event.series_ticker);
         }
     }
 

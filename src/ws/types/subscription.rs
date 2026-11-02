@@ -16,8 +16,6 @@ pub struct WsSubscriptionParamsV2 {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub market_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_tickers: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub send_initial_snapshot: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_ticker_ack: Option<bool>,
@@ -29,6 +27,18 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// Orderbook no-side price convention; omission follows the server default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_yes_price: Option<bool>,
+    /// Orderbook conflation interval: 0, 100, or 1000 milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_interval_ms: Option<i64>,
+    /// Communications RFQ filter: empty or `self`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_filter: Option<String>,
+    /// Pyth underlyings to seed, or `["all"]`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underlying_tickers: Option<Vec<String>>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -57,71 +67,25 @@ impl WsSubscriptionParamsV2 {
     }
 }
 
+/// A subscription returned by `list_subscriptions`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsSubscriptionInfo {
     pub sid: u64,
-    #[serde(default)]
-    pub channels: Vec<WsChannelV2>,
-    #[serde(default)]
-    pub channel: Option<WsChannelV2>,
-    #[serde(default)]
-    pub market_tickers: Option<Vec<String>>,
-    #[serde(default)]
-    pub market_ids: Option<Vec<String>>,
-    #[serde(default)]
-    pub event_tickers: Option<Vec<String>>,
-    #[serde(default)]
-    pub send_initial_snapshot: Option<bool>,
-    #[serde(default)]
-    pub skip_ticker_ack: Option<bool>,
-    #[serde(default)]
-    pub shard_factor: Option<u32>,
-    #[serde(default)]
-    pub shard_key: Option<u32>,
+    pub channel: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsSubscriptionInfoRef<'a> {
     pub sid: u64,
-    #[serde(default)]
-    pub channels: Vec<WsChannelV2>,
-    #[serde(default)]
-    pub channel: Option<WsChannelV2>,
-    #[serde(default, borrow)]
-    pub market_tickers: Option<Vec<Cow<'a, str>>>,
-    #[serde(default, borrow)]
-    pub market_ids: Option<Vec<Cow<'a, str>>>,
-    #[serde(default, borrow)]
-    pub event_tickers: Option<Vec<Cow<'a, str>>>,
-    #[serde(default)]
-    pub send_initial_snapshot: Option<bool>,
-    #[serde(default)]
-    pub skip_ticker_ack: Option<bool>,
-    #[serde(default)]
-    pub shard_factor: Option<u32>,
-    #[serde(default)]
-    pub shard_key: Option<u32>,
+    #[serde(borrow)]
+    pub channel: Cow<'a, str>,
 }
 
 impl<'a> WsSubscriptionInfoRef<'a> {
     pub fn into_owned(self) -> WsSubscriptionInfo {
         WsSubscriptionInfo {
             sid: self.sid,
-            channels: self.channels,
-            channel: self.channel,
-            market_tickers: self
-                .market_tickers
-                .map(|v| v.into_iter().map(Cow::into_owned).collect()),
-            market_ids: self
-                .market_ids
-                .map(|v| v.into_iter().map(Cow::into_owned).collect()),
-            event_tickers: self
-                .event_tickers
-                .map(|v| v.into_iter().map(Cow::into_owned).collect()),
-            send_initial_snapshot: self.send_initial_snapshot,
-            skip_ticker_ack: self.skip_ticker_ack,
-            shard_factor: self.shard_factor,
-            shard_key: self.shard_key,
+            channel: self.channel.into_owned(),
         }
     }
 }
@@ -148,13 +112,13 @@ pub struct WsUpdateSubscriptionParamsV2 {
     pub market_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub send_initial_snapshot: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skip_ticker_ack: Option<bool>,
     /// CF Benchmarks index IDs to add or remove. Required for the
     /// `subscribe_indices` / `unsubscribe_indices` actions; use `["all"]` to
     /// track every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underlying_tickers: Option<Vec<String>>,
 }
 
 impl WsUpdateSubscriptionParamsV2 {
@@ -177,9 +141,14 @@ pub enum WsUpdateAction {
     SubscribeIndices,
     /// Remove the supplied `index_ids` from a `cfbenchmarks_value` subscription.
     UnsubscribeIndices,
-    /// Request the available CF Benchmarks index IDs without modifying the
-    /// subscription (server replies with a `cfbenchmarks_value_indexlist`).
+    /// Request the available CF Benchmarks index IDs without modifying the subscription.
     Indexlist,
+    /// Add Pyth underlyings to the subscription.
+    SubscribeUnderlyings,
+    /// Remove Pyth underlyings from the subscription.
+    UnsubscribeUnderlyings,
+    /// List recently observed Pyth underlyings without modifying the subscription.
+    UnderlyingList,
 }
 
 impl WsUpdateAction {
@@ -191,6 +160,13 @@ impl WsUpdateAction {
             WsUpdateAction::SubscribeIndices
                 | WsUpdateAction::UnsubscribeIndices
                 | WsUpdateAction::Indexlist
+        )
+    }
+
+    pub fn is_underlying_action(self) -> bool {
+        matches!(
+            self,
+            Self::SubscribeUnderlyings | Self::UnsubscribeUnderlyings | Self::UnderlyingList
         )
     }
 }
@@ -230,11 +206,46 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         .as_ref()
         .map(|v| !v.is_empty())
         .unwrap_or(false);
+    let has_underlyings = params
+        .underlying_tickers
+        .as_ref()
+        .is_some_and(|v| !v.is_empty());
+
+    if params.action.is_underlying_action() {
+        if params.market_ticker.is_some()
+            || params.market_tickers.is_some()
+            || params.market_id.is_some()
+            || params.market_ids.is_some()
+            || params.index_ids.is_some()
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: underlying actions do not support market or index targets"
+                    .to_string(),
+            ));
+        }
+        if matches!(
+            params.action,
+            WsUpdateAction::SubscribeUnderlyings | WsUpdateAction::UnsubscribeUnderlyings
+        ) && !has_underlyings
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: subscribe_underlyings/unsubscribe_underlyings require underlying_tickers".to_string(),
+            ));
+        }
+    } else if params.underlying_tickers.is_some() {
+        return Err(KalshiError::InvalidParams(
+            "update_subscription: underlying_tickers requires an underlying action".to_string(),
+        ));
+    }
 
     // CF Benchmarks index actions are mutually exclusive with market targets and
     // have their own `index_ids` requirements.
     if params.action.is_index_action() {
-        if has_any_market_tickers || has_any_market_ids {
+        if params.market_ticker.is_some()
+            || params.market_tickers.is_some()
+            || params.market_id.is_some()
+            || params.market_ids.is_some()
+        {
             return Err(KalshiError::InvalidParams(
                 "update_subscription: index actions do not support market_ticker(s) or market_id(s)"
                     .to_string(),
@@ -300,6 +311,42 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
             "subscribe: at least one channel is required".to_string(),
         ));
     }
+    if params.market_tickers.as_ref().is_some_and(Vec::is_empty)
+        || params.market_ids.as_ref().is_some_and(Vec::is_empty)
+        || params.index_ids.as_ref().is_some_and(Vec::is_empty)
+        || params
+            .underlying_tickers
+            .as_ref()
+            .is_some_and(Vec::is_empty)
+    {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: provided target lists must not be empty".to_string(),
+        ));
+    }
+    if params
+        .update_interval_ms
+        .is_some_and(|v| !matches!(v, 0 | 100 | 1000))
+    {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: update_interval_ms must be 0, 100 or 1000".to_string(),
+        ));
+    }
+    if params
+        .user_filter
+        .as_deref()
+        .is_some_and(|v| !matches!(v, "" | "self"))
+    {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: user_filter must be empty or self".to_string(),
+        ));
+    }
+    if params.shard_factor.is_some_and(|v| !(1..=100).contains(&v))
+        || matches!((params.shard_key, params.shard_factor), (Some(key), Some(factor)) if key >= factor)
+    {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: invalid shard factor or key".to_string(),
+        ));
+    }
 
     let has_market_ticker = params.market_ticker.is_some();
     let has_market_tickers = params
@@ -357,12 +404,6 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
         ));
     }
 
-    if params.send_initial_snapshot.is_some() && !has_orderbook_delta {
-        return Err(KalshiError::InvalidParams(
-            "subscribe: send_initial_snapshot only allowed for orderbook_delta".to_string(),
-        ));
-    }
-
     if has_any_market_ids && has_market_positions {
         return Err(KalshiError::InvalidParams(
             "subscribe: market_positions only supports market_tickers".to_string(),
@@ -405,13 +446,13 @@ mod tests {
     }
 
     #[test]
-    fn validate_subscription_send_initial_snapshot_only_for_orderbook_delta() {
+    fn validate_subscription_allows_ticker_initial_snapshot() {
         let params = WsSubscriptionParamsV2 {
             channels: vec![WsChannelV2::Ticker],
             send_initial_snapshot: Some(true),
             ..Default::default()
         };
-        assert!(validate_subscription(&params).is_err());
+        assert!(validate_subscription(&params).is_ok());
     }
 
     #[test]
@@ -474,8 +515,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&both).is_err());
 
@@ -488,8 +529,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&multi).is_err());
 
@@ -502,8 +543,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&valid).is_ok());
     }
@@ -519,8 +560,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -536,8 +577,8 @@ mod tests {
             market_id: Some("uuid".to_string()),
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -553,8 +594,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -570,8 +611,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&missing).is_err());
 
@@ -584,8 +625,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&ok).is_ok());
     }
@@ -601,8 +642,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: None,
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -618,8 +659,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -635,8 +676,8 @@ mod tests {
             market_id: None,
             market_ids: None,
             send_initial_snapshot: None,
-            skip_ticker_ack: None,
             index_ids: Some(vec!["BRTI".to_string()]),
+            underlying_tickers: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -657,6 +698,53 @@ mod tests {
             market_id: Some("uuid".to_string()),
             ..Default::default()
         };
+        assert!(validate_subscription(&params).is_err());
+    }
+    #[test]
+    fn pyth_actions_enforce_documented_target_combinations() {
+        let decode = |value| serde_json::from_value::<WsUpdateSubscriptionParamsV2>(value).unwrap();
+        let valid = decode(
+            serde_json::json!({"action":"subscribe_underlyings","sid":7,"underlying_tickers":["Metal.XAU/USD"]}),
+        );
+        assert!(validate_update(&valid).is_ok());
+        assert_eq!(
+            serde_json::to_value(&valid).unwrap()["underlying_tickers"],
+            serde_json::json!(["Metal.XAU/USD"])
+        );
+        for value in [
+            serde_json::json!({"action":"subscribe_underlyings","sid":7}),
+            serde_json::json!({"action":"unsubscribe_underlyings","sid":7,"underlying_tickers":[]}),
+            serde_json::json!({"action":"subscribe_underlyings","sid":7,"underlying_tickers":["all"],"index_ids":["BRTI"]}),
+            serde_json::json!({"action":"underlying_list","sid":7,"market_ticker":"A"}),
+            serde_json::json!({"action":"add_markets","sid":7,"underlying_tickers":["all"]}),
+        ] {
+            assert!(validate_update(&decode(value)).is_err());
+        }
+        assert!(
+            validate_update(&decode(
+                serde_json::json!({"action":"underlying_list","sid":7})
+            ))
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn subscription_options_serialize_exactly_and_validate_enums() {
+        let mut params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::OrderbookDelta],
+            market_ticker: Some("A".into()),
+            use_yes_price: Some(false),
+            update_interval_ms: Some(1000),
+            ..Default::default()
+        };
+        let serialized = serde_json::to_value(&params).unwrap();
+        assert_eq!(serialized["use_yes_price"], false);
+        assert_eq!(serialized["update_interval_ms"], 1000);
+        assert!(validate_subscription(&params).is_ok());
+        params.update_interval_ms = Some(1);
+        assert!(validate_subscription(&params).is_err());
+        params.update_interval_ms = None;
+        params.user_filter = Some("other".into());
         assert!(validate_subscription(&params).is_err());
     }
 }

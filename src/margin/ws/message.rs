@@ -1,6 +1,5 @@
 use crate::error::KalshiError;
 use serde::Deserialize;
-use serde_json::Value;
 
 // ---------------------------------------------------------------------------
 // User-facing message enum
@@ -10,7 +9,7 @@ use serde_json::Value;
 ///
 /// Parsed via [`MarginDataMessage::from_bytes`]; the enum is not
 /// `Deserialize`-derived directly.  Use the typed variants when pattern
-/// matching on [`WsEvent::Message`](crate::ws::event::WsEvent::Message).
+/// matching on [`WsEvent::Message`](crate::ws::WsEvent::Message).
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarginDataMessage {
     // -- data messages -------------------------------------------------------
@@ -21,32 +20,47 @@ pub enum MarginDataMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     OrderGroupUpdates(MarginEnvelope<OrderGroupUpdatesMsg>),
     OrderbookSnapshot(MarginEnvelope<OrderbookSnapshotMsg>),
+    CorporateActionsDelta(MarginEnvelope<CorporateActionsDeltaMsg>),
+    MarketLifecycleV2(MarginEnvelope<MarketLifecycleV2Msg>),
     // -- control messages ----------------------------------------------------
     Subscribed {
         id: Option<u64>,
         sid: Option<u64>,
+        /// Top-level sid if supplied; `sid` remains the subscribed channel's sid.
+        envelope_sid: Option<u64>,
+        /// A top-level cursor if present on the acknowledgement.
+        seq: Option<u64>,
+        channel: String,
+        sending_ts_ms: Option<i64>,
     },
     Unsubscribed {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
     },
     Ok {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
-        msg: Option<Value>,
+        msg: Option<MarginOkMsg>,
+        sending_ts_ms: Option<i64>,
     },
     Error {
         id: Option<u64>,
         sid: Option<u64>,
         seq: Option<u64>,
         msg: MarginErrorMsg,
+        sending_ts_ms: Option<i64>,
     },
     /// Catch-all for unrecognised message types (e.g. future channel types).
     Unknown {
         /// The raw `type` field value if present.
         msg_type: Option<String>,
+        id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
     },
 }
 
@@ -58,12 +72,20 @@ impl MarginDataMessage {
                 struct Raw {
                     #[serde(rename = "type")]
                     msg_type: Option<String>,
+                    id: Option<u64>,
+                    sid: Option<u64>,
+                    seq: Option<u64>,
+                    sending_ts_ms: Option<i64>,
                 }
                 let raw = serde_json::from_slice::<Raw>(bytes).map_err(|source| {
                     KalshiError::parse_json("margin websocket message", bytes, source)
                 })?;
                 Ok(Self::Unknown {
                     msg_type: raw.msg_type,
+                    id: raw.id,
+                    sid: raw.sid,
+                    seq: raw.seq,
+                    sending_ts_ms: raw.sending_ts_ms,
                 })
             }
             Ok(wire) => Ok(wire.into()),
@@ -72,6 +94,26 @@ impl MarginDataMessage {
                 bytes,
                 source,
             )),
+        }
+    }
+
+    /// Timestamp when Kalshi queued this frame at the network layer.
+    pub fn sending_ts_ms(&self) -> Option<i64> {
+        match self {
+            Self::Ticker(e) => e.sending_ts_ms,
+            Self::OrderbookDelta(e) => e.sending_ts_ms,
+            Self::Trade(e) => e.sending_ts_ms,
+            Self::Fill(e) => e.sending_ts_ms,
+            Self::UserOrder(e) => e.sending_ts_ms,
+            Self::OrderGroupUpdates(e) => e.sending_ts_ms,
+            Self::OrderbookSnapshot(e) => e.sending_ts_ms,
+            Self::CorporateActionsDelta(e) => e.sending_ts_ms,
+            Self::MarketLifecycleV2(e) => e.sending_ts_ms,
+            Self::Subscribed { sending_ts_ms, .. }
+            | Self::Unsubscribed { sending_ts_ms, .. }
+            | Self::Ok { sending_ts_ms, .. }
+            | Self::Error { sending_ts_ms, .. }
+            | Self::Unknown { sending_ts_ms, .. } => *sending_ts_ms,
         }
     }
 }
@@ -97,13 +139,25 @@ enum MarginWireMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates(SequencedMarginEnvelope<OrderGroupUpdatesMsg>),
+    #[serde(rename = "corporate_actions_delta")]
+    CorporateActionsDelta(SequencedMarginEnvelope<CorporateActionsDeltaMsg>),
+    #[serde(rename = "market_lifecycle_v2")]
+    MarketLifecycleV2(SequencedMarginEnvelope<MarketLifecycleV2Msg>),
     #[serde(rename = "subscribed")]
     Subscribed {
         id: Option<u64>,
+        sid: Option<u64>,
+        seq: Option<u64>,
         msg: MarginSubscribedMsg,
+        sending_ts_ms: Option<i64>,
     },
     #[serde(rename = "unsubscribed")]
-    Unsubscribed { id: Option<u64>, sid: u64, seq: u64 },
+    Unsubscribed {
+        id: Option<u64>,
+        sid: u64,
+        seq: u64,
+        sending_ts_ms: Option<i64>,
+    },
     #[serde(rename = "ok")]
     Ok {
         id: Option<u64>,
@@ -112,7 +166,8 @@ enum MarginWireMessage {
         #[serde(default)]
         seq: Option<u64>,
         #[serde(default)]
-        msg: Option<Value>,
+        msg: Option<MarginOkMsg>,
+        sending_ts_ms: Option<i64>,
     },
     #[serde(rename = "error")]
     Error {
@@ -122,6 +177,7 @@ enum MarginWireMessage {
         #[serde(default)]
         seq: Option<u64>,
         msg: MarginErrorMsg,
+        sending_ts_ms: Option<i64>,
     },
     #[serde(other)]
     Other,
@@ -137,18 +193,66 @@ impl From<MarginWireMessage> for MarginDataMessage {
             MarginWireMessage::Fill(e) => Self::Fill(e),
             MarginWireMessage::UserOrder(e) => Self::UserOrder(e),
             MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e.into()),
-            MarginWireMessage::Subscribed { id, msg } => Self::Subscribed {
+            MarginWireMessage::CorporateActionsDelta(e) => Self::CorporateActionsDelta(e.into()),
+            MarginWireMessage::MarketLifecycleV2(e) => Self::MarketLifecycleV2(e.into()),
+            MarginWireMessage::Subscribed {
+                id,
+                sid,
+                seq,
+                msg,
+                sending_ts_ms,
+            } => Self::Subscribed {
                 id,
                 sid: Some(msg.sid),
+                envelope_sid: sid,
+                seq,
+                channel: msg.channel,
+                sending_ts_ms,
             },
-            MarginWireMessage::Unsubscribed { id, sid, seq } => Self::Unsubscribed {
+            MarginWireMessage::Unsubscribed {
+                id,
+                sid,
+                seq,
+                sending_ts_ms,
+            } => Self::Unsubscribed {
                 id,
                 sid: Some(sid),
                 seq: Some(seq),
+                sending_ts_ms,
             },
-            MarginWireMessage::Ok { id, sid, seq, msg } => Self::Ok { id, sid, seq, msg },
-            MarginWireMessage::Error { id, sid, seq, msg } => Self::Error { id, sid, seq, msg },
-            MarginWireMessage::Other => Self::Unknown { msg_type: None },
+            MarginWireMessage::Ok {
+                id,
+                sid,
+                seq,
+                msg,
+                sending_ts_ms,
+            } => Self::Ok {
+                id,
+                sid,
+                seq,
+                msg,
+                sending_ts_ms,
+            },
+            MarginWireMessage::Error {
+                id,
+                sid,
+                seq,
+                msg,
+                sending_ts_ms,
+            } => Self::Error {
+                id,
+                sid,
+                seq,
+                msg,
+                sending_ts_ms,
+            },
+            MarginWireMessage::Other => Self::Unknown {
+                msg_type: None,
+                id: None,
+                sid: None,
+                seq: None,
+                sending_ts_ms: None,
+            },
         }
     }
 }
@@ -159,6 +263,26 @@ impl From<MarginWireMessage> for MarginDataMessage {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct MarginSubscribedMsg {
+    pub channel: String,
+    pub sid: u64,
+}
+
+/// The two documented shapes of an `ok` payload.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum MarginOkMsg {
+    Update(MarginUpdateAck),
+    Subscriptions(Vec<MarginSubscriptionInfo>),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginUpdateAck {
+    pub market_tickers: Option<Vec<String>>,
+    pub market_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarginSubscriptionInfo {
     pub channel: String,
     pub sid: u64,
 }
@@ -185,6 +309,8 @@ pub struct MarginEnvelope<T> {
     pub sid: u64,
     #[serde(default)]
     pub seq: Option<u64>,
+    #[serde(default)]
+    pub sending_ts_ms: Option<i64>,
     pub msg: T,
 }
 
@@ -194,6 +320,7 @@ struct SequencedMarginEnvelope<T> {
     id: Option<u64>,
     sid: u64,
     seq: u64,
+    sending_ts_ms: Option<i64>,
     msg: T,
 }
 
@@ -203,6 +330,7 @@ impl<T> From<SequencedMarginEnvelope<T>> for MarginEnvelope<T> {
             id: envelope.id,
             sid: envelope.sid,
             seq: Some(envelope.seq),
+            sending_ts_ms: envelope.sending_ts_ms,
             msg: envelope.msg,
         }
     }
@@ -432,6 +560,103 @@ pub struct OrderGroupUpdatesMsg {
     pub ts_ms: i64,
 }
 
+/// An applied corporate action, including the exchange's stable identifiers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CorporateAction {
+    pub id: String,
+    pub market_id: String,
+    pub market_ticker: String,
+    pub ts_ms: i64,
+    pub terms: CorporateActionTerms,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CorporateActionTerms {
+    StockSplit(CorporateActionSplitTerms),
+    FinalSettlement(CorporateActionFinalSettlementTerms),
+    TickerChange(CorporateActionTickerChangeTerms),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionSplitTerms {
+    pub ratio_old: String,
+    pub ratio_new: String,
+    pub pre_split_mark_price: String,
+    pub post_split_mark_price: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionFinalSettlementTerms {
+    pub settlement_price_per_contract: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionTickerChangeTerms {
+    pub old_ticker: String,
+    pub new_ticker: String,
+}
+
+impl<'de> Deserialize<'de> for CorporateAction {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Wire {
+            id: String,
+            market_id: String,
+            market_ticker: String,
+            #[serde(rename = "type")]
+            action_type: String,
+            ts_ms: i64,
+            split: Option<CorporateActionSplitTerms>,
+            final_settlement: Option<CorporateActionFinalSettlementTerms>,
+            ticker_change: Option<CorporateActionTickerChangeTerms>,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        let terms = match (
+            wire.action_type.as_str(),
+            wire.split,
+            wire.final_settlement,
+            wire.ticker_change,
+        ) {
+            ("stock_split", Some(terms), None, None) => CorporateActionTerms::StockSplit(terms),
+            ("final_settlement", None, Some(terms), None) => {
+                CorporateActionTerms::FinalSettlement(terms)
+            }
+            ("ticker_change", None, None, Some(terms)) => CorporateActionTerms::TickerChange(terms),
+            _ => {
+                return Err(serde::de::Error::custom(
+                    "corporate action type must have exactly its matching terms",
+                ));
+            }
+        };
+        Ok(Self {
+            id: wire.id,
+            market_id: wire.market_id,
+            market_ticker: wire.market_ticker,
+            ts_ms: wire.ts_ms,
+            terms,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CorporateActionsDeltaMsg {
+    pub corporate_action: CorporateAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginMarketLifecycleEventType {
+    Activated,
+    Deactivated,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarketLifecycleV2Msg {
+    pub market_ticker: String,
+    pub event_type: MarginMarketLifecycleEventType,
+    pub is_deactivated: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -618,6 +843,20 @@ mod tests {
     }
 
     #[test]
+    fn nullable_ticker_fields_and_unsequenced_timestamp() {
+        let bytes = br#"{"type":"ticker","sid":2,"sending_ts_ms":99,"msg":{"market_ticker":"T","price":"1","bid":"1","ask":"2","bid_size_fp":"1","ask_size_fp":"2","last_trade_size_fp":"1","volume":"1","volume_notional_value_dollars":"1","volume_24h":"1","volume_24h_notional_value_dollars":"1","open_interest":"1","open_interest_notional_value_dollars":"1","reference_price":null,"settlement_mark_price":null,"liquidation_mark_price":null,"funding_rate":null,"ts_ms":98}}"#;
+        let parsed = parse(bytes);
+        assert_eq!(parsed.sending_ts_ms(), Some(99));
+        let MarginDataMessage::Ticker(e) = parsed else {
+            panic!("expected ticker")
+        };
+        assert_eq!(e.sending_ts_ms, Some(99));
+        assert_eq!(e.seq, None);
+        assert_eq!(e.msg.reference_price, None);
+        assert_eq!(e.msg.funding_rate, None);
+    }
+
+    #[test]
     fn known_message_rejects_unknown_enum_value() {
         let bytes = br#"{"type":"trade","sid":1,"seq":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"sideways","ts_ms":1}}"#;
         let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
@@ -659,7 +898,11 @@ mod tests {
             msg,
             MarginDataMessage::Subscribed {
                 id: Some(1),
-                sid: Some(42)
+                sid: Some(42),
+                envelope_sid: None,
+                seq: None,
+                channel: "ticker".into(),
+                sending_ts_ms: None,
             }
         );
     }
@@ -677,7 +920,8 @@ mod tests {
             MarginDataMessage::Unsubscribed {
                 id: None,
                 sid: Some(42),
-                seq: Some(1)
+                seq: Some(1),
+                sending_ts_ms: None,
             }
         );
     }
@@ -703,7 +947,8 @@ mod tests {
                     msg: "Unknown channel name".into(),
                     market_ticker: None,
                     market_tickers: None,
-                }
+                },
+                sending_ts_ms: None,
             }
         );
     }
@@ -715,7 +960,7 @@ mod tests {
             "id": 1,
             "sid": 42,
             "seq": 7,
-            "msg": {"ok": true}
+            "msg": {"market_tickers": ["T"], "market_ids": ["M"]}
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
         assert_eq!(
@@ -724,9 +969,66 @@ mod tests {
                 id: Some(1),
                 sid: Some(42),
                 seq: Some(7),
-                msg: Some(serde_json::json!({"ok": true})),
+                msg: Some(MarginOkMsg::Update(MarginUpdateAck {
+                    market_tickers: Some(vec!["T".into()]),
+                    market_ids: Some(vec!["M".into()]),
+                })),
+                sending_ts_ms: None,
             }
         );
+    }
+
+    #[test]
+    fn subscription_list_ack_has_typed_entries() {
+        let parsed = parse(
+            br#"{"type":"ok","id":8,"sending_ts_ms":9,"msg":[{"channel":"ticker","sid":4}]}"#,
+        );
+        assert_eq!(parsed.sending_ts_ms(), Some(9));
+        let MarginDataMessage::Ok {
+            msg: Some(MarginOkMsg::Subscriptions(entries)),
+            ..
+        } = parsed
+        else {
+            panic!("expected list")
+        };
+        assert_eq!(
+            entries,
+            vec![MarginSubscriptionInfo {
+                channel: "ticker".into(),
+                sid: 4
+            }]
+        );
+        assert!(
+            MarginDataMessage::from_bytes(br#"{"type":"ok","msg":[{"channel":"ticker"}]}"#)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn control_and_unknown_cursor_metadata_is_retained() {
+        let subscribed = parse(br#"{"type":"subscribed","id":1,"sid":9,"seq":2,"sending_ts_ms":3,"msg":{"channel":"ticker","sid":4}}"#);
+        assert!(matches!(
+            subscribed,
+            MarginDataMessage::Subscribed {
+                id: Some(1),
+                sid: Some(4),
+                envelope_sid: Some(9),
+                seq: Some(2),
+                sending_ts_ms: Some(3),
+                ..
+            }
+        ));
+        let unknown = parse(br#"{"type":"future","id":1,"sid":4,"seq":2,"sending_ts_ms":3}"#);
+        assert!(matches!(
+            unknown,
+            MarginDataMessage::Unknown {
+                id: Some(1),
+                sid: Some(4),
+                seq: Some(2),
+                sending_ts_ms: Some(3),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -762,8 +1064,88 @@ mod tests {
         assert_eq!(
             msg,
             MarginDataMessage::Unknown {
-                msg_type: Some("some_future_channel".into())
+                msg_type: Some("some_future_channel".into()),
+                id: None,
+                sid: Some(1),
+                seq: None,
+                sending_ts_ms: None,
             }
         );
+    }
+
+    #[test]
+    fn corporate_actions_have_matching_typed_terms_and_identity() {
+        let cases = [
+            (
+                "stock_split",
+                "split",
+                serde_json::json!({"ratio_old":"1","ratio_new":"4","pre_split_mark_price":"40.0000","post_split_mark_price":"10.0000"}),
+            ),
+            (
+                "final_settlement",
+                "final_settlement",
+                serde_json::json!({"settlement_price_per_contract":"9.5000"}),
+            ),
+            (
+                "ticker_change",
+                "ticker_change",
+                serde_json::json!({"old_ticker":"OLD","new_ticker":"NEW"}),
+            ),
+        ];
+        for (kind, field, terms) in cases {
+            let mut action = serde_json::json!({"id":"ca-1","market_id":"stable-id","market_ticker":"NEW","type":kind,"ts_ms":100});
+            action[field] = terms;
+            let frame = serde_json::json!({"type":"corporate_actions_delta","sid":3,"seq":4,"sending_ts_ms":101,"msg":{"corporate_action":action}});
+            let parsed = parse(&serde_json::to_vec(&frame).unwrap());
+            assert_eq!(parsed.sending_ts_ms(), Some(101));
+            let MarginDataMessage::CorporateActionsDelta(e) = parsed else {
+                panic!("expected corporate action")
+            };
+            assert_eq!(e.seq, Some(4));
+            assert_eq!(e.msg.corporate_action.id, "ca-1");
+            assert_eq!(e.msg.corporate_action.market_id, "stable-id");
+            assert_eq!(e.msg.corporate_action.market_ticker, "NEW");
+            match (kind, e.msg.corporate_action.terms) {
+                ("stock_split", CorporateActionTerms::StockSplit(t)) => {
+                    assert_eq!(t.ratio_new, "4")
+                }
+                ("final_settlement", CorporateActionTerms::FinalSettlement(t)) => {
+                    assert_eq!(t.settlement_price_per_contract, "9.5000")
+                }
+                ("ticker_change", CorporateActionTerms::TickerChange(t)) => {
+                    assert_eq!(t.old_ticker, "OLD")
+                }
+                _ => panic!("wrong terms variant"),
+            }
+        }
+        let bad = br#"{"type":"corporate_actions_delta","sid":1,"seq":2,"msg":{"corporate_action":{"id":"x","market_id":"m","market_ticker":"T","type":"stock_split","ts_ms":1,"ticker_change":{"old_ticker":"A","new_ticker":"B"}}}}"#;
+        assert!(MarginDataMessage::from_bytes(bad).is_err());
+    }
+
+    #[test]
+    fn lifecycle_and_sending_timestamps_survive_every_envelope_kind() {
+        let frames: &[&[u8]] = &[
+            br#"{"type":"market_lifecycle_v2","sid":1,"seq":2,"sending_ts_ms":42,"msg":{"market_ticker":"T","event_type":"activated","is_deactivated":false}}"#,
+            br#"{"type":"orderbook_snapshot","id":7,"sid":1,"seq":2,"sending_ts_ms":42,"msg":{"market_ticker":"T","bid":null,"ask":null}}"#,
+            br#"{"type":"subscribed","id":1,"sending_ts_ms":42,"msg":{"channel":"ticker","sid":2}}"#,
+            br#"{"type":"unsubscribed","sid":2,"seq":3,"sending_ts_ms":42}"#,
+            br#"{"type":"ok","id":1,"sending_ts_ms":42,"msg":null}"#,
+            br#"{"type":"error","id":1,"sending_ts_ms":42,"msg":{"code":1,"msg":"bad"}}"#,
+            br#"{"type":"future_type","sending_ts_ms":42}"#,
+        ];
+        for frame in frames {
+            assert_eq!(parse(frame).sending_ts_ms(), Some(42));
+        }
+        let MarginDataMessage::MarketLifecycleV2(e) = parse(frames[0]) else {
+            panic!("expected lifecycle")
+        };
+        assert_eq!(e.msg.event_type, MarginMarketLifecycleEventType::Activated);
+        assert!(!e.msg.is_deactivated);
+        let MarginDataMessage::OrderbookSnapshot(e) = parse(frames[1]) else {
+            panic!("expected snapshot")
+        };
+        assert_eq!(e.id, Some(7));
+        assert_eq!(e.msg.bid, None);
+        assert_eq!(e.msg.ask, None);
     }
 }

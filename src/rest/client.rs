@@ -146,7 +146,7 @@ impl KalshiRestClientBuilder {
 /// Async HTTP client for the Kalshi REST API.
 ///
 /// Provides methods for every public and authenticated endpoint, plus
-/// pagination helpers ([`CursorPager`] and `stream_*` methods).
+/// pagination helpers ([`CursorPager`](crate::rest::CursorPager) and `stream_*` methods).
 ///
 /// # Construction
 ///
@@ -429,8 +429,8 @@ impl KalshiRestClient {
 
     /// Eagerly fetch **all** pages from a cursor-paginated callback into a single `Vec`.
     ///
-    /// Prefer [`CursorPager`] or the `stream_*` methods when you don't need every item in
-    /// memory at once.
+    /// Prefer [`CursorPager`](crate::rest::CursorPager) or the `stream_*` methods
+    /// when you don't need every item in memory at once.
     pub async fn paginate_cursor<T, F, Fut>(
         &self,
         mut cursor: Option<String>,
@@ -631,14 +631,14 @@ mod tests {
 
     #[test]
     fn http_error_parses_wrapped_error_envelope() {
-        let body = br#"{"error":{"code":"bad_request","message":"invalid","service":"trade-api"}}"#;
+        let body = br#"{"error":{"code":"bad_request","message":"invalid","details":"ticker"}}"#;
         let err = build_http_error(StatusCode::BAD_REQUEST, body, None);
         match err {
             KalshiError::Http { api_error, .. } => {
                 let api_error = api_error.expect("expected api error");
                 assert_eq!(api_error.code.as_deref(), Some("bad_request"));
                 assert_eq!(api_error.message.as_deref(), Some("invalid"));
-                assert_eq!(api_error.service.as_deref(), Some("trade-api"));
+                assert_eq!(api_error.details.as_deref(), Some("ticker"));
             }
             other => panic!("unexpected error: {:?}", other),
         }
