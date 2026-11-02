@@ -287,6 +287,10 @@ pub struct MarginMarket {
     #[serde(default)]
     pub schedule: Option<MarginMarketSchedule>,
     pub exchange_index: u32,
+    /// Why the market is halted (`initial_setup`, `corporate_action`). Empty when not halted
+    /// or the reason has not been observed.
+    #[serde(default)]
+    pub halt_sources: Vec<String>,
     #[serde(default)]
     pub leverage_estimate: Option<f64>,
     #[serde(default)]
@@ -1198,7 +1202,7 @@ impl KalshiRestClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{GetMarginOrderGroupResponse, MarginPosition};
+    use super::{GetMarginOrderGroupResponse, MarginMarket, MarginPosition};
 
     #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {
@@ -1233,5 +1237,20 @@ mod tests {
         assert_eq!(response.orders, vec!["a".to_string(), "b".to_string()]);
         assert!(response.is_auto_cancel_enabled);
         assert_eq!(response.exchange_index, Some(3));
+    }
+
+    #[test]
+    fn margin_market_halt_sources_defaults_empty_and_parses() {
+        let base = serde_json::json!({
+            "ticker": "T", "status": "active", "title": "t", "contract_size": "1",
+            "underlying_multiplier": "1", "tick_size": "0.01",
+            "fractional_trading_enabled": true, "exchange_index": 1
+        });
+        let m: MarginMarket = serde_json::from_value(base.clone()).unwrap();
+        assert!(m.halt_sources.is_empty());
+        let mut with = base;
+        with["halt_sources"] = serde_json::json!(["corporate_action"]);
+        let m: MarginMarket = serde_json::from_value(with).unwrap();
+        assert_eq!(m.halt_sources, vec!["corporate_action".to_string()]);
     }
 }

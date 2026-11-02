@@ -29,6 +29,10 @@ pub struct WsSubscriptionParamsV2 {
     /// Use `["all"]` to receive every available index.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_ids: Option<Vec<String>>,
+    /// `orderbook_delta` only: opt in to conflated updates (`100` or `1000` ms windows).
+    /// Omit or `0` for real-time updates. A repeated subscribe must reuse the existing interval.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_interval_ms: Option<u32>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -387,6 +391,25 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_interval_ms_serializes_only_when_set() {
+        let p = WsSubscriptionParamsV2::default();
+        assert!(
+            serde_json::to_value(&p)
+                .unwrap()
+                .get("update_interval_ms")
+                .is_none()
+        );
+        let p = WsSubscriptionParamsV2 {
+            update_interval_ms: Some(1000),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&p).unwrap()["update_interval_ms"],
+            1000
+        );
+    }
 
     #[test]
     fn validate_subscription_requires_market_tickers_for_orderbook_delta() {

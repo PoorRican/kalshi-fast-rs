@@ -91,6 +91,13 @@ examples are ambiguous.
   (`ts_ms` on ticker/trade/order-group messages, the legacy direction fields). These are modeled as
   `Option` so parsing never fails on their absence.
 
+- `MarginMarket.halt_sources` is `required` in the Perps OpenAPI but modeled with `#[serde(default)]`
+  so older payloads still parse; empty means "not halted or reason unobserved", not proof of liveness.
+- `exchange_index` on Perps is deprecated upstream (2026-11-02) but remains `Option`/present in the
+  spec, so it is kept.
+- Reconciliation against OpenAPI 3.35.0 is partial; see the Unreleased `Compatibility` block in
+  `CHANGELOG.md` for the outstanding endpoint/channel list.
+
 ## Test Strategy
 
 - Deterministic parsing and behavior checks: `tests/parsing.rs`,

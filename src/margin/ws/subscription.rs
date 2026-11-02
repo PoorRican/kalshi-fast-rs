@@ -20,6 +20,10 @@ pub struct MarginSubscribeParams {
     /// Omits ticker acknowledgements when enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_ticker_ack: Option<bool>,
+    /// `orderbook_delta` only: opt in to conflated updates (`100` or `1000` ms windows).
+    /// Omit or `0` for real-time updates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_interval_ms: Option<u32>,
 }
 
 #[cfg(test)]
@@ -32,13 +36,16 @@ mod tests {
         let value = serde_json::to_value(default).unwrap();
         assert!(value.get("send_initial_snapshot").is_none());
         assert!(value.get("skip_ticker_ack").is_none());
+        assert!(value.get("update_interval_ms").is_none());
 
         let params = MarginSubscribeParams {
             send_initial_snapshot: Some(true),
             skip_ticker_ack: Some(false),
+            update_interval_ms: Some(100),
             ..MarginSubscribeParams::default()
         };
         let value = serde_json::to_value(params).unwrap();
+        assert_eq!(value["update_interval_ms"], 100);
         assert_eq!(value["send_initial_snapshot"], true);
         assert_eq!(value["skip_ticker_ack"], false);
     }

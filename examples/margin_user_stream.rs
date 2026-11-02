@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
         market_tickers: None,
         send_initial_snapshot: None,
         skip_ticker_ack: None,
+        update_interval_ms: None,
     })
     .await?;
 

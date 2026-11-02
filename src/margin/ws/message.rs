@@ -21,6 +21,7 @@ pub enum MarginDataMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     OrderGroupUpdates(MarginEnvelope<OrderGroupUpdatesMsg>),
     OrderbookSnapshot(MarginEnvelope<OrderbookSnapshotMsg>),
+    MarketLifecycleV2(MarginEnvelope<MarketLifecycleV2Msg>),
     // -- control messages ----------------------------------------------------
     Subscribed {
         id: Option<u64>,
@@ -97,6 +98,8 @@ enum MarginWireMessage {
     UserOrder(MarginEnvelope<UserOrderMsg>),
     #[serde(rename = "order_group_updates")]
     OrderGroupUpdates(SequencedMarginEnvelope<OrderGroupUpdatesMsg>),
+    #[serde(rename = "market_lifecycle_v2")]
+    MarketLifecycleV2(SequencedMarginEnvelope<MarketLifecycleV2Msg>),
     #[serde(rename = "subscribed")]
     Subscribed {
         id: Option<u64>,
@@ -137,6 +140,7 @@ impl From<MarginWireMessage> for MarginDataMessage {
             MarginWireMessage::Fill(e) => Self::Fill(e),
             MarginWireMessage::UserOrder(e) => Self::UserOrder(e),
             MarginWireMessage::OrderGroupUpdates(e) => Self::OrderGroupUpdates(e.into()),
+            MarginWireMessage::MarketLifecycleV2(e) => Self::MarketLifecycleV2(e.into()),
             MarginWireMessage::Subscribed { id, msg } => Self::Subscribed {
                 id,
                 sid: Some(msg.sid),
@@ -432,12 +436,49 @@ pub struct OrderGroupUpdatesMsg {
     pub ts_ms: i64,
 }
 
+/// `market_lifecycle_v2` payload: market deactivation / activation.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MarketLifecycleV2Msg {
+    pub market_ticker: String,
+    pub event_type: MarginMarketLifecycleEventType,
+    /// Whether trading on the market is paused.
+    pub is_deactivated: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginMarketLifecycleEventType {
+    Activated,
+    Deactivated,
+    #[serde(other)]
+    Unknown,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn parse(bytes: &[u8]) -> MarginDataMessage {
         MarginDataMessage::from_bytes(bytes).expect("parse ok")
+    }
+
+    #[test]
+    fn parse_market_lifecycle_v2() {
+        let json = serde_json::json!({
+            "type": "market_lifecycle_v2", "sid": 7, "seq": 3,
+            "msg": {"market_ticker": "BTC-PERP", "event_type": "deactivated", "is_deactivated": true}
+        });
+        match parse(json.to_string().as_bytes()) {
+            MarginDataMessage::MarketLifecycleV2(e) => {
+                assert_eq!(e.msg.market_ticker, "BTC-PERP");
+                assert_eq!(
+                    e.msg.event_type,
+                    MarginMarketLifecycleEventType::Deactivated
+                );
+                assert!(e.msg.is_deactivated);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     #[test]
