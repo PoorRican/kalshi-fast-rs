@@ -1,15 +1,13 @@
-//! Exchange status, announcements, and schedule.
+//! Exchange status, schedule, and fee changes.
 //!
-//! Public endpoints exposing operational state of the Kalshi exchange: whether
-//! trading is active, current announcements, standard and maintenance hours,
-//! and timestamps/fee changes useful for cache invalidation.
+//! Public endpoints expose exchange operational state and schedules.
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::types::{FeeType, deserialize_null_as_empty_vec};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetExchangeStatusResponse {
@@ -17,40 +15,20 @@ pub struct GetExchangeStatusResponse {
     pub trading_active: bool,
     #[serde(default)]
     pub exchange_estimated_resume_time: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementType {
-    Info,
-    Warning,
-    Error,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AnnouncementStatus {
-    Active,
-    Inactive,
-    #[serde(other)]
-    Unknown,
+    #[serde(default)]
+    pub intra_exchange_transfers_active: Option<bool>,
+    /// Absent when a per-shard breakdown is unavailable.
+    #[serde(default)]
+    pub exchange_index_statuses: Option<Vec<ExchangeIndexStatus>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Announcement {
-    #[serde(rename = "type")]
-    pub r#type: AnnouncementType,
-    pub message: String,
-    pub delivery_time: String,
-    pub status: AnnouncementStatus,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetExchangeAnnouncementsResponse {
-    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
-    pub announcements: Vec<Announcement>,
+pub struct ExchangeIndexStatus {
+    pub exchange_index: i32,
+    pub description: String,
+    pub exchange_active: bool,
+    pub trading_active: bool,
+    pub intra_exchange_transfers_active: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -105,11 +83,11 @@ pub struct GetUserDataTimestampResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SeriesFeeChange {
-    pub id: i64,
+    pub id: String,
     pub series_ticker: String,
     pub fee_type: FeeType,
-    pub fee_multiplier: i64,
-    pub scheduled_ts: i64,
+    pub fee_multiplier: f64,
+    pub scheduled_ts: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -134,39 +112,19 @@ pub struct GetSeriesFeeChangesResponse {
 /// `taker_fee_rates`, which map market ticker → decimal fee rate.
 /// Fee = `notional * rate` (e.g. `0.0008` = 8 bps).
 ///
-/// Note: this endpoint is documented in the Kalshi changelog but is not present
-/// in the published OpenAPI spec, so the rate values are kept as untyped JSON
-/// (`serde_json::Value`) to tolerate either numeric or string encodings. Any
-/// fields beyond the two rate maps are ignored.
+/// Rates are numeric decimal fractions of notional.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetMarginFeeTiersResponse {
     /// Market ticker → maker fee rate (decimal fraction of notional).
-    #[serde(default)]
-    pub maker_fee_rates: Map<String, Value>,
+    pub maker_fee_rates: HashMap<String, f64>,
     /// Market ticker → taker fee rate (decimal fraction of notional).
-    #[serde(default)]
-    pub taker_fee_rates: Map<String, Value>,
+    pub taker_fee_rates: HashMap<String, f64>,
 }
 
 impl KalshiRestClient {
     /// Get the current exchange status (open, closed, etc.).
     pub async fn get_exchange_status(&self) -> Result<GetExchangeStatusResponse, KalshiError> {
         let path = Self::full_path("/exchange/status");
-        self.send(
-            Method::GET,
-            &path,
-            Option::<&()>::None,
-            Option::<&()>::None,
-            false,
-        )
-        .await
-    }
-
-    /// Get exchange announcements.
-    pub async fn get_exchange_announcements(
-        &self,
-    ) -> Result<GetExchangeAnnouncementsResponse, KalshiError> {
-        let path = Self::full_path("/exchange/announcements");
         self.send(
             Method::GET,
             &path,
@@ -237,5 +195,51 @@ impl KalshiRestClient {
             false,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exchange_status_handles_nullable_resume_and_optional_shards() {
+        let status: GetExchangeStatusResponse = serde_json::from_str(
+            r#"{
+                "exchange_active": true,
+                "trading_active": false,
+                "exchange_estimated_resume_time": null,
+                "intra_exchange_transfers_active": true,
+                "exchange_index_statuses": [{
+                    "exchange_index": 2,
+                    "description": "shard two",
+                    "exchange_active": true,
+                    "trading_active": false,
+                    "intra_exchange_transfers_active": true
+                }]
+            }"#,
+        )
+        .unwrap();
+        assert!(status.exchange_estimated_resume_time.is_none());
+        assert_eq!(status.intra_exchange_transfers_active, Some(true));
+        let shard = &status.exchange_index_statuses.unwrap()[0];
+        assert_eq!(shard.exchange_index, 2);
+        assert_eq!(shard.description, "shard two");
+        assert!(!shard.trading_active);
+
+        let minimal: GetExchangeStatusResponse =
+            serde_json::from_str(r#"{"exchange_active":true,"trading_active":true}"#).unwrap();
+        assert!(minimal.exchange_index_statuses.is_none());
+        assert!(minimal.intra_exchange_transfers_active.is_none());
+    }
+
+    #[test]
+    fn margin_fee_rates_are_numeric() {
+        let response: GetMarginFeeTiersResponse = serde_json::from_str(
+            r#"{"maker_fee_rates":{"MARKET":0.0001},"taker_fee_rates":{"MARKET":0.0008}}"#,
+        )
+        .unwrap();
+        assert_eq!(response.maker_fee_rates["MARKET"], 0.0001);
+        assert_eq!(response.taker_fee_rates["MARKET"], 0.0008);
     }
 }

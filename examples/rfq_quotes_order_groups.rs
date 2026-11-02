@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
     client
         .update_order_group_limit(
             &order_group.order_group_id,
+            SubaccountQueryParams::default(),
             UpdateOrderGroupLimitRequest {
                 contracts_limit_fp: Some("50.00".to_string()),
                 ..Default::default()
@@ -43,6 +44,8 @@ async fn main() -> anyhow::Result<()> {
             contracts_fp: Some("10.00".to_string()),
             target_cost_centi_cents: None,
             target_cost_dollars: None,
+            target_cost_excludes_fees: None,
+            obscure_creator_id: None,
             rest_remainder: true,
             replace_existing: None,
             subtrader_id: None,
@@ -57,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
             yes_bid: "0.5200".to_string(),
             no_bid: "0.4800".to_string(),
             rest_remainder: true,
+            post_only: None,
             subaccount: None,
         })
         .await?;

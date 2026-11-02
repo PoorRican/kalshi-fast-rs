@@ -9,7 +9,6 @@ pub enum WsChannelV2 {
     Trade,
     MarketLifecycleV2,
     MultivariateMarketLifecycle,
-    Multivariate,
     OrderbookDelta,
     Fill,
     MarketPositions,
@@ -18,6 +17,9 @@ pub enum WsChannelV2 {
     UserOrders,
     /// CF Benchmarks reference index value feed. Added 2026-06-08 (AsyncAPI 2.0.0).
     CfbenchmarksValue,
+    #[serde(rename = "cfbenchmarks_value_5hz")]
+    CfbenchmarksValue5hz,
+    PythValue,
 }
 impl WsChannelV2 {
     pub fn as_str(self) -> &'static str {
@@ -26,7 +28,6 @@ impl WsChannelV2 {
             Self::Trade => "trade",
             Self::MarketLifecycleV2 => "market_lifecycle_v2",
             Self::MultivariateMarketLifecycle => "multivariate_market_lifecycle",
-            Self::Multivariate => "multivariate",
             Self::OrderbookDelta => "orderbook_delta",
             Self::Fill => "fill",
             Self::MarketPositions => "market_positions",
@@ -34,6 +35,8 @@ impl WsChannelV2 {
             Self::OrderGroupUpdates => "order_group_updates",
             Self::UserOrders => "user_orders",
             Self::CfbenchmarksValue => "cfbenchmarks_value",
+            Self::CfbenchmarksValue5hz => "cfbenchmarks_value_5hz",
+            Self::PythValue => "pyth_value",
         }
     }
 
@@ -46,6 +49,9 @@ impl WsChannelV2 {
                 | Self::Communications
                 | Self::OrderGroupUpdates
                 | Self::UserOrders
+                | Self::CfbenchmarksValue
+                | Self::CfbenchmarksValue5hz
+                | Self::PythValue
         )
     }
 }
@@ -81,6 +87,5 @@ mod tests {
         assert!(!WsChannelV2::Ticker.is_private());
         assert!(!WsChannelV2::Trade.is_private());
         assert!(!WsChannelV2::MarketLifecycleV2.is_private());
-        assert!(!WsChannelV2::Multivariate.is_private());
     }
 }

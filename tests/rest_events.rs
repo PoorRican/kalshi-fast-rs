@@ -4,7 +4,7 @@ mod common;
 
 use futures::StreamExt;
 use kalshi_fast::{
-    EventStatus, GetEventForecastPercentileHistoryParams, GetEventsParams,
+    EventStatus, GetEventForecastPercentileHistoryParams, GetEventParams, GetEventsParams,
     GetMultivariateEventsParams,
 };
 use std::collections::HashSet;
@@ -185,7 +185,13 @@ async fn test_get_event_by_ticker_with_nested_markets() {
 
     let resp = tokio::time::timeout(
         common::TEST_TIMEOUT,
-        client.get_event(&list_event.event_ticker, Some(true)),
+        client.get_event(
+            &list_event.event_ticker,
+            GetEventParams {
+                with_nested_markets: Some(true),
+                ..Default::default()
+            },
+        ),
     )
     .await
     .expect("timeout")
@@ -220,16 +226,11 @@ async fn test_get_events_with_milestones_flag() {
     .expect("timeout")
     .expect("request failed");
 
-    for event in &resp.events {
-        if let Some(ms) = &event.milestones {
-            for milestone in ms {
-                // Each milestone should carry at least one identifying field.
-                assert!(
-                    milestone.id.is_some() || milestone.title.is_some() || milestone.name.is_some(),
-                    "milestone lacks any identifier: {:?}",
-                    milestone
-                );
-            }
-        }
+    for milestone in &resp.milestones {
+        assert!(
+            milestone.id.is_some() || milestone.title.is_some(),
+            "milestone lacks any identifier: {:?}",
+            milestone
+        );
     }
 }

@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
                 let markets: Vec<Market> = client
                     .stream_markets(
                         GetMarketsParams {
-                            event_ticker: Some(vec![ticker.clone()]),
+                            event_ticker: Some(ticker.clone()),
                             ..Default::default()
                         },
                         None,

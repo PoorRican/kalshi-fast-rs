@@ -51,7 +51,7 @@
 //!     .await?;
 //!
 //! // Authenticated endpoint
-//! let balance = client.get_balance().await?;
+//! let balance = client.get_balance(Default::default()).await?;
 //! println!("balance: {}", balance.balance);
 //! # Ok(())
 //! # }
@@ -62,6 +62,7 @@ mod client;
 mod communications;
 mod events;
 mod exchange;
+mod fcm;
 mod live_data;
 mod margin;
 mod markets;
@@ -80,6 +81,7 @@ pub use client::{KalshiRestClient, KalshiRestClientBuilder};
 pub use communications::*;
 pub use events::*;
 pub use exchange::*;
+pub use fcm::*;
 pub use live_data::*;
 pub use margin::*;
 pub use markets::*;

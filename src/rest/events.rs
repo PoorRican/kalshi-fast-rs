@@ -5,8 +5,8 @@ use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
 use crate::rest::markets::{Market, MarketCandlestick};
 use crate::rest::pagination::{CursorPager, stream_items};
-use crate::rest::series::EventMetadata;
-use crate::types::{EventStatus, deserialize_null_as_empty_vec};
+use crate::rest::series::{EventMetadata, SettlementSource};
+use crate::types::{EventStatus, FeeType, deserialize_null_as_empty_vec};
 use futures::stream::Stream;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -29,8 +29,13 @@ pub struct GetEventsParams {
     pub status: Option<EventStatus>, // open|closed|settled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub series_ticker: Option<String>,
+    /// Comma-separated event tickers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_close_ts: Option<i64>, // seconds since epoch
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_updated_ts: Option<i64>, // seconds since epoch
 }
 
 impl GetEventsParams {
@@ -74,15 +79,6 @@ pub struct Milestone {
     pub source_id: Option<String>,
     #[serde(default)]
     pub source_ids: Option<Map<String, Value>>,
-    // Legacy/alternative shape fields still observed in some payloads.
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub ts: Option<i64>,
-    #[serde(default)]
-    pub status: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -103,49 +99,24 @@ pub struct EventData {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub available_on_brokers: Option<bool>,
-    #[serde(default)]
     pub strike_date: Option<String>,
     #[serde(default)]
     pub strike_period: Option<String>,
     #[serde(default)]
     pub last_updated_ts: Option<String>,
     #[serde(default)]
-    pub occurrence_datetime: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub status: Option<String>,
-    #[serde(default)]
-    pub can_trade: Option<bool>,
-    #[serde(default)]
-    pub can_settle: Option<bool>,
-    #[serde(default)]
-    pub start_ts: Option<i64>,
-    #[serde(default)]
-    pub close_ts: Option<i64>,
-    #[serde(default)]
-    pub settled_ts: Option<i64>,
-    #[serde(default)]
-    pub series_id: Option<i64>,
-    #[serde(default)]
-    pub mutual_exclusive_group_id: Option<String>,
-    #[serde(default)]
-    pub mutual_exclusive_group_ids: Option<Vec<String>>,
-    #[serde(default)]
-    pub event_delta: Option<i64>,
-    #[serde(default)]
-    pub volume: Option<i64>,
-    #[serde(default)]
-    pub volume_fp: Option<String>,
-    #[serde(default)]
     pub markets: Option<Vec<Market>>,
+    /// Null means that settlement sources are unavailable.
     #[serde(default)]
-    pub milestones: Option<Vec<Milestone>>,
+    pub settlement_sources: Option<Vec<SettlementSource>>,
     #[serde(default)]
-    pub custom_strike: Option<Map<String, Value>>,
+    pub product_metadata: Option<Map<String, Value>>,
     #[serde(default)]
-    pub product_metadata: Option<EventMetadata>,
+    pub fee_type_override: Option<String>,
+    #[serde(default)]
+    pub fee_multiplier_override: Option<f64>,
+    #[serde(default)]
+    pub exchange_index: Option<i32>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -165,6 +136,9 @@ pub struct GetEventsResponse {
 pub struct GetEventParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub with_nested_markets: Option<bool>, // default false
+    /// Omit child markets entirely; cannot be combined with nested markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude_markets: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -186,6 +160,9 @@ pub struct GetMultivariateEventsParams {
     pub series_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub collection_ticker: Option<String>,
+    /// Comma-separated event tickers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tickers: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub with_nested_markets: Option<bool>,
 }
@@ -196,6 +173,35 @@ pub struct GetMultivariateEventsResponse {
     pub events: Vec<EventData>,
     #[serde(default)]
     pub cursor: Option<String>,
+}
+
+/// Query parameters for event fee changes.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GetEventFeeChangesParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EventFeeChange {
+    pub id: String,
+    pub event_ticker: String,
+    pub series_ticker: String,
+    /// Null clears the override and restores the series fee type.
+    pub fee_type_override: Option<FeeType>,
+    /// Null clears the override and restores the series fee multiplier.
+    pub fee_multiplier_override: Option<f64>,
+    pub scheduled_ts: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetEventFeeChangesResponse {
+    pub event_fee_changes: Vec<EventFeeChange>,
+    pub cursor: String,
 }
 
 pub type GetEventMetadataResponse = EventMetadata;
@@ -269,16 +275,29 @@ impl KalshiRestClient {
         .await
     }
 
-    /// Get a single event by ticker, optionally including its nested markets.
+    /// Get an event, with child markets nested, top-level, or excluded.
     pub async fn get_event(
         &self,
         event_ticker: &str,
-        with_nested_markets: Option<bool>,
+        params: GetEventParams,
     ) -> Result<GetEventResponse, KalshiError> {
         let path = Self::full_path(&format!("/events/{event_ticker}"));
-        let params = GetEventParams {
-            with_nested_markets,
-        };
+        self.send(
+            Method::GET,
+            &path,
+            Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// List scheduled event fee overrides, including cleared overrides.
+    pub async fn get_event_fee_changes(
+        &self,
+        params: GetEventFeeChangesParams,
+    ) -> Result<GetEventFeeChangesResponse, KalshiError> {
+        let path = Self::full_path("/events/fee_changes");
         self.send(
             Method::GET,
             &path,
@@ -433,5 +452,76 @@ impl KalshiRestClient {
             }
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_fee_override_can_be_cleared() {
+        let response: GetEventFeeChangesResponse = serde_json::from_str(
+            r#"{
+                "event_fee_changes": [
+                    {
+                        "id": "change-1",
+                        "event_ticker": "EVENT",
+                        "series_ticker": "SERIES",
+                        "fee_type_override": "quadratic",
+                        "fee_multiplier_override": 0.25,
+                        "scheduled_ts": "2026-11-02T00:00:00Z"
+                    },
+                    {
+                        "id": "change-2",
+                        "event_ticker": "EVENT",
+                        "series_ticker": "SERIES",
+                        "fee_type_override": null,
+                        "fee_multiplier_override": null,
+                        "scheduled_ts": "2026-11-03T00:00:00Z"
+                    }
+                ],
+                "cursor": ""
+            }"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            response.event_fee_changes[0].fee_type_override,
+            Some(FeeType::Quadratic)
+        ));
+        assert_eq!(
+            response.event_fee_changes[0].fee_multiplier_override,
+            Some(0.25)
+        );
+        assert!(response.event_fee_changes[1].fee_type_override.is_none());
+        assert!(
+            response.event_fee_changes[1]
+                .fee_multiplier_override
+                .is_none()
+        );
+        assert!(response.cursor.is_empty());
+    }
+
+    #[test]
+    fn event_nullable_metadata_and_shard_are_preserved() {
+        let event: EventData = serde_json::from_str(
+            r#"{
+                "event_ticker": "EVENT",
+                "product_metadata": {"market_details": "arbitrary"},
+                "settlement_sources": null,
+                "fee_type_override": null,
+                "fee_multiplier_override": 0.5,
+                "exchange_index": 3
+            }"#,
+        )
+        .unwrap();
+        assert!(event.settlement_sources.is_none());
+        assert!(event.fee_type_override.is_none());
+        assert_eq!(event.fee_multiplier_override, Some(0.5));
+        assert_eq!(event.exchange_index, Some(3));
+        assert_eq!(
+            event.product_metadata.unwrap()["market_details"],
+            "arbitrary"
+        );
     }
 }
