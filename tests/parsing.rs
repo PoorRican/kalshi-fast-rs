@@ -1322,17 +1322,15 @@ fn get_markets_params_validates_event_ticker_count() {
 
     // 11 is too many
     let params = GetMarketsParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
+        event_ticker: Some((0..101).map(|i| format!("E{i}")).collect()),
         ..Default::default()
     };
     assert!(params.validate().is_err());
+    let ok = GetOrdersParams {
+        event_ticker: Some((0..100).map(|i| format!("E{i}")).collect()),
+        ..Default::default()
+    };
+    assert!(ok.validate().is_ok());
 }
 
 #[test]
@@ -1443,17 +1441,15 @@ fn get_orders_params_validates_limit_bounds() {
 #[test]
 fn get_orders_params_validates_event_ticker_count() {
     let params = GetOrdersParams {
-        event_ticker: Some(
-            vec![
-                "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        ),
+        event_ticker: Some((0..101).map(|i| format!("E{i}")).collect()),
         ..Default::default()
     };
     assert!(params.validate().is_err());
+    let ok = GetOrdersParams {
+        event_ticker: Some((0..100).map(|i| format!("E{i}")).collect()),
+        ..Default::default()
+    };
+    assert!(ok.validate().is_ok());
 }
 
 #[test]

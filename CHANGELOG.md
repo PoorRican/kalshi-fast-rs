@@ -9,7 +9,45 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+### Breaking
+
+- [Rust API] `WsSubscriptionParamsV2` and `MarginSubscribeParams` gain `update_interval_ms`;
+  exhaustive struct literals (without `..Default::default()`) must set it.
+
 ### Added
+
+- [Upstream] `update_interval_ms` (`100` | `1000`) opt-in conflated `orderbook_delta` updates on both
+  the Predictions and Margin WebSockets (changelog 2026-10-28).
+- [Upstream] `GET /portfolio/credit_history` via `get_credit_history` (`GetCreditHistoryParams`,
+  `GetCreditHistoryResponse`, `CreditHistory`, `CreditStatus`) (2026-10-27).
+- [Upstream] `MarginMarket::halt_sources` (`Vec<String>`, defaults empty) (2026-10-26).
+- [Upstream] Margin WebSocket `market_lifecycle_v2` channel: `MarginChannel::MarketLifecycleV2`,
+  `MarginDataMessage::MarketLifecycleV2`, `MarketLifecycleV2Msg` (2026-10-26).
+
+### Changed
+
+- [Upstream] `GET /portfolio/orders` `event_ticker` filter accepts up to 100 tickers (was 10)
+  (2026-10-22).
+
+### Compatibility
+
+- Specs observed: OpenAPI 3.35.0, AsyncAPI 2.0.0, Perps OpenAPI 0.0.1, Perps AsyncAPI 2.0.0.
+- Docs snapshot: 2026-11-02
+- Validated through changelog: 2026-09-28 (unchanged). The RSS feed lists only 2026-10-22..2026-11-02;
+  the items below were mapped, but the crate is NOT fully reconciled with OpenAPI 3.35.0. Known
+  unimplemented drift: exit-trigger endpoints (Predictions and Perps), RFQ batch REST/WS messages and
+  `rfq_batch_id` fields, intra-exchange-instance transfers, block-trade proposals, deposits/withdrawals,
+  `/account/api_usage_level/*`, `/fcm/*`, `/live_data/weather*`, target balance allocation, Perps
+  `corporate_actions` channel, `/margin/corporate_actions`, `/margin/markets/schedules`,
+  `/margin/fee_tier_rates`, `/margin/funding_rates/premium_index`, Perps FCM risk controls.
+- No change needed: Higher Perps write budgets (server-side budgets; `exchange_index` deprecation is
+  advisory and the field stays optional), exit-trigger `market_deactivated` status_reason (exit
+  triggers not modeled), Clearing Member `_fp` fields (`/klear-api` not modeled), FIX-only entries
+  (mass cancel, market-data selection), `market_closed` -> `market_inactive` (crate has no error-code
+  enum for it), final-settlement margin OI (server behavior), subaccount balance lists for restricted
+  keys and restricted-key intra-exchange transfers (auth behavior only).
+- Bump: minor (0.9.2 -> 0.10.0) per VERSIONING.md "Minor releases are for any intentional breaking
+  change to the public Rust API" (new public struct fields).
 
 - [WebSocket] `WsReconnectConfig::connect_timeout` bounds each connect attempt (TCP, TLS and the
   WebSocket handshake). A timed-out attempt returns `websocket connect timed out after <duration>` and
