@@ -26,6 +26,10 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
   code changes is a minor release, even when it originates from upstream churn).
 - [Rust API] `no_sub_title` on `WsMarketLifecycleAdditionalMetadata`/`Ref` is now `Option` (was
   `String`/`Cow`), because Kalshi deprecated it (equal to `yes_sub_title`) and it may be dropped.
+- [Rust API] Owned and borrowed WebSocket `trade.taker_side`, `trade.ts`, `ticker.ts`,
+  `ticker.time`, `fill.side`, `fill.action`, `fill.purchased_side`, `fill.ts`,
+  `user_order.side`, and `user_order.is_yes` are now `Option`; omitted and null
+  deprecated fields decode as `None`.
 - [Rust API] `MarginMarket::exchange_index` is now `Option<u32>` (was `u32`); Perps ignores it.
 
 ### Deprecated
@@ -33,6 +37,13 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 - [Rust API] `#[deprecated]`: `Market::no_sub_title` and the WS lifecycle metadata `no_sub_title`
   (use `yes_sub_title`); Perps `exchange_index` on `MarginMarket`, order-group request/response types,
   and `ApplyMarginSubaccountTransferRequest`.
+- [Rust API] WebSocket `trade.taker_side` → `taker_outcome_side`; `fill.side`,
+  `fill.action`, `fill.purchased_side`, `user_order.side`, and `user_order.is_yes` →
+  `outcome_side` / `book_side`.
+- [Rust API] WebSocket `ticker.ts`, `ticker.time`, `trade.ts`, `fill.ts`, and
+  `orderbook_delta.ts` → `ts_ms`; `user_order.created_time`, `last_update_time`,
+  and `expiration_time` → `created_ts_ms`, `last_updated_ts_ms`, and
+  `expiration_ts_ms`, respectively. Omitted user-order legacy timestamps decode as `None`.
 
 ### Added
 
@@ -42,6 +53,9 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 ### Changelog mapping (since 2026-10-29)
 
 - Nov 2 "Market no_sub_title deprecated": deprecated + optional as above.
+- [Upstream] [Kalshi changelog](https://docs.kalshi.com/changelog.md): April 15
+  deprecated legacy WebSocket timestamps; May 6 deprecated legacy direction fields;
+  the published November 5 entry deprecates `no_sub_title`.
 - Nov 2 "Higher Perps Write budgets": server-side budgets, no change needed. Order groups spanning any
   Perps market and `exchange_index` deprecation: see Deprecated above.
 - Nov 2 "Dedicated hosts for fill and order updates": additive URL helpers above.

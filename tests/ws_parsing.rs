@@ -31,7 +31,6 @@ async fn ws_demo_ticker_payload_parses_into_ws_ticker() {
     assert!(ticker.yes_ask_dollars.parse::<f64>().is_ok());
     assert!(ticker.last_trade_size_fp.parse::<f64>().is_ok());
     assert!(ticker.open_interest_fp.parse::<f64>().is_ok());
-    assert!(ticker.ts > 0);
     assert!(ticker.ts_ms.map_or(true, |v| v > 0));
 }
 
@@ -60,7 +59,6 @@ async fn ws_demo_trade_payload_parses_into_ws_trade() {
     assert!(trade.count_fp.parse::<f64>().is_ok());
     assert!(trade.yes_price_dollars.parse::<f64>().is_ok());
     assert!(trade.no_price_dollars.parse::<f64>().is_ok());
-    assert!(trade.ts > 0);
     assert!(trade.ts_ms.map_or(true, |v| v > 0));
 }
 

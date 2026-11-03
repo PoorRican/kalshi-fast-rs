@@ -1810,6 +1810,91 @@ mod tests {
     }
 
     #[test]
+    fn ws_frames_accept_deprecated_fields_absent_null_and_present() {
+        let cases = [
+            (
+                "ticker",
+                r#""market_ticker":"TEST","market_id":"m1","price_dollars":"0.50","yes_bid_dollars":"0.49","yes_ask_dollars":"0.51","yes_bid_size_fp":"1.00","yes_ask_size_fp":"1.00","last_trade_size_fp":"1.00","volume_fp":"10.00","open_interest_fp":"5.00","dollar_volume":5,"dollar_open_interest":2,"ts_ms":1704067200000"#,
+                [
+                    "",
+                    r#","ts":null,"time":null"#,
+                    r#","ts":1704067200,"time":"2024-01-01T00:00:00Z""#,
+                ],
+            ),
+            (
+                "trade",
+                r#""trade_id":"t1","market_ticker":"TEST","count_fp":"1.00","yes_price_dollars":"0.50","no_price_dollars":"0.50","taker_outcome_side":"yes","taker_book_side":"bid","is_block_trade":false,"ts_ms":1704067200000"#,
+                [
+                    "",
+                    r#","taker_side":null,"ts":null"#,
+                    r#","taker_side":"yes","ts":1704067200"#,
+                ],
+            ),
+            (
+                "fill",
+                r#""trade_id":"t","order_id":"o","market_ticker":"T","exchange_index":0,"outcome_side":"no","book_side":"ask","count_fp":"1","yes_price_dollars":"0.01","is_taker":true,"fee_cost":"0.00","ts_ms":123000,"post_position_fp":"1.00""#,
+                [
+                    "",
+                    r#","side":null,"action":null,"purchased_side":null,"ts":null"#,
+                    r#","side":"no","action":"buy","purchased_side":"yes","ts":123"#,
+                ],
+            ),
+            (
+                "user_order",
+                r#""order_id":"o","user_id":"u","ticker":"T","exchange_index":0,"status":"resting","outcome_side":"yes","book_side":"bid","yes_price_dollars":"0.50","fill_count_fp":"1.00","remaining_count_fp":"2.00","initial_count_fp":"3.00","taker_fill_cost_dollars":"0.00","maker_fill_cost_dollars":"0.50","taker_fees_dollars":"0.00","maker_fees_dollars":"0.00","client_order_id":"c","created_ts_ms":1000,"last_updated_ts_ms":2000,"expiration_ts_ms":3000"#,
+                [
+                    "",
+                    r#","side":null,"is_yes":null,"created_time":null,"last_update_time":null,"expiration_time":null"#,
+                    r#","side":"yes","is_yes":true,"created_time":"created","last_update_time":"updated","expiration_time":"expires""#,
+                ],
+            ),
+            (
+                "orderbook_delta",
+                r#""market_ticker":"TEST","market_id":"1","price_dollars":"0.01","delta_fp":"1","side":"yes","ts_ms":1669149841000"#,
+                ["", r#","ts":null"#, r#","ts":"2022-11-22T20:44:01Z""#],
+            ),
+        ];
+
+        for (kind, payload, legacy_cases) in cases {
+            for legacy in legacy_cases {
+                let frame =
+                    format!(r#"{{"type":"{kind}","sid":1,"seq":2,"msg":{{{payload}{legacy}}}}}"#);
+                let owned = WsMessageV2::from_bytes(frame.as_bytes())
+                    .unwrap_or_else(|err| panic!("owned {kind} frame {legacy:?}: {err}"));
+                let borrowed = WsMessageRef::from_bytes(frame.as_bytes())
+                    .unwrap_or_else(|err| panic!("borrowed {kind} frame {legacy:?}: {err}"));
+                assert!(
+                    matches!(
+                        (kind, &owned, &borrowed),
+                        (
+                            "ticker",
+                            WsMessageV2::Data(WsDataMessageV2::Ticker { .. }),
+                            WsMessageRef::Data(WsDataMessageRef::Ticker { .. })
+                        ) | (
+                            "trade",
+                            WsMessageV2::Data(WsDataMessageV2::Trade { .. }),
+                            WsMessageRef::Data(WsDataMessageRef::Trade { .. })
+                        ) | (
+                            "fill",
+                            WsMessageV2::Data(WsDataMessageV2::Fill { .. }),
+                            WsMessageRef::Data(WsDataMessageRef::Fill { .. })
+                        ) | (
+                            "user_order",
+                            WsMessageV2::Data(WsDataMessageV2::UserOrder { .. }),
+                            WsMessageRef::Data(WsDataMessageRef::UserOrder { .. })
+                        ) | (
+                            "orderbook_delta",
+                            WsMessageV2::Data(WsDataMessageV2::OrderbookDelta { .. }),
+                            WsMessageRef::Data(WsDataMessageRef::OrderbookDelta { .. })
+                        )
+                    ),
+                    "unexpected {kind} frame {legacy:?}: owned {owned:?}, borrowed {borrowed:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn ws_message_from_bytes_list_subscriptions() {
         let json = r#"{
             "id":3,

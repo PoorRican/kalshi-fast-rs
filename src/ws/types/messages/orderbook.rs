@@ -127,6 +127,7 @@ pub struct WsOrderbookDeltaRef<'a> {
     pub client_order_id: Option<Cow<'a, str>>,
     #[serde(default)]
     pub subaccount: Option<i64>,
+    #[deprecated(note = "spec marks this as deprecated, yet optional. use ts_ms instead")]
     #[serde(
         default,
         borrow,
@@ -151,7 +152,6 @@ impl<'a> WsOrderbookDeltaRef<'a> {
             side: self.side,
             client_order_id: self.client_order_id.map(Cow::into_owned),
             subaccount: self.subaccount,
-            #[allow(deprecated)]
             ts: self.ts.map(Cow::into_owned),
             ts_ms: self.ts_ms,
         }
@@ -160,7 +160,6 @@ impl<'a> WsOrderbookDeltaRef<'a> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(deprecated)]
     use super::*;
 
     #[test]
@@ -220,5 +219,42 @@ mod tests {
             Some("2022-11-22T20:44:01Z")
         );
         assert_eq!(delta_missing_ts_ms.ts_ms, None);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn ws_orderbook_delta_ts_owned_and_borrowed() {
+        let cases = [
+            (
+                r#"{"market_ticker":"TEST","market_id":"1","price_dollars":"0.01","delta_fp":"1","side":"yes","ts_ms":1669149841000}"#,
+                None,
+            ),
+            (
+                r#"{"market_ticker":"TEST","market_id":"1","price_dollars":"0.01","delta_fp":"1","side":"yes","ts":null,"ts_ms":1669149841000}"#,
+                None,
+            ),
+            (
+                r#"{"market_ticker":"TEST","market_id":"1","price_dollars":"0.01","delta_fp":"1","side":"yes","ts":"2022-11-22T20:44:01Z","ts_ms":1669149841000}"#,
+                Some("2022-11-22T20:44:01Z"),
+            ),
+        ];
+
+        for (json, expected_ts) in cases {
+            let owned: WsOrderbookDelta = serde_json::from_slice(json.as_bytes()).unwrap();
+            assert_eq!(owned.ts.as_deref(), expected_ts);
+            assert_eq!(owned.ts_ms, Some(1669149841000));
+
+            let borrowed: WsOrderbookDeltaRef<'_> =
+                serde_json::from_slice(json.as_bytes()).unwrap();
+            assert_eq!(borrowed.ts.as_deref(), expected_ts);
+            assert_eq!(borrowed.ts_ms, Some(1669149841000));
+            if let Some(ts) = borrowed.ts.as_ref() {
+                assert!(matches!(ts, Cow::Borrowed(_)));
+            }
+
+            let converted = borrowed.into_owned();
+            assert_eq!(converted.ts.as_deref(), expected_ts);
+            assert_eq!(converted.ts_ms, Some(1669149841000));
+        }
     }
 }
