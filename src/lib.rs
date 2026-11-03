@@ -188,7 +188,7 @@
 //! Short notes on known spec-to-crate distinctions live in
 //! `docs/spec-parity.md`.
 //!
-//! The unreleased `0.10.0` snapshot is dated November 2, 2026 (Predictions
+//! The unreleased `0.11.0` snapshot is dated November 3, 2026 (Predictions
 //! OpenAPI `3.35.0`; AsyncAPI `2.0.0`). Published future-dated schemas do not
 //! establish a live rollout. Deprecated quote aliases, unpublished `x-excluded`
 //! REST operations, FIX, and the separate Clearing Member API are not exposed.

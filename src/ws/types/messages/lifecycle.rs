@@ -72,7 +72,11 @@ pub struct WsMarketLifecycleAdditionalMetadata {
     pub name: String,
     pub title: String,
     pub yes_sub_title: String,
-    pub no_sub_title: String,
+    #[serde(default)]
+    #[deprecated(
+        note = "equals yes_sub_title on every market created since Sept 2024; use yes_sub_title"
+    )]
+    pub no_sub_title: Option<String>,
     pub rules_primary: String,
     pub rules_secondary: String,
     pub can_close_early: bool,
@@ -211,8 +215,11 @@ pub struct WsMarketLifecycleAdditionalMetadataRef<'a> {
     pub title: Cow<'a, str>,
     #[serde(borrow)]
     pub yes_sub_title: Cow<'a, str>,
-    #[serde(borrow)]
-    pub no_sub_title: Cow<'a, str>,
+    #[serde(borrow, default)]
+    #[deprecated(
+        note = "equals yes_sub_title on every market created since Sept 2024; use yes_sub_title"
+    )]
+    pub no_sub_title: Option<Cow<'a, str>>,
     #[serde(borrow)]
     pub rules_primary: Cow<'a, str>,
     #[serde(borrow)]
@@ -238,12 +245,13 @@ pub struct WsMarketLifecycleAdditionalMetadataRef<'a> {
 }
 
 impl<'a> WsMarketLifecycleAdditionalMetadataRef<'a> {
+    #[allow(deprecated)]
     pub fn into_owned(self) -> WsMarketLifecycleAdditionalMetadata {
         WsMarketLifecycleAdditionalMetadata {
             name: self.name.into_owned(),
             title: self.title.into_owned(),
             yes_sub_title: self.yes_sub_title.into_owned(),
-            no_sub_title: self.no_sub_title.into_owned(),
+            no_sub_title: self.no_sub_title.map(Cow::into_owned),
             rules_primary: self.rules_primary.into_owned(),
             rules_secondary: self.rules_secondary.into_owned(),
             can_close_early: self.can_close_early,
@@ -366,6 +374,19 @@ impl<'a> WsEventFeeUpdateRef<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[allow(deprecated)]
+    fn additional_metadata_tolerates_removed_no_sub_title() {
+        let json = r#"{"name":"n","title":"t","yes_sub_title":"y","rules_primary":"p",
+            "rules_secondary":"s","can_close_early":true,"event_ticker":"E",
+            "expected_expiration_ts":1}"#;
+        let owned: WsMarketLifecycleAdditionalMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(owned.no_sub_title, None);
+        let borrowed: WsMarketLifecycleAdditionalMetadataRef = serde_json::from_str(json).unwrap();
+        assert!(borrowed.no_sub_title.is_none());
+        assert_eq!(borrowed.into_owned().yes_sub_title, "y");
+    }
 
     /// Per the AsyncAPI, `metadata_updated` carries the updated values
     /// (`floor_strike`, `yes_sub_title`) at the top level of the payload, not
