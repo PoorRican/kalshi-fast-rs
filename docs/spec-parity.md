@@ -56,6 +56,13 @@ AsyncAPI `info.version`; the snapshot date matters.
   identity stays a string. `GET /account/endpoint_costs` is public as specified;
   its costs are tokens, not requests per second.
 
+- Deprecated-but-present fields (`no_sub_title`, Perps `exchange_index`) are
+  `Option` plus `#[deprecated]`, even where the spec lists them as required, so
+  their eventual removal is not a second break. Perps ignores `exchange_index`;
+  order groups can hold orders on any Perps market.
+- Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
+  `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
+
 ## Subscription semantics
 
 - Market ticker and ID filters follow each channel's documented vocabulary;

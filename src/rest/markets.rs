@@ -176,6 +176,9 @@ pub struct Market {
     #[serde(default)]
     pub yes_sub_title: Option<String>,
     #[serde(default)]
+    #[deprecated(
+        note = "equals yes_sub_title on every market created since Sept 2024; use yes_sub_title"
+    )]
     pub no_sub_title: Option<String>,
     #[serde(default)]
     pub rules_primary: Option<String>,
