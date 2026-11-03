@@ -43,7 +43,7 @@ AsyncAPI `info.version`; the snapshot date matters.
   `tests/fixtures/control_frame_mutation.jsonl` still decode. An absent clock
   stays absent; it is never fabricated as zero.
 - Ticker/trade `ts_ms` remains best-effort because captured exchange messages
-  can omit it. Use `ts` as the lower-resolution fallback when necessary.
+  can omit it. Deprecated `ts` may also be absent; neither timestamp is guaranteed.
   `sending_ts_ms` is a separate server-transmission timestamp, not event time
   or the timed reader's process-local availability time.
 - Unknown event-contract frames retain their raw payload. Both event and perps
@@ -55,6 +55,14 @@ AsyncAPI `info.version`; the snapshot date matters.
 - Rate-limit grants may omit `expires_ts` for permanent grants. Exchange-lane
   identity stays a string. `GET /account/endpoint_costs` is public as specified;
   its costs are tokens, not requests per second.
+
+- Deprecated-but-present fields (`no_sub_title`, Perps `exchange_index`, and
+  legacy WebSocket direction and timestamp fields) are `Option` plus
+  `#[deprecated]`, even where the spec lists them as required, so their eventual
+  removal is not a second break. Perps ignores `exchange_index`; order groups can
+  hold orders on any Perps market.
+- Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
+  `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
 
 ## Subscription semantics
 
