@@ -13,6 +13,10 @@ pub const MARGIN_WS_PATH: &str = "/trade-api/ws/v2/margin";
 const DEMO_REST_HOST: &str = "external-api.demo.kalshi.co";
 const DEMO_WS_HOST: &str = "external-api-ws.demo.kalshi.co";
 const DEMO_MARGIN_WS_HOST: &str = "external-api-margin-ws.demo.kalshi.co";
+const DEMO_WARP_WS_HOST: &str = "warp-ws.demo.kalshi.co";
+const DEMO_MARGIN_WARP_WS_HOST: &str = "margin-warp-ws.demo.kalshi.co";
+const LIVE_WARP_WS_HOST: &str = "warp-ws.kalshi.com";
+const LIVE_MARGIN_WARP_WS_HOST: &str = "margin-warp-ws.kalshi.com";
 const LIVE_REST_HOST: &str = "external-api.kalshi.com";
 const LIVE_WS_HOST: &str = "external-api-ws.kalshi.com";
 const LIVE_MARGIN_WS_HOST: &str = "external-api-margin-ws.kalshi.com";
@@ -55,6 +59,30 @@ impl KalshiEnvironment {
     }
 }
 
+impl KalshiEnvironment {
+    /// Low-latency Predictions WebSocket URL serving only `fill` and
+    /// `user_orders`; any other channel returns error code 8. Assign it to
+    /// `ws_url` on a dedicated connection. Signing path and auth are unchanged.
+    pub fn warp_ws_url(&self) -> String {
+        let host = if self.ws_url.contains(DEMO_WS_HOST) {
+            DEMO_WARP_WS_HOST
+        } else {
+            LIVE_WARP_WS_HOST
+        };
+        format!("wss://{host}{WS_PATH}")
+    }
+
+    /// Margin counterpart of [`Self::warp_ws_url`] (`fill`/`user_orders` only).
+    pub fn margin_warp_ws_url(&self) -> String {
+        let host = if self.margin_ws_url.contains(DEMO_MARGIN_WS_HOST) {
+            DEMO_MARGIN_WARP_WS_HOST
+        } else {
+            LIVE_MARGIN_WARP_WS_HOST
+        };
+        format!("wss://{host}{MARGIN_WS_PATH}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +116,25 @@ mod tests {
         assert!(
             env.margin_ws_url.ends_with("/margin"),
             "margin WS URL should end with /margin"
+        );
+    }
+
+    #[test]
+    fn warp_urls_match_published_hosts() {
+        let d = KalshiEnvironment::demo();
+        assert_eq!(
+            d.warp_ws_url(),
+            "wss://warp-ws.demo.kalshi.co/trade-api/ws/v2"
+        );
+        assert_eq!(
+            d.margin_warp_ws_url(),
+            "wss://margin-warp-ws.demo.kalshi.co/trade-api/ws/v2/margin"
+        );
+        let p = KalshiEnvironment::production();
+        assert_eq!(p.warp_ws_url(), "wss://warp-ws.kalshi.com/trade-api/ws/v2");
+        assert_eq!(
+            p.margin_warp_ws_url(),
+            "wss://margin-warp-ws.kalshi.com/trade-api/ws/v2/margin"
         );
     }
 }

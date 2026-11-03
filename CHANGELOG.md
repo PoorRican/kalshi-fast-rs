@@ -9,6 +9,47 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-03
+
+### Compatibility
+
+- Docs snapshot: 2026-11-03
+- OpenAPI: 3.35.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-02
+
+### Breaking
+
+- [Rust API] Version bump is minor per `VERSIONING.md` (pre-1.0: a change likely to require downstream
+  code changes is a minor release, even when it originates from upstream churn).
+- [Rust API] `no_sub_title` on `WsMarketLifecycleAdditionalMetadata`/`Ref` is now `Option` (was
+  `String`/`Cow`), because Kalshi deprecated it (equal to `yes_sub_title`) and it may be dropped.
+- [Rust API] `MarginMarket::exchange_index` is now `Option<u32>` (was `u32`); Perps ignores it.
+
+### Deprecated
+
+- [Rust API] `#[deprecated]`: `Market::no_sub_title` and the WS lifecycle metadata `no_sub_title`
+  (use `yes_sub_title`); Perps `exchange_index` on `MarginMarket`, order-group request/response types,
+  and `ApplyMarginSubaccountTransferRequest`.
+
+### Added
+
+- [Rust API] `KalshiEnvironment::warp_ws_url()` / `margin_warp_ws_url()` for the new low-latency
+  `warp-ws` hosts, which serve only `fill` and `user_orders` (other channels return error code 8).
+
+### Changelog mapping (since 2026-10-29)
+
+- Nov 2 "Market no_sub_title deprecated": deprecated + optional as above.
+- Nov 2 "Higher Perps Write budgets": server-side budgets, no change needed. Order groups spanning any
+  Perps market and `exchange_index` deprecation: see Deprecated above.
+- Nov 2 "Dedicated hosts for fill and order updates": additive URL helpers above.
+- Oct 30 "Fixed-point dollar fields in the Clearing Member API": no change needed; `/klear-api/v1` is not implemented.
+- Oct 29 "market_closed is now market_inactive": no change needed; neither string appears in any spec
+  (`MarginMarketStatus` already `inactive`), and the crate has no such enum value.
+- Oct 29 "Exit trigger market deactivation reason": no change needed; `ExitTriggerReason::MarketDeactivated` exists.
+
 ## [0.10.0] - 2026-11-02
 
 ### Compatibility

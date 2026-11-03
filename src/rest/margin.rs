@@ -173,6 +173,7 @@ pub struct CreateMarginOrderGroupRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_limit_fp: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[deprecated(note = "Perps ignores exchange_index; Kalshi will remove it")]
     pub exchange_index: Option<u32>,
 }
 
@@ -189,6 +190,7 @@ pub struct CreateMarginOrderGroupResponse {
     pub order_group_id: String,
     pub subaccount: u32,
     #[serde(default)]
+    #[deprecated(note = "Perps ignores exchange_index; Kalshi will remove it")]
     pub exchange_index: Option<u32>,
 }
 
@@ -208,6 +210,7 @@ pub struct MarginOrderGroup {
     pub contracts_limit_fp: Option<String>,
     pub is_auto_cancel_enabled: bool,
     #[serde(default)]
+    #[deprecated(note = "Perps ignores exchange_index; Kalshi will remove it")]
     pub exchange_index: Option<u32>,
 }
 
@@ -218,6 +221,7 @@ pub struct GetMarginOrderGroupResponse {
     pub contracts_limit_fp: Option<String>,
     pub orders: Vec<String>,
     #[serde(default)]
+    #[deprecated(note = "Perps ignores exchange_index; Kalshi will remove it")]
     pub exchange_index: Option<u32>,
 }
 
@@ -228,6 +232,7 @@ pub struct ApplyMarginSubaccountTransferRequest {
     pub to_subaccount: u32,
     pub amount_cents: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[deprecated(note = "Perps ignores exchange_index; Kalshi will remove it")]
     pub exchange_index: Option<u32>,
 }
 
@@ -332,7 +337,9 @@ pub struct MarginMarket {
     /// Null for markets that trade around the clock.
     #[serde(deserialize_with = "Option::deserialize")]
     pub schedule: Option<MarginMarketSchedule>,
-    pub exchange_index: u32,
+    #[serde(default)]
+    #[deprecated(note = "Perps ignores exchange_index; Kalshi will remove it")]
+    pub exchange_index: Option<u32>,
     pub market_version: i32,
     pub funding_deadband: f64,
     pub funding_cap: f64,
@@ -1307,7 +1314,28 @@ mod tests {
 
         assert_eq!(response.orders, vec!["a".to_string(), "b".to_string()]);
         assert!(response.is_auto_cancel_enabled);
-        assert_eq!(response.exchange_index, Some(3));
+        #[allow(deprecated)]
+        {
+            assert_eq!(response.exchange_index, Some(3));
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn margin_exchange_index_is_optional_deprecated() {
+        let mut fixture = serde_json::json!({
+            "ticker": "KXBTC", "status": "active", "title": "Bitcoin",
+            "contract_size": "1", "underlying_multiplier": "1", "tick_size": "0.01",
+            "fractional_trading_enabled": false, "schedule": null,
+            "market_version": 2, "funding_deadband": 0.0, "funding_cap": 0.1,
+            "funding_limit_unit": "percentage",
+            "funding_invalid_premium_handling": "exclude", "halt_sources": []
+        });
+        let market: MarginMarket = serde_json::from_value(fixture.clone()).unwrap();
+        assert_eq!(market.exchange_index, None);
+        fixture["exchange_index"] = 0.into();
+        let market: MarginMarket = serde_json::from_value(fixture).unwrap();
+        assert_eq!(market.exchange_index, Some(0));
     }
 
     #[test]
