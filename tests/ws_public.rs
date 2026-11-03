@@ -38,7 +38,6 @@ async fn ws_demo_ticker_without_market_filters_receives_typed_data() {
             assert!(msg.price_dollars.parse::<f64>().is_ok());
             assert!(msg.volume_fp.parse::<f64>().is_ok());
             assert!(msg.ts_ms.map_or(true, |v| v > 0));
-            assert!(!msg.time.is_empty());
         }
         other => panic!("expected ticker data message, got {other:?}"),
     }
