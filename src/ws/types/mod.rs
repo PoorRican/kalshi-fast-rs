@@ -52,6 +52,7 @@ impl<'a> MarketPositionRef<'a> {
             realized_pnl_dollars: self.realized_pnl_dollars.into_owned(),
             fees_paid_dollars: self.fees_paid_dollars.into_owned(),
             last_updated_ts: self.last_updated_ts.into_owned(),
+            netting_enabled: None,
         }
     }
 }

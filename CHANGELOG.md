@@ -9,6 +9,39 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-04
+
+### Compatibility
+
+- Docs snapshot: 2026-11-04
+- OpenAPI: 3.36.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-04
+
+### Breaking
+
+- [Rust API] Version bump is minor per `VERSIONING.md` (pre-1.0: a change likely to require downstream
+  code changes, such as a new public struct field breaking struct literals, is a minor release).
+- [Rust API] `MarketPosition` gains `netting_enabled: Option<bool>`.
+
+### Added
+
+- [Upstream] `MarketPosition.netting_enabled` (required in OpenAPI 3.36.0 for `/portfolio/positions`,
+  `/historical/positions`, `/fcm/positions`). Modeled as `Option` because the WebSocket
+  `market_positions` payload does not carry it (`None` there); see `docs/spec-parity.md`.
+
+### Changelog mapping (since 2026-11-02)
+
+- Nov 3 "Market positions include netting_enabled": field added above.
+- Nov 3 "Perps price band now limits crossing orders": server-side order validation (`invalid price`); no change needed.
+- Nov 4 "On-request RFQ markets are left out of unscoped market and trade lists": server-side filtering of
+  `KXRFQ*` series on `GET /markets`, `/historical/markets`, `/markets/trades`, `/historical/trades`; no
+  schema or parameter change in the YAML, no change needed.
+- Nov 4 "On-demand RFQ markets only on named subscriptions": server-side WebSocket subscription filtering
+  for `trade`/`ticker`/`market_lifecycle_v2`; no schema change, no change needed.
+
 ## [0.11.0] - 2026-11-03
 
 ### Compatibility

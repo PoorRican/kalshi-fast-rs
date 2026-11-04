@@ -97,3 +97,9 @@ Authenticated demo REST and WebSocket probes could not run because this
 checkout lacked `.env.test` and `test_key.pem`, with no authentication
 variables set. No order, quote, funding or administrative mutation was
 exercised; authenticated and perps runtime qualification remains separate.
+
+## Market position `netting_enabled`
+
+OpenAPI 3.36.0 lists `netting_enabled` as required on `MarketPosition`. The crate models it as
+`Option<bool>` because `MarketPositionRef::into_owned` (WebSocket `market_positions`, whose AsyncAPI
+payload has no such field) reuses the same type and yields `None`. REST responses always populate it.
