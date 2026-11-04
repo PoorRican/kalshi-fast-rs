@@ -103,6 +103,11 @@ pub struct MarketPosition {
     pub realized_pnl_dollars: FixedPointDollars,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
+    /// Whether netting applies to this position's event (fixed at the subaccount's first order
+    /// in the event). Required in REST responses; `None` when built from the WebSocket
+    /// `market_positions` payload, which does not carry it.
+    #[serde(default)]
+    pub netting_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
