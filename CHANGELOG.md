@@ -9,6 +9,37 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-05
+
+### Compatibility
+
+- Docs snapshot: 2026-11-05
+- OpenAPI: 3.36.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-04
+
+### Breaking
+
+- [Rust API] Version bump is minor per `VERSIONING.md` (pre-1.0: a change likely to require downstream
+  code changes is a minor release).
+- [Rust API] `MarketPosition` gains required `netting_enabled: bool` (REST `MarketPosition.required`).
+  The legacy `ws::MarketPositionRef` bridge has no such WebSocket field and defaults it to `false`.
+- [Rust API] `MarginMarket` gains required `minimum_quantity: String` (fixed-point contracts).
+
+### Changelog mapping (since 2026-11-02)
+
+- Nov 3 "Market positions include netting_enabled": added as above.
+- Nov 3 "Perps price band now limits crossing orders": server-side order validation; no change needed.
+- Nov 4 "Minimum order quantity in /margin/markets": `minimum_quantity` added.
+- Nov 4 "On-request RFQ markets left out of unscoped market and trade lists": server-side filtering of
+  `KXRFQ*` markets in `GET /markets`, `/historical/markets`, trades; no request/response shape change.
+- Nov 4 "On-demand RFQ markets only on named subscriptions": WebSocket server-side subscription
+  scoping; no shape change.
+- Nov 4 "Equities orders need an approved stocks application": new `stock_perps_application_required`
+  rejection; error codes are not enumerated in either spec, no change needed.
+
 ## [0.11.0] - 2026-11-03
 
 ### Compatibility

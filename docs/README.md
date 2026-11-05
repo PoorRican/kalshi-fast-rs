@@ -3,7 +3,8 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
-The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
+The unreleased `0.12.0` refresh is source-breaking (new required `MarketPosition::netting_enabled` and
+`MarginMarket::minimum_quantity`) on top of `0.11.0` (deprecated `no_sub_title` and
 Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
