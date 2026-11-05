@@ -34,6 +34,8 @@ AsyncAPI `info.version`; the snapshot date matters.
   trade/order/fill direction fields are modeled directly. Legacy direction
   fields still present as deprecated in the specs remain optional; read the
   normalized fields instead. See [order direction](https://docs.kalshi.com/getting_started/order_direction.md).
+- `MarketPosition.netting_enabled` is required in REST but absent from the WebSocket
+  `market_position` schema; the legacy `ws::MarketPositionRef` bridge defaults it to `false`.
 - Fixed-point values remain strings. Live candles use suffixed dollar/count
   fields; historical candle distributions have their own unsuffixed
   fixed-point dollar fields. Do not substitute integer cents or assume the two
