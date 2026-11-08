@@ -39,6 +39,7 @@ pub struct MarketPositionRef<'a> {
     pub fees_paid_dollars: FixedPointDollarsRef<'a>,
     #[serde(borrow)]
     pub last_updated_ts: Cow<'a, str>,
+    pub netting_enabled: bool,
 }
 
 impl<'a> MarketPositionRef<'a> {
@@ -52,6 +53,7 @@ impl<'a> MarketPositionRef<'a> {
             realized_pnl_dollars: self.realized_pnl_dollars.into_owned(),
             fees_paid_dollars: self.fees_paid_dollars.into_owned(),
             last_updated_ts: self.last_updated_ts.into_owned(),
+            netting_enabled: self.netting_enabled,
         }
     }
 }

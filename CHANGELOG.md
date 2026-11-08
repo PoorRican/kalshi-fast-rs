@@ -9,6 +9,38 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-06
+
+### Compatibility
+
+- Docs snapshot: 2026-11-06
+- OpenAPI: 3.36.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-06
+
+### Breaking
+
+- [Rust API] Version bump is minor per `VERSIONING.md` (pre-1.0: a change likely to require downstream
+  code changes, such as new required public struct fields, is a minor release).
+- [Rust API] `MarketPosition` (and borrowed `MarketPositionRef`) gain required `netting_enabled: bool`.
+- [Rust API] `MarginMarket` gains required `minimum_quantity: FixedPointCount`.
+
+### Changelog mapping (since 2026-11-02)
+
+- Nov 6 "API key signing algorithm metadata": no change needed; `ApiKeyType`/`key_type` already modeled.
+- Nov 6 "MCP portfolio access for perps" / "MCP access to settlements": OAuth grant scope, server-side; no change needed.
+- Nov 5 "market_lifecycle_v2 covers trading-hours closes": no change needed; `activated`/`deactivated` and
+  `is_deactivated` already modeled (only the description changed).
+- Nov 4 "Minimum order quantity in /margin/markets": `MarginMarket::minimum_quantity` (required in YAML).
+- Nov 4 "On-demand RFQ markets only on named subscriptions" and "left out of unscoped market and trade
+  lists": server-side filtering, no change needed.
+- Nov 4 "Equities orders need an approved stocks application": new server error code only; errors are
+  carried as strings, no change needed.
+- Nov 3 "Perps price band now limits crossing orders": server-side validation, no change needed.
+- Nov 3 "Market positions include netting_enabled": `MarketPosition::netting_enabled` (required in YAML).
+
 ## [0.11.0] - 2026-11-03
 
 ### Compatibility

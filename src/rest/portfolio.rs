@@ -103,6 +103,9 @@ pub struct MarketPosition {
     pub realized_pnl_dollars: FixedPointDollars,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
+    /// Whether netting applies to this position's event; set at the
+    /// subaccount's first order in the event.
+    pub netting_enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
