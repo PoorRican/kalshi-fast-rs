@@ -334,6 +334,8 @@ pub struct MarginMarket {
     pub underlying_multiplier: String,
     pub tick_size: String,
     pub fractional_trading_enabled: bool,
+    /// Minimum order quantity in contracts (fixed-point string).
+    pub minimum_quantity: String,
     /// Null for markets that trade around the clock.
     #[serde(deserialize_with = "Option::deserialize")]
     pub schedule: Option<MarginMarketSchedule>,
@@ -1326,7 +1328,7 @@ mod tests {
         let mut fixture = serde_json::json!({
             "ticker": "KXBTC", "status": "active", "title": "Bitcoin",
             "contract_size": "1", "underlying_multiplier": "1", "tick_size": "0.01",
-            "fractional_trading_enabled": false, "schedule": null,
+            "fractional_trading_enabled": false, "minimum_quantity": "1.00", "schedule": null,
             "market_version": 2, "funding_deadband": 0.0, "funding_cap": 0.1,
             "funding_limit_unit": "percentage",
             "funding_invalid_premium_handling": "exclude", "halt_sources": []
@@ -1348,6 +1350,7 @@ mod tests {
             "underlying_multiplier": "1",
             "tick_size": "0.010000",
             "fractional_trading_enabled": false,
+            "minimum_quantity": "0.01",
             "schedule": {"is_open": true, "next_close_ts": 1760000000, "next_open_ts": null},
             "exchange_index": 0,
             "market_version": 2,
@@ -1365,6 +1368,7 @@ mod tests {
         assert_eq!(schedule.next_open_ts, None);
         assert_eq!(market.bid_size_fp.as_deref(), Some("2.50"));
         assert!(!market.fractional_trading_enabled);
+        assert_eq!(market.minimum_quantity, "0.01");
 
         fixture["schedule"] = serde_json::Value::Null;
         let always_open: MarginMarket = serde_json::from_value(fixture.clone()).unwrap();

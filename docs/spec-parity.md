@@ -61,6 +61,9 @@ AsyncAPI `info.version`; the snapshot date matters.
   `#[deprecated]`, even where the spec lists them as required, so their eventual
   removal is not a second break. Perps ignores `exchange_index`; order groups can
   hold orders on any Perps market.
+- `MarketPosition::netting_enabled` and `MarginMarket::minimum_quantity` are required in the
+  published schemas and are non-optional. `MarketPositionRef` (borrowed REST mirror) carries the same field;
+  the WebSocket `market_positions` payload has no `netting_enabled`.
 - Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
   `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
 
