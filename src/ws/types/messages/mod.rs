@@ -42,6 +42,9 @@ pub use feeds::*;
 mod batches;
 pub use batches::*;
 
+mod ebattle;
+pub use ebattle::*;
+
 // Serde's blanket Cow deserializer allocates inside containers. The wrapper
 // preserves borrowing for unescaped strings and owns escaped strings.
 pub(super) fn deserialize_borrowed_strings<'de, D>(

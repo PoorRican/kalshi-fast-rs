@@ -21,8 +21,8 @@ High-performance async Rust client for the [Kalshi](https://kalshi.com) Trade AP
 - [`CHANGELOG.md`](CHANGELOG.md) records release history, compatibility blocks, and categorized change notes.
 - [`VERSIONING.md`](VERSIONING.md) defines crate version bump rules and explains how upstream Kalshi compatibility is tracked separately from the Cargo version.
 
-The unreleased `0.11.0` refresh uses the November 3, 2026 documentation snapshot
-(Predictions OpenAPI `3.35.0`; AsyncAPI `2.0.0`). See the changelog for the full
+The unreleased `0.11.0` refresh uses the November 10, 2026 documentation snapshot
+(Predictions OpenAPI `3.36.0`; AsyncAPI `2.0.0`). See the changelog for the full
 compatibility tuple and [migration guidance](docs/README.md). Published
 future-dated schemas are not a claim that Kalshi has deployed those features.
 Retired APIs, deprecated quote-detail aliases, unpublished `x-excluded` REST

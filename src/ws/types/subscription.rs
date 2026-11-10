@@ -119,6 +119,10 @@ pub struct WsUpdateSubscriptionParamsV2 {
     pub index_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub underlying_tickers: Option<Vec<String>>,
+    /// Kalshi milestone IDs for `ebattle_scores` (`subscribe_matches` /
+    /// `unsubscribe_matches`); `["all"]` selects every match.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub match_ids: Option<Vec<String>>,
 }
 
 impl WsUpdateSubscriptionParamsV2 {
@@ -149,6 +153,12 @@ pub enum WsUpdateAction {
     UnsubscribeUnderlyings,
     /// List recently observed Pyth underlyings without modifying the subscription.
     UnderlyingList,
+    /// Add `match_ids` to an `ebattle_scores` subscription (no initial snapshot or replay).
+    SubscribeMatches,
+    /// Remove `match_ids` from an `ebattle_scores` subscription.
+    UnsubscribeMatches,
+    /// List match IDs seen in the past two hours without modifying the subscription.
+    Matchlist,
 }
 
 impl WsUpdateAction {
@@ -160,6 +170,13 @@ impl WsUpdateAction {
             WsUpdateAction::SubscribeIndices
                 | WsUpdateAction::UnsubscribeIndices
                 | WsUpdateAction::Indexlist
+        )
+    }
+
+    pub fn is_match_action(self) -> bool {
+        matches!(
+            self,
+            Self::SubscribeMatches | Self::UnsubscribeMatches | Self::Matchlist
         )
     }
 
@@ -210,6 +227,35 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         .underlying_tickers
         .as_ref()
         .is_some_and(|v| !v.is_empty());
+
+    if params.action.is_match_action() {
+        if params.market_ticker.is_some()
+            || params.market_tickers.is_some()
+            || params.market_id.is_some()
+            || params.market_ids.is_some()
+            || params.index_ids.is_some()
+            || params.underlying_tickers.is_some()
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: match actions only support match_ids".to_string(),
+            ));
+        }
+        if matches!(
+            params.action,
+            WsUpdateAction::SubscribeMatches | WsUpdateAction::UnsubscribeMatches
+        ) && !params.match_ids.as_ref().is_some_and(|v| !v.is_empty())
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: subscribe_matches/unsubscribe_matches require match_ids"
+                    .to_string(),
+            ));
+        }
+        return Ok(());
+    } else if params.match_ids.is_some() {
+        return Err(KalshiError::InvalidParams(
+            "update_subscription: match_ids requires a match action".to_string(),
+        ));
+    }
 
     if params.action.is_underlying_action() {
         if params.market_ticker.is_some()
@@ -427,6 +473,35 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ebattle_match_actions_enforce_documented_target_combinations() {
+        let mk = |action, match_ids: Option<Vec<String>>| WsUpdateSubscriptionParamsV2 {
+            action,
+            sid: Some(3),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            index_ids: None,
+            underlying_tickers: None,
+            match_ids,
+        };
+        let ok = mk(WsUpdateAction::SubscribeMatches, Some(vec!["all".into()]));
+        validate_update(&ok).unwrap();
+        assert_eq!(
+            serde_json::to_value(&ok).unwrap(),
+            serde_json::json!({"action":"subscribe_matches","sid":3,"match_ids":["all"]})
+        );
+        validate_update(&mk(WsUpdateAction::Matchlist, None)).unwrap();
+        assert!(validate_update(&mk(WsUpdateAction::SubscribeMatches, None)).is_err());
+        assert!(validate_update(&mk(WsUpdateAction::UnsubscribeMatches, Some(vec![]))).is_err());
+        assert!(validate_update(&mk(WsUpdateAction::AddMarkets, Some(vec!["m".into()]))).is_err());
+        assert_eq!(WsChannelV2::EbattleScores.as_str(), "ebattle_scores");
+        assert!(WsChannelV2::EbattleScores.is_private());
+    }
+
     use super::*;
 
     #[test]
@@ -517,6 +592,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&both).is_err());
 
@@ -531,6 +607,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&multi).is_err());
 
@@ -545,6 +622,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&valid).is_ok());
     }
@@ -562,6 +640,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -579,6 +658,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -596,6 +676,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -613,6 +694,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&missing).is_err());
 
@@ -627,6 +709,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&ok).is_ok());
     }
@@ -644,6 +727,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -661,6 +745,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -678,6 +763,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }

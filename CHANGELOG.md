@@ -9,16 +9,16 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
-## [0.11.0] - 2026-11-03
+## [0.11.0] - 2026-11-10
 
 ### Compatibility
 
-- Docs snapshot: 2026-11-03
-- OpenAPI: 3.35.0
+- Docs snapshot: 2026-11-10
+- OpenAPI: 3.36.0
 - AsyncAPI: 2.0.0
 - Perps OpenAPI: 0.0.1
 - Perps AsyncAPI: 2.0.0
-- Validated through changelog: 2026-11-02
+- Validated through changelog: 2026-11-09
 
 ### Breaking
 
@@ -31,6 +31,10 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
   `user_order.side`, and `user_order.is_yes` are now `Option`; omitted and null
   deprecated fields decode as `None`.
 - [Rust API] `MarginMarket::exchange_index` is now `Option<u32>` (was `u32`); Perps ignores it.
+- [Rust API] `MarketPosition` has a new `netting_enabled: Option<bool>` field, `MarginMarket` a new
+  required `minimum_quantity: String`, and `WsUpdateSubscriptionParamsV2` a new `match_ids` field;
+  struct literals must add them. `WsChannelV2`, `WsUpdateAction`, `WsMsgType`, `WsDataMessageV2` and
+  `WsDataMessageRef` gain variants, so exhaustive matches must handle them.
 
 ### Deprecated
 
@@ -52,6 +56,22 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ### Changelog mapping (since 2026-10-29)
 
+- Nov 3 "Market positions include netting_enabled": `MarketPosition::netting_enabled` (required in
+  the REST schema; `Option` because WebSocket `market_positions` frames, which reuse the type, lack it).
+- Nov 3 "Perps price band now limits crossing orders": server-side matching rule, no change needed.
+- Nov 4 "Minimum order quantity in /margin/markets": `MarginMarket::minimum_quantity` (required).
+- Nov 4 "Equities orders need an approved stocks application", "On-request RFQ markets left out of
+  unscoped market and trade lists", "On-demand RFQ markets only on named subscriptions": server-side
+  filtering/errors (error codes are strings), no change needed.
+- Nov 5 "market_lifecycle_v2 covers trading-hours closes": behavioral, schema unchanged, no change needed.
+- Nov 6 "API key signing algorithm metadata": `ApiKey::key_type` already modeled as `Option`.
+- Nov 6 "MCP portfolio access for perps", "MCP access to settlements": OAuth scope policy, no change needed.
+- Nov 9 "eBattle live scores": new `ebattle_scores` channel (`WsChannelV2::EbattleScores`),
+  `subscribe_matches`/`unsubscribe_matches`/`matchlist` update actions with `match_ids`, and
+  `ebattle_scores` / `ebattle_scores_matchlist` messages. Match subscriptions are not replayed on
+  reconnect (the subscribe command has no `match_ids`); re-send `subscribe_matches` after reconnecting.
+- Nov 9 "Specific error codes for two RFQ create refusals", "Clearer insufficient_shard_balance error
+  details", "Clarified balance endpoint coverage": error codes are plain strings / docs only, no change needed.
 - Nov 2 "Market no_sub_title deprecated": deprecated + optional as above.
 - [Upstream] [Kalshi changelog](https://docs.kalshi.com/changelog.md): April 15
   deprecated legacy WebSocket timestamps; May 6 deprecated legacy direction fields;

@@ -20,6 +20,9 @@ pub enum WsChannelV2 {
     #[serde(rename = "cfbenchmarks_value_5hz")]
     CfbenchmarksValue5hz,
     PythValue,
+    /// eBattle live scores. Added 2026-11-09 (AsyncAPI 2.0.0); activate matches with
+    /// [`WsUpdateAction::SubscribeMatches`](crate::WsUpdateAction::SubscribeMatches).
+    EbattleScores,
 }
 impl WsChannelV2 {
     pub fn as_str(self) -> &'static str {
@@ -37,6 +40,7 @@ impl WsChannelV2 {
             Self::CfbenchmarksValue => "cfbenchmarks_value",
             Self::CfbenchmarksValue5hz => "cfbenchmarks_value_5hz",
             Self::PythValue => "pyth_value",
+            Self::EbattleScores => "ebattle_scores",
         }
     }
 
@@ -52,6 +56,7 @@ impl WsChannelV2 {
                 | Self::CfbenchmarksValue
                 | Self::CfbenchmarksValue5hz
                 | Self::PythValue
+                | Self::EbattleScores
         )
     }
 }

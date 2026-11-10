@@ -4,7 +4,8 @@
 - Spec notes: `docs/spec-parity.md`
 
 The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
-Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
+Perps `exchange_index` are now optional and `#[deprecated]`; `MarketPosition` gains `netting_enabled`,
+`MarginMarket` gains required `minimum_quantity`, and `WsUpdateSubscriptionParamsV2` gains `match_ids`) on top of the `0.10.0` cutover. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
 version or unchanged AsyncAPI version as a freshness signal.

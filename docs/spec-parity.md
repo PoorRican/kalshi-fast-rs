@@ -97,3 +97,13 @@ Authenticated demo REST and WebSocket probes could not run because this
 checkout lacked `.env.test` and `test_key.pem`, with no authentication
 variables set. No order, quote, funding or administrative mutation was
 exercised; authenticated and perps runtime qualification remains separate.
+
+## 3.36.0 notes
+
+- `MarketPosition.netting_enabled` is required in REST but modeled as `Option<bool>`
+  because the shared type is also built from WebSocket `market_positions` frames,
+  which do not carry it.
+- `ebattle_scores` `msg.data` is a JSON-encoded string; the crate exposes it raw with
+  a `data_json()` helper because its inner fields are documented as optional.
+  The subscribe command has no `match_ids`, so reconnect replay cannot restore
+  match selections; resend `subscribe_matches`.

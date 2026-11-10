@@ -103,6 +103,12 @@ pub struct MarketPosition {
     pub realized_pnl_dollars: FixedPointDollars,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
+    /// Whether netting applies to this position's event (set at the subaccount's
+    /// first order in the event). Required in the REST schema since 3.36.0; `None`
+    /// when absent, e.g. positions converted from WebSocket `market_positions`
+    /// frames, which do not carry it.
+    #[serde(default)]
+    pub netting_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -861,6 +867,21 @@ impl KalshiRestClient {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn market_position_netting_enabled_is_decoded_and_optional() {
+        let mut v = serde_json::json!({
+            "ticker": "T", "exchange_index": 0, "total_traded_dollars": "1.00",
+            "position_fp": "1.00", "market_exposure_dollars": "1.00",
+            "realized_pnl_dollars": "0.00", "fees_paid_dollars": "0.00",
+            "last_updated_ts": "2026-11-03T00:00:00Z", "netting_enabled": true
+        });
+        let p: MarketPosition = serde_json::from_value(v.clone()).unwrap();
+        assert_eq!(p.netting_enabled, Some(true));
+        v.as_object_mut().unwrap().remove("netting_enabled");
+        let p: MarketPosition = serde_json::from_value(v).unwrap();
+        assert_eq!(p.netting_enabled, None);
+    }
+
     use super::*;
     use serde_json::json;
 
