@@ -42,7 +42,7 @@ pub trait WsProtocol: private::Sealed + Send + 'static {
     type Channel: Channel;
     type SubscribeParams: Clone + Default + Serialize + Send + 'static;
     #[doc(hidden)]
-    type UpdateParams: Clone + Send + 'static;
+    type UpdateParams: Clone + Serialize + Send + 'static;
 
     fn ws_url(env: &KalshiEnvironment) -> &str;
     fn signing_path() -> &'static str;
@@ -58,6 +58,14 @@ pub trait WsProtocol: private::Sealed + Send + 'static {
     #[doc(hidden)]
     fn merge_subscribe(active: &mut Self::SubscribeParams, incoming: Self::SubscribeParams) {
         *active = incoming;
+    }
+    /// A client-side update to send once `sid` is acknowledged for `params`.
+    ///
+    /// Used where a channel's selection cannot be expressed in the subscribe
+    /// command itself (the eBattle match filter).
+    #[doc(hidden)]
+    fn follow_up_update(_sid: u64, _params: &Self::SubscribeParams) -> Option<Self::UpdateParams> {
+        None
     }
     #[doc(hidden)]
     fn take_subscribed(
@@ -91,6 +99,9 @@ fn project_event_options(params: &mut crate::ws::types::WsSubscriptionParamsV2) 
     }
     if !has(C::PythValue) {
         params.underlying_tickers = None;
+    }
+    if !has(C::EbattleScores) {
+        params.match_ids = None;
     }
 }
 
@@ -193,12 +204,14 @@ impl WsProtocol for EventContractProtocol {
             WsUpdateAction::AddMarkets
                 | WsUpdateAction::SubscribeIndices
                 | WsUpdateAction::SubscribeUnderlyings
+                | WsUpdateAction::SubscribeMatches
         );
         let remove = matches!(
             update.action,
             WsUpdateAction::DeleteMarkets
                 | WsUpdateAction::UnsubscribeIndices
                 | WsUpdateAction::UnsubscribeUnderlyings
+                | WsUpdateAction::UnsubscribeMatches
         );
         if !add && !remove {
             return;
@@ -207,6 +220,12 @@ impl WsProtocol for EventContractProtocol {
             apply_values(
                 &mut params.index_ids,
                 update.index_ids.as_deref().unwrap_or_default(),
+                add,
+            );
+        } else if update.action.is_match_action() {
+            apply_values(
+                &mut params.match_ids,
+                update.match_ids.as_deref().unwrap_or_default(),
                 add,
             );
         } else if update.action.is_underlying_action() {
@@ -264,7 +283,29 @@ impl WsProtocol for EventContractProtocol {
             crate::ws::types::WsUpdateAction::GetSnapshot
                 | crate::ws::types::WsUpdateAction::Indexlist
                 | crate::ws::types::WsUpdateAction::UnderlyingList
+                | crate::ws::types::WsUpdateAction::Matchlist
         )
+    }
+
+    fn follow_up_update(sid: u64, params: &Self::SubscribeParams) -> Option<Self::UpdateParams> {
+        use crate::ws::types::{WsChannelV2, WsUpdateAction, WsUpdateSubscriptionParamsV2};
+        if !params.channels.contains(&WsChannelV2::EbattleScores) {
+            return None;
+        }
+        let match_ids = params.match_ids.clone().filter(|ids| !ids.is_empty())?;
+        Some(WsUpdateSubscriptionParamsV2 {
+            action: WsUpdateAction::SubscribeMatches,
+            sid: Some(sid),
+            sids: None,
+            market_ticker: None,
+            market_tickers: None,
+            market_id: None,
+            market_ids: None,
+            send_initial_snapshot: None,
+            index_ids: None,
+            underlying_tickers: None,
+            match_ids: Some(match_ids),
+        })
     }
 
     fn merge_subscribe(active: &mut Self::SubscribeParams, incoming: Self::SubscribeParams) {

@@ -39,6 +39,17 @@ pub struct WsSubscriptionParamsV2 {
     /// Pyth underlyings to seed, or `["all"]`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub underlying_tickers: Option<Vec<String>>,
+    /// eBattle match IDs (Kalshi milestone IDs), or `["all"]`, for an
+    /// `ebattle_scores` subscription.
+    ///
+    /// The exchange's subscribe command has no match filter: a new
+    /// `ebattle_scores` subscription is empty until `subscribe_matches` is sent.
+    /// This field is therefore never put on the wire in the subscribe command.
+    /// The managed client sends a follow-up `subscribe_matches` update once the
+    /// subscription is acknowledged, and repeats it after a reconnect replay.
+    /// The low-level client rejects it; send `subscribe_matches` yourself.
+    #[serde(default, skip_serializing)]
+    pub match_ids: Option<Vec<String>>,
 }
 
 impl WsSubscriptionParamsV2 {
@@ -119,6 +130,10 @@ pub struct WsUpdateSubscriptionParamsV2 {
     pub index_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub underlying_tickers: Option<Vec<String>>,
+    /// eBattle match IDs to add or remove. Required for `subscribe_matches` /
+    /// `unsubscribe_matches`; use `["all"]` to select every match.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub match_ids: Option<Vec<String>>,
 }
 
 impl WsUpdateSubscriptionParamsV2 {
@@ -149,6 +164,13 @@ pub enum WsUpdateAction {
     UnsubscribeUnderlyings,
     /// List recently observed Pyth underlyings without modifying the subscription.
     UnderlyingList,
+    /// Add eBattle match IDs to an `ebattle_scores` subscription.
+    SubscribeMatches,
+    /// Remove eBattle match IDs from an `ebattle_scores` subscription.
+    UnsubscribeMatches,
+    /// List eBattle match IDs seen within the past two hours without modifying
+    /// the subscription.
+    Matchlist,
 }
 
 impl WsUpdateAction {
@@ -167,6 +189,14 @@ impl WsUpdateAction {
         matches!(
             self,
             Self::SubscribeUnderlyings | Self::UnsubscribeUnderlyings | Self::UnderlyingList
+        )
+    }
+
+    /// Whether this action operates on eBattle match IDs.
+    pub fn is_match_action(self) -> bool {
+        matches!(
+            self,
+            Self::SubscribeMatches | Self::UnsubscribeMatches | Self::Matchlist
         )
     }
 }
@@ -210,6 +240,33 @@ pub(crate) fn validate_update(params: &WsUpdateSubscriptionParamsV2) -> Result<(
         .underlying_tickers
         .as_ref()
         .is_some_and(|v| !v.is_empty());
+
+    let has_match_ids = params.match_ids.as_ref().is_some_and(|v| !v.is_empty());
+    if params.action.is_match_action() {
+        if params.market_ticker.is_some()
+            || params.market_tickers.is_some()
+            || params.market_id.is_some()
+            || params.market_ids.is_some()
+            || params.index_ids.is_some()
+            || params.underlying_tickers.is_some()
+        {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: match actions do not support market, index or underlying targets"
+                    .to_string(),
+            ));
+        }
+        if params.action != WsUpdateAction::Matchlist && !has_match_ids {
+            return Err(KalshiError::InvalidParams(
+                "update_subscription: subscribe_matches/unsubscribe_matches require match_ids"
+                    .to_string(),
+            ));
+        }
+        return Ok(());
+    } else if params.match_ids.is_some() {
+        return Err(KalshiError::InvalidParams(
+            "update_subscription: match_ids requires a match action".to_string(),
+        ));
+    }
 
     if params.action.is_underlying_action() {
         if params.market_ticker.is_some()
@@ -318,6 +375,7 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
             .underlying_tickers
             .as_ref()
             .is_some_and(Vec::is_empty)
+        || params.match_ids.as_ref().is_some_and(Vec::is_empty)
     {
         return Err(KalshiError::InvalidParams(
             "subscribe: provided target lists must not be empty".to_string(),
@@ -407,6 +465,12 @@ pub(crate) fn validate_subscription(params: &WsSubscriptionParamsV2) -> Result<(
     if has_any_market_ids && has_market_positions {
         return Err(KalshiError::InvalidParams(
             "subscribe: market_positions only supports market_tickers".to_string(),
+        ));
+    }
+
+    if params.match_ids.is_some() && !params.channels.contains(&WsChannelV2::EbattleScores) {
+        return Err(KalshiError::InvalidParams(
+            "subscribe: match_ids is only valid with ebattle_scores".to_string(),
         ));
     }
 
@@ -517,6 +581,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&both).is_err());
 
@@ -531,6 +596,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&multi).is_err());
 
@@ -545,6 +611,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&valid).is_ok());
     }
@@ -562,6 +629,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -579,6 +647,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -596,6 +665,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -613,6 +683,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&missing).is_err());
 
@@ -627,6 +698,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&ok).is_ok());
     }
@@ -644,6 +716,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_ok());
     }
@@ -661,6 +734,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -678,6 +752,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         assert!(validate_update(&params).is_err());
     }
@@ -746,5 +821,52 @@ mod tests {
         params.update_interval_ms = None;
         params.user_filter = Some("other".into());
         assert!(validate_subscription(&params).is_err());
+    }
+
+    #[test]
+    fn ebattle_match_actions_and_subscribe_targets_are_validated() {
+        let base: WsUpdateSubscriptionParamsV2 = serde_json::from_value(
+            serde_json::json!({"action":"subscribe_matches","sid":1,"match_ids":["all"]}),
+        )
+        .unwrap();
+        assert!(validate_update(&base).is_ok());
+        assert_eq!(
+            serde_json::to_value(&base).unwrap(),
+            serde_json::json!({"action":"subscribe_matches","sid":1,"match_ids":["all"]})
+        );
+        for invalid in [
+            serde_json::json!({"action":"subscribe_matches","sid":1}),
+            serde_json::json!({"action":"unsubscribe_matches","sid":1,"match_ids":[]}),
+            serde_json::json!({"action":"subscribe_matches","sid":1,"match_ids":["a"],"market_ticker":"T"}),
+            serde_json::json!({"action":"add_markets","sid":1,"market_ticker":"T","match_ids":["a"]}),
+        ] {
+            let params: WsUpdateSubscriptionParamsV2 = serde_json::from_value(invalid).unwrap();
+            assert!(validate_update(&params).is_err());
+        }
+        let list: WsUpdateSubscriptionParamsV2 =
+            serde_json::from_value(serde_json::json!({"action":"matchlist","sid":1})).unwrap();
+        assert!(validate_update(&list).is_ok());
+
+        let ok = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::EbattleScores],
+            match_ids: Some(vec!["all".into()]),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&ok).is_ok());
+        assert_eq!(
+            serde_json::to_value(&ok).unwrap(),
+            serde_json::json!({"channels":["ebattle_scores"]})
+        );
+        let wrong_channel = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::Ticker],
+            match_ids: Some(vec!["all".into()]),
+            ..Default::default()
+        };
+        assert!(validate_subscription(&wrong_channel).is_err());
+        let empty = WsSubscriptionParamsV2 {
+            match_ids: Some(vec![]),
+            ..ok
+        };
+        assert!(validate_subscription(&empty).is_err());
     }
 }

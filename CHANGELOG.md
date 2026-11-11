@@ -9,6 +9,77 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-11
+
+### Compatibility
+
+- Docs snapshot: 2026-11-11
+- OpenAPI: 3.36.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-11
+
+### Breaking
+
+- [Rust API] Version bump is minor per `VERSIONING.md` ("Bump `minor` if [...] public types or
+  method names change, or if downstream consumers are likely to need code changes"; pre-1.0, any
+  breaking Rust API change is a minor release). Every item below is source-breaking only for
+  exhaustive struct literals or exhaustive `match`es.
+- [Rust API] New public fields: `WsSubscriptionParamsV2::match_ids`,
+  `WsUpdateSubscriptionParamsV2::match_ids` (no `Default`, so literals must add `match_ids: None`),
+  `WsOkPayload(Ref)::match_ids`, `GetIncentiveProgramsParams::{series_ticker, event_ticker}`,
+  `IncentiveProgram::{series_ticker, event_ticker}`, `ApiKey::key_type`, and
+  `MarginMarket::minimum_quantity`.
+- [Rust API] New enum variants: `WsChannelV2::EbattleScores`, `WsMsgType::{EbattleScores,
+  EbattleScoresMatchlist}`, `WsDataMessageV2`/`WsDataMessageRef::{EbattleScores,
+  EbattleScoresMatchlist}`, and `WsUpdateAction::{SubscribeMatches, UnsubscribeMatches, Matchlist}`.
+- [Rust API] `MarginMarket::minimum_quantity` is required, as in the perps OpenAPI; a
+  `/margin/markets` response without it no longer decodes.
+
+### Added
+
+- [Rust API] `ebattle_scores` WebSocket channel (eSoccer/eFootball and eBasketball scores):
+  owned and borrowed `WsEbattleScores` / `WsEbattleScoresMatchlist` payloads, the
+  `subscribe_matches` / `unsubscribe_matches` / `matchlist` update actions, and validation
+  (code 23 cases rejected locally). The subscribe command has no match filter, so the managed client
+  sends `match_ids` as a follow-up `subscribe_matches` once the SID is acknowledged and again after
+  reconnect replay. The low-level client rejects `match_ids`.
+- [Rust API] `get_incentive_schedules()` (`GET /incentive_schedules`) with `IncentiveSchedule`.
+- [Rust API] `create_weather_point_market()` (`POST /weather_point_markets`, authenticated, write
+  budget) and `get_weather_point_availability()` with typed variable/strike enums and local
+  threshold/hour validation.
+
+### Fixed
+
+- [Rust API] With `retry_non_idempotent`, a 429 whose code is `open_rfq_limit_exceeded` or
+  `weather_point_market_limit_exceeded` is returned immediately; Kalshi documents that retrying
+  those quota refusals does not help. Rate-limit 429s still retry.
+
+### Changelog mapping (since 2026-11-02)
+
+- Nov 11 "Incentive schedules, and incentive programs by series or event": schedules endpoint plus
+  program filters and fields, as above.
+- Nov 11 "Update IDs on FIX market data": no change needed; FIX is not implemented.
+- Nov 10 "Lower Security Status subscription cost": no change needed; FIX is not implemented.
+- Nov 10 "Short public caching on Get Market and Get Event": no change needed; no schema change.
+  Noted in `docs/spec-parity.md` (reads may be up to 5 s stale).
+- Nov 10 "Create on-request weather markets": weather point endpoints, as above.
+- Nov 9 "Clarified balance endpoint coverage": no change needed; prose only. `GetBalanceResponse`,
+  `IndexedBalance` and `SubaccountBalance` checked field by field against the YAML.
+- Nov 9 "Specific error codes for two RFQ create refusals": codes already surface through
+  `ErrorResponse::code`; retry guard added as above. FIX text is out of scope.
+- Nov 9 "Clearer insufficient_shard_balance error details": no change needed; `details` passes through.
+- Nov 9 "eBattle live scores": `ebattle_scores` channel, as above.
+- Nov 6 "API key signing algorithm metadata": `ApiKey::key_type` (optional: omitted when unknown).
+- Nov 6 "MCP portfolio access for perps" / "MCP access to settlements": no change needed; these are
+  OAuth `read::mcp_portfolio` grants, and the crate signs with API keys.
+- Nov 5 "market_lifecycle_v2 covers trading-hours closes": no change needed; perps
+  `MarketLifecycleV2Msg` already models `activated`/`deactivated` and `is_deactivated`.
+- Nov 4 "Minimum order quantity in /margin/markets": `MarginMarket::minimum_quantity`.
+- Nov 4 "On-demand RFQ markets only on named subscriptions": no change needed; this is server-side
+  filtering. Noted in `docs/spec-parity.md`.
+
 ## [0.11.0] - 2026-11-03
 
 ### Compatibility

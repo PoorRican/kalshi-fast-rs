@@ -20,6 +20,9 @@ pub enum WsChannelV2 {
     #[serde(rename = "cfbenchmarks_value_5hz")]
     CfbenchmarksValue5hz,
     PythValue,
+    /// eSoccer/eFootball and eBasketball live scores. Authenticated; select
+    /// matches with `subscribe_matches` after the subscription is acknowledged.
+    EbattleScores,
 }
 impl WsChannelV2 {
     pub fn as_str(self) -> &'static str {
@@ -37,6 +40,7 @@ impl WsChannelV2 {
             Self::CfbenchmarksValue => "cfbenchmarks_value",
             Self::CfbenchmarksValue5hz => "cfbenchmarks_value_5hz",
             Self::PythValue => "pyth_value",
+            Self::EbattleScores => "ebattle_scores",
         }
     }
 
@@ -52,6 +56,7 @@ impl WsChannelV2 {
                 | Self::CfbenchmarksValue
                 | Self::CfbenchmarksValue5hz
                 | Self::PythValue
+                | Self::EbattleScores
         )
     }
 }
@@ -83,6 +88,7 @@ mod tests {
         assert!(WsChannelV2::MarketPositions.is_private());
         assert!(WsChannelV2::Communications.is_private());
         assert!(WsChannelV2::OrderGroupUpdates.is_private());
+        assert!(WsChannelV2::EbattleScores.is_private());
 
         assert!(!WsChannelV2::Ticker.is_private());
         assert!(!WsChannelV2::Trade.is_private());

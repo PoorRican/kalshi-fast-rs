@@ -763,6 +763,33 @@ async fn test_get_incentive_programs() {
 }
 
 #[tokio::test]
+async fn test_get_incentive_schedules() {
+    let client = common::demo_client();
+    tokio::time::timeout(common::TEST_TIMEOUT, client.get_incentive_schedules())
+        .await
+        .expect("timeout")
+        .expect("request failed");
+}
+
+#[tokio::test]
+async fn test_get_weather_point_availability() {
+    let client = common::demo_client();
+    let resp = tokio::time::timeout(
+        common::TEST_TIMEOUT,
+        client.get_weather_point_availability(),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+    assert!(resp.variables.iter().all(|variable| {
+        variable
+            .domains
+            .iter()
+            .all(|name| resp.domains.iter().any(|domain| &domain.name == name))
+    }));
+}
+
+#[tokio::test]
 async fn test_get_markets_all() {
     let client = common::demo_client();
     let events = tokio::time::timeout(common::TEST_TIMEOUT, async {

@@ -180,6 +180,10 @@ pub enum ApiKeyType {
 pub struct ApiKey {
     pub api_key_id: String,
     pub name: String,
+    /// Signing algorithm, derived from the stored public key. `None` when the
+    /// exchange cannot determine it.
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
     #[serde(default)]
@@ -563,5 +567,18 @@ mod tests {
             response.volume_progress[0].goals[0].keep_volume_goal_fp,
             "100000.00"
         );
+    }
+
+    #[test]
+    fn api_key_listing_reports_optional_key_type() {
+        let response: GetApiKeysResponse = serde_json::from_str(
+            r#"{"api_keys":[
+                {"api_key_id":"a","name":"rsa","key_type":"rsa","scopes":["read"]},
+                {"api_key_id":"b","name":"unknown","scopes":["read"]}
+            ]}"#,
+        )
+        .unwrap();
+        assert_eq!(response.api_keys[0].key_type, Some(ApiKeyType::Rsa));
+        assert_eq!(response.api_keys[1].key_type, None);
     }
 }

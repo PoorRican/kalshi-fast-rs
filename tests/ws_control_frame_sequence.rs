@@ -240,6 +240,16 @@ fn control_payloads_preserve_metadata_and_borrow_filter_strings() {
         other => panic!("expected owned acknowledgement, got {other:?}"),
     }
 
+    let matches = br#"{"type":"ok","sid":8,"seq":2,"msg":{"match_ids":["all"]}}"#;
+    match WsMessageRef::from_bytes(matches).unwrap() {
+        WsMessageRef::Ok { msg: Some(msg), .. } => {
+            let ids = msg.match_ids.as_ref().unwrap();
+            assert_borrowed_from(matches, &ids[0]);
+            assert_eq!(msg.into_owned().match_ids.unwrap(), ["all"]);
+        }
+        other => panic!("expected match filter acknowledgement, got {other:?}"),
+    }
+
     let list = br#"{"type":"ok","id":3,"sending_ts_ms":125,"msg":[{"channel":"ticker","sid":10}]}"#;
     let parsed = WsMessageRef::from_bytes(list).unwrap();
     match &parsed {
@@ -300,6 +310,14 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
             r#"{"underlying_tickers":["Metal.XAU/USD"]}"#,
         ),
         (
+            "ebattle_scores",
+            r#"{"event_id":"KXEBATTLE-1","match_id":"milestone-1","received_at":1762876800000,"data":"{\"game\":\"esoccer\",\"status\":\"live\",\"home_score\":1}"}"#,
+        ),
+        (
+            "ebattle_scores_matchlist",
+            r#"{"match_ids":["milestone-1","milestone-2"]}"#,
+        ),
+        (
             "rfq_batch_created",
             r#"{"id":"batch","creator_id":"creator","created_ts":"2024-12-01T10:00:00Z","legs":[],"rfqs":[]}"#,
         ),
@@ -338,6 +356,16 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
                 "cfbenchmarks_value_5hz_indexlist"
             }
             WsMessageV2::Data(WsDataMessageV2::PythValue { .. }) => "pyth_value",
+            WsMessageV2::Data(WsDataMessageV2::EbattleScores { msg, .. }) => {
+                assert_eq!(msg.match_id, "milestone-1");
+                let state: serde_json::Value = serde_json::from_str(&msg.data).unwrap();
+                assert_eq!(state["home_score"], 1);
+                "ebattle_scores"
+            }
+            WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist { msg, .. }) => {
+                assert_eq!(msg.match_ids, ["milestone-1", "milestone-2"]);
+                "ebattle_scores_matchlist"
+            }
             WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { .. }) => {
                 "pyth_value_underlying_list"
             }

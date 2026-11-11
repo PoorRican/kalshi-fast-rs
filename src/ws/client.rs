@@ -287,8 +287,13 @@ impl<P: WsProtocol> GenericWsClient<P> {
         match bytes {
             Ok(bytes) => match P::parse_message(&bytes) {
                 Ok(msg) => {
-                    if let Some(action) = P::control_action(&msg) {
-                        self.tracker.lock().await.handle_control_action(action);
+                    if let Some(action) = P::control_action(&msg)
+                        && self.tracker.lock().await.handle_control_action(action)
+                        && let Some(client) = self.client.as_mut()
+                        && let Err(err) =
+                            crate::ws::reader::send_follow_ups(client, &self.tracker).await
+                    {
+                        return self.reconnect_loop(err).await;
                     }
                     Ok(WsEvent::Message(msg))
                 }
@@ -588,6 +593,71 @@ mod tests {
         }
     }
 
+    async fn ebattle_follow_up_server(
+        listener: TcpListener,
+    ) -> (serde_json::Value, serde_json::Value) {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("accept ws");
+        async fn next_json(
+            ws: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+        ) -> serde_json::Value {
+            let Some(Ok(Message::Text(text))) = ws.next().await else {
+                panic!("expected text command");
+            };
+            serde_json::from_str(&text).expect("command JSON")
+        }
+        let subscribe = next_json(&mut ws).await;
+        ws.send(Message::Text(
+            json!({"type": "subscribed", "id": subscribe["id"], "sid": 5,
+                   "msg": {"channel": "ebattle_scores", "sid": 5}})
+            .to_string(),
+        ))
+        .await
+        .expect("send subscribed");
+        let update = next_json(&mut ws).await;
+        (subscribe, update)
+    }
+
+    #[tokio::test]
+    async fn ebattle_match_ids_are_sent_as_follow_up_after_ack() {
+        for reader in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            let server = tokio::spawn(ebattle_follow_up_server(listener));
+            let mut client = KalshiWsClient::connect_authenticated(
+                test_env(addr),
+                load_test_auth(),
+                WsReconnectConfig::default(),
+            )
+            .await
+            .expect("connect");
+            client
+                .subscribe_v2(WsSubscriptionParamsV2 {
+                    channels: vec![WsChannelV2::EbattleScores],
+                    match_ids: Some(vec!["all".to_string()]),
+                    ..Default::default()
+                })
+                .await
+                .expect("subscribe");
+            if reader {
+                let events = client
+                    .start_reader_v2(WsReaderConfig::default())
+                    .await
+                    .expect("reader");
+                let _ = events.next().await;
+            } else {
+                let _ = client.next_event_v2().await.expect("subscribed");
+            }
+            let (subscribe, update) = server.await.expect("server");
+            assert_eq!(subscribe["params"], json!({"channels": ["ebattle_scores"]}));
+            assert_eq!(update["cmd"], "update_subscription");
+            assert_eq!(
+                update["params"],
+                json!({"action": "subscribe_matches", "sid": 5, "match_ids": ["all"]})
+            );
+        }
+    }
+
     #[tokio::test]
     async fn inline_next_event_promotes_subscribed_tracker() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -651,6 +721,7 @@ mod tests {
                 send_initial_snapshot: None,
                 index_ids: None,
                 underlying_tickers: None,
+                match_ids: None,
             })
             .await
             .expect("update");
@@ -770,6 +841,7 @@ mod tests {
                 send_initial_snapshot: None,
                 index_ids: None,
                 underlying_tickers: None,
+                match_ids: None,
             })
             .await
             .expect("update after reconnect");
@@ -921,6 +993,7 @@ mod tests {
                 send_initial_snapshot: None,
                 index_ids: None,
                 underlying_tickers: None,
+                match_ids: None,
             })
             .await
             .expect("update");

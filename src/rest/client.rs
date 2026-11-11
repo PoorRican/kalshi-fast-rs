@@ -1,7 +1,7 @@
 use crate::rest::events::GetEventForecastPercentileHistoryParams;
 use crate::rest::rate_limit::{RateLimitConfig, RateLimitTier, RateLimiter, rate_limit_kind};
 use crate::rest::retry::{
-    RetryConfig, build_http_error, retry_after_delay, retryable_reqwest_error, retryable_status,
+    RetryConfig, build_http_error, retry_after_delay, retryable_reqwest_error, retryable_response,
 };
 use crate::rest::structured_targets::GetStructuredTargetsParams;
 use crate::{KalshiAuth, KalshiEnvironment, KalshiError, REST_PREFIX};
@@ -346,7 +346,7 @@ impl KalshiRestClient {
 
                     let should_retry = retry_number < self.retry_config.max_retries
                         && self.retry_config.allows_method(&method)
-                        && retryable_status(status);
+                        && retryable_response(status, &bytes);
 
                     if should_retry {
                         retry_number = retry_number.saturating_add(1);

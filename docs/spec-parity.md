@@ -61,6 +61,19 @@ AsyncAPI `info.version`; the snapshot date matters.
   `#[deprecated]`, even where the spec lists them as required, so their eventual
   removal is not a second break. Perps ignores `exchange_index`; order groups can
   hold orders on any Perps market.
+- eBattle `match_ids` cannot go in the subscribe command. A new `ebattle_scores`
+  SID is empty until `subscribe_matches`. The managed client therefore keeps
+  `match_ids` as client-side intent, never serializes it on subscribe, and sends a
+  follow-up `subscribe_matches` after each acknowledgement, including after reconnect
+  replay. `msg.data` stays a raw JSON string because its fields are only described in
+  prose. Approval to use the channel is temporary and may be withdrawn.
+- `KXRFQ` on-request markets, including weather point markets, are left out of
+  unscoped market listings and unscoped `trade`/`ticker`/`market_lifecycle_v2`
+  feeds. Name them explicitly. `GET /markets/{ticker}` can briefly 404 right after
+  `create_weather_point_market`, and Get Market/Get Event may be served from a
+  cache up to 5 s old.
+- `MarginMarket::minimum_quantity` is required, following the YAML. It was added
+  to responses on November 4, so it is not modelled as a rollout `Option`.
 - Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
   `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
 
@@ -97,3 +110,7 @@ Authenticated demo REST and WebSocket probes could not run because this
 checkout lacked `.env.test` and `test_key.pem`, with no authentication
 variables set. No order, quote, funding or administrative mutation was
 exercised; authenticated and perps runtime qualification remains separate.
+
+The November 11 refresh ran no live probes: this environment's network policy
+blocks the Kalshi API hosts. The new REST endpoints, `ebattle_scores` and
+`minimum_quantity` are therefore checked against the YAML and published examples only.

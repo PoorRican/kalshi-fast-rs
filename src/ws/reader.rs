@@ -136,21 +136,52 @@ pub(crate) async fn handle_incoming_message<P: WsProtocol>(
         Message::Pong(_) => Ok(()),
         Message::Close(frame) => Err(close_error(frame.as_ref())),
         Message::Text(text) => {
-            handle_payload::<P>(Bytes::from(text), tracker, event_tx, mode).await
+            if handle_payload::<P>(Bytes::from(text), tracker, event_tx, mode).await? {
+                send_follow_ups(client, tracker).await?;
+            }
+            Ok(())
         }
         Message::Binary(data) => {
-            handle_payload::<P>(Bytes::from(data), tracker, event_tx, mode).await
+            if handle_payload::<P>(Bytes::from(data), tracker, event_tx, mode).await? {
+                send_follow_ups(client, tracker).await?;
+            }
+            Ok(())
         }
         _ => Ok(()),
     }
 }
 
+/// Send client-side follow-up updates owed to newly acknowledged subscriptions.
+pub(crate) async fn send_follow_ups<P: WsProtocol>(
+    client: &mut WsLowLevelClient<P>,
+    tracker: &Arc<Mutex<SubscriptionTracker<P>>>,
+) -> Result<(), KalshiError> {
+    let follow_ups = tracker.lock().await.take_follow_ups();
+    for (id, params) in follow_ups {
+        let cmd = crate::ws::types::WsUpdateSubscriptionCmd {
+            id,
+            cmd: "update_subscription",
+            params,
+        };
+        let sent = match serde_json::to_string(&cmd) {
+            Ok(text) => client.send_raw(Message::Text(text)).await,
+            Err(err) => Err(err.into()),
+        };
+        if let Err(err) = sent {
+            tracker.lock().await.drop_pending_update(id);
+            return Err(err);
+        }
+    }
+    Ok(())
+}
+
+/// Returns `true` when the payload left follow-up updates to send.
 pub(crate) fn handle_payload<'a, P: WsProtocol>(
     bytes: Bytes,
     tracker: &'a Arc<Mutex<SubscriptionTracker<P>>>,
     event_tx: &'a mpsc::Sender<ReaderItem<P::Message>>,
     mode: WsReaderMode,
-) -> impl Future<Output = Result<(), KalshiError>> + 'a {
+) -> impl Future<Output = Result<bool, KalshiError>> + 'a {
     let available_at = {
         #[cfg(feature = "timed-reader")]
         {
@@ -162,11 +193,12 @@ pub(crate) fn handle_payload<'a, P: WsProtocol>(
         }
     };
     async move {
+        let mut follow_up = false;
         match mode {
             WsReaderMode::Owned => {
                 let msg = P::parse_message(&bytes)?;
                 if let Some(action) = P::control_action(&msg) {
-                    tracker.lock().await.handle_control_action(action);
+                    follow_up = tracker.lock().await.handle_control_action(action);
                 }
                 event_tx
                     .send(wrap_event(WsEvent::Message(msg), available_at))
@@ -176,7 +208,7 @@ pub(crate) fn handle_payload<'a, P: WsProtocol>(
             WsReaderMode::Raw => {
                 let raw = crate::ws::types::WsRawEvent::new(bytes);
                 if let Ok(Some(action)) = parse_control_message(raw.as_slice()) {
-                    tracker.lock().await.handle_control_action(action);
+                    follow_up = tracker.lock().await.handle_control_action(action);
                 }
                 event_tx
                     .send(wrap_event(WsEvent::Raw(raw), available_at))
@@ -184,7 +216,7 @@ pub(crate) fn handle_payload<'a, P: WsProtocol>(
                     .map_err(|_| KalshiError::Ws("websocket reader closed".to_string()))?;
             }
         }
-        Ok(())
+        Ok(follow_up)
     }
 }
 

@@ -3,8 +3,11 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
-The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
-Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
+The unreleased `0.12.0` refresh is source-breaking for exhaustive struct literals and
+matches: it adds the `ebattle_scores` channel, `match_ids` selectors, incentive
+schedules, weather point markets, `ApiKey::key_type` and the required Perps
+`minimum_quantity`. It sits on top of `0.11.0`, which made deprecated `no_sub_title`
+and Perps `exchange_index` optional and `#[deprecated]`. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
 version or unchanged AsyncAPI version as a freshness signal.

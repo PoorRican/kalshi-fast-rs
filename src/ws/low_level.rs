@@ -182,8 +182,17 @@ impl<P: WsProtocol> WsLowLevelClient<P> {
     }
 
     /// Subscribe to one or more channels. Returns the command `id`.
+    ///
+    /// The low-level client keeps no subscription state, so it rejects
+    /// selections that need a follow-up command after the acknowledgement
+    /// (such as eBattle `match_ids`); send that update yourself.
     pub async fn subscribe(&mut self, params: P::SubscribeParams) -> Result<u64, KalshiError> {
         P::validate_subscribe(&params)?;
+        if P::follow_up_update(0, &params).is_some() {
+            return Err(KalshiError::InvalidParams(
+                "subscribe: the low-level client cannot apply match_ids; send subscribe_matches after the subscription is acknowledged".to_string(),
+            ));
+        }
         let id = self.next_id;
         self.next_id += 1;
         self.send_subscribe(id, params).await?;

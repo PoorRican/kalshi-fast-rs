@@ -8,6 +8,8 @@ pub(crate) struct SubscriptionTracker<P: WsProtocol = EventContractProtocol> {
     active: HashMap<u64, P::SubscribeParams>,
     pending_unsubscribes: BTreeMap<u64, Vec<u64>>,
     pending_updates: BTreeMap<u64, P::UpdateParams>,
+    /// Client-side updates owed to acknowledged subscriptions, not yet sent.
+    follow_ups: Vec<(u64, P::UpdateParams)>,
 }
 
 impl<P: WsProtocol> Default for SubscriptionTracker<P> {
@@ -18,6 +20,7 @@ impl<P: WsProtocol> Default for SubscriptionTracker<P> {
             active: HashMap::new(),
             pending_unsubscribes: BTreeMap::new(),
             pending_updates: BTreeMap::new(),
+            follow_ups: Vec::new(),
         }
     }
 }
@@ -62,7 +65,9 @@ impl<P: WsProtocol> SubscriptionTracker<P> {
         P::apply_update(&mut self.active, update);
     }
 
-    pub(crate) fn handle_control_action(&mut self, action: ControlAction) {
+    /// Apply a control frame. Returns `true` when follow-up updates are owed;
+    /// drain them with [`Self::take_follow_ups`].
+    pub(crate) fn handle_control_action(&mut self, action: ControlAction) -> bool {
         match action {
             ControlAction::Subscribed {
                 cmd_id,
@@ -83,6 +88,13 @@ impl<P: WsProtocol> SubscriptionTracker<P> {
                 self.drop_pending_update(cmd_id);
             }
         }
+        !self.follow_ups.is_empty()
+    }
+
+    /// Take the owed follow-up updates. Each is already recorded as a pending
+    /// update under its command ID; drop it on a local send failure.
+    pub(crate) fn take_follow_ups(&mut self) -> Vec<(u64, P::UpdateParams)> {
+        std::mem::take(&mut self.follow_ups)
     }
 
     #[cfg(test)]
@@ -101,10 +113,18 @@ impl<P: WsProtocol> SubscriptionTracker<P> {
             _ => return,
         };
         if let Some(params) = P::take_subscribed(&mut self.pending, id, channel) {
-            if let Some(active) = self.active.get_mut(&sid) {
-                P::merge_subscribe(active, params);
-            } else {
-                self.active.insert(sid, params);
+            let active = match self.active.entry(sid) {
+                std::collections::hash_map::Entry::Occupied(entry) => {
+                    let active = entry.into_mut();
+                    P::merge_subscribe(active, params);
+                    active
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => entry.insert(params),
+            };
+            if let Some(update) = P::follow_up_update(sid, active) {
+                let id = self.next_cmd_id();
+                self.record_update_cmd(id, update.clone());
+                self.follow_ups.push((id, update));
             }
         }
     }
@@ -151,6 +171,7 @@ impl<P: WsProtocol> SubscriptionTracker<P> {
             self.apply_update(&update);
         }
         self.pending_updates.clear();
+        self.follow_ups.clear();
 
         for sid in self
             .pending_unsubscribes
@@ -232,6 +253,7 @@ mod tests {
             send_initial_snapshot: Some(true),
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -277,6 +299,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -305,6 +328,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -333,6 +357,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["ETHUSD_RR".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&add);
         let updated = tracker.active.get(&7).unwrap();
@@ -351,6 +376,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&remove);
         let updated = tracker.active.get(&7).unwrap();
@@ -380,6 +406,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
 
@@ -418,6 +445,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         tracker.drop_pending_update(99);
@@ -483,6 +511,7 @@ mod tests {
                 send_initial_snapshot: None,
                 index_ids: None,
                 underlying_tickers: None,
+                match_ids: None,
             },
         );
         tracker.record_unsubscribe_cmd(88, vec![20]);
@@ -520,6 +549,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         assert_eq!(tracker.pending_updates.len(), 1);
@@ -554,6 +584,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         let mut indexlist = update.clone();
         indexlist.action = WsUpdateAction::Indexlist;
@@ -619,6 +650,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         }
     }
 
@@ -708,6 +740,75 @@ mod tests {
             Some(vec!["Metal.XAU/USD".into()])
         );
     }
+    #[test]
+    fn ebattle_matches_follow_up_after_ack_and_after_replay() {
+        let mut tracker = SubscriptionTracker::default();
+        let id = tracker.next_cmd_id();
+        tracker.record_subscribe_cmd(
+            id,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::EbattleScores, WsChannelV2::Ticker],
+                match_ids: Some(vec!["m1".into()]),
+                ..Default::default()
+            },
+        );
+        // The ticker ack must not carry the match filter or owe a follow-up.
+        assert!(!tracker.handle_control_action(ControlAction::Subscribed {
+            cmd_id: Some(id),
+            sid: 3,
+            channel: Some("ticker".into()),
+        }));
+        assert_eq!(tracker.active[&3].match_ids, None);
+        assert!(tracker.handle_control_action(ControlAction::Subscribed {
+            cmd_id: Some(id),
+            sid: 4,
+            channel: Some("ebattle_scores".into()),
+        }));
+        let follow_ups = tracker.take_follow_ups();
+        assert_eq!(follow_ups.len(), 1);
+        let (cmd_id, follow_up) = &follow_ups[0];
+        assert_eq!(follow_up.action, WsUpdateAction::SubscribeMatches);
+        assert_eq!(follow_up.sid, Some(4));
+        assert_eq!(follow_up.match_ids, Some(vec!["m1".to_string()]));
+        crate::ws::types::validate_update(follow_up).expect("follow-up valid");
+        tracker.handle_control_action(ControlAction::Ok { cmd_id: *cmd_id });
+
+        let mut add = update(WsUpdateAction::SubscribeMatches, 4);
+        add.match_ids = Some(vec!["m2".into()]);
+        tracker.record_update_cmd(20, add);
+        tracker.handle_control_action(ControlAction::Ok { cmd_id: 20 });
+        tracker.record_update_cmd(21, update(WsUpdateAction::Matchlist, 4));
+        assert!(tracker.take_follow_ups().is_empty());
+
+        let replay = tracker.prepare_resubscribe();
+        let ebattle = replay
+            .into_iter()
+            .find(|p| p.channels == [WsChannelV2::EbattleScores])
+            .expect("ebattle replay");
+        assert_eq!(ebattle.match_ids, Some(vec!["m1".into(), "m2".into()]));
+        // match_ids never reaches the subscribe command.
+        assert!(
+            serde_json::to_value(&ebattle)
+                .unwrap()
+                .get("match_ids")
+                .is_none()
+        );
+
+        let id = tracker.next_cmd_id();
+        tracker.record_subscribe_cmd(id, ebattle);
+        assert!(tracker.handle_control_action(ControlAction::Subscribed {
+            cmd_id: Some(id),
+            sid: 9,
+            channel: Some("ebattle_scores".into()),
+        }));
+        let follow_ups = tracker.take_follow_ups();
+        assert_eq!(follow_ups[0].1.sid, Some(9));
+        assert_eq!(
+            follow_ups[0].1.match_ids,
+            Some(vec!["m1".to_string(), "m2".to_string()])
+        );
+    }
+
     #[test]
     fn margin_repeated_orderbook_and_pending_update_replay_union() {
         use crate::margin::ws::channel::MarginChannel;
