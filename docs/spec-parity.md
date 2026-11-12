@@ -16,8 +16,11 @@ AsyncAPI `info.version`; the snapshot date matters.
   Deprecated unnested quote-detail aliases are deliberately replaced by the
   canonical RFQ-scoped operations; retired order mutations, announcements and
   multivariate lookups are removed rather than shimmed.
-- The November 2 snapshot includes November 5 and TBD changelog entries.
+- The November 12 snapshot includes November 19 and TBD changelog entries.
   Published parsing/subscription support is not evidence of their live rollout.
+  On November 12, production `GET /incentive_schedules` returned 404 and
+  incentive programs did not yet carry `series_ticker`/`event_ticker`; both
+  are modeled from the YAML (the program fields as `Option`).
   [Settlement floors](https://docs.kalshi.com/getting_started/settlement_bounds.md)
   are explicitly not live yet; their metadata does not authorize floor trading.
 
@@ -61,6 +64,19 @@ AsyncAPI `info.version`; the snapshot date matters.
   `#[deprecated]`, even where the spec lists them as required, so their eventual
   removal is not a second break. Perps ignores `exchange_index`; order groups can
   hold orders on any Perps market.
+- Perps `GetMarginBalanceResponse::settled_funds` is `Option`: the YAML no
+  longer requires it because subaccount-restricted API keys omit the
+  account-wide total. `None` means "not visible to this key", not zero.
+- `MarketPosition::netting_enabled` is required in the YAML (Nov 5 rollout) and
+  modeled as `bool`; it is fixed at the subaccount's first order in the event
+  and can differ from the subaccount's current netting setting.
+  `MarginTrade::is_block_trade` (required, absent from the changelog) and
+  `MarginMarket::minimum_quantity` were confirmed on public production reads.
+- On-request `KXRFQ*` markets (e.g. weather point markets) are left out of
+  unscoped REST listings and WebSocket subscriptions that do not name markets.
+  Name them by ticker. Their 409/429 creation refusals are not request-rate
+  limiting; neither is RFQ `open_rfq_limit_exceeded`. The client does not retry
+  them specially; branch on `KalshiError` codes.
 - Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
   `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
 

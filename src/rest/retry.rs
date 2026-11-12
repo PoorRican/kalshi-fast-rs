@@ -63,17 +63,34 @@ impl RetryConfig {
     }
 }
 
-pub(crate) fn build_http_error(
-    status: reqwest::StatusCode,
-    bytes: &[u8],
-    request_id: Option<String>,
-) -> KalshiError {
-    #[derive(serde::Deserialize, serde::Serialize)]
+/// `429` error codes that are account/creation quotas rather than request-rate
+/// limiting. Retrying does not help until the quota frees up, so the retry
+/// layer returns them immediately instead of backing off.
+pub(crate) const NON_RATE_LIMIT_429_CODES: &[&str] = &[
+    "open_rfq_limit_exceeded",
+    "weather_point_market_limit_exceeded",
+];
+
+/// Whether a failed response may be retried, considering both the status and,
+/// for `429`, whether the error code denotes a quota refusal.
+pub(crate) fn retryable_response(status: StatusCode, bytes: &[u8]) -> bool {
+    if !retryable_status(status) {
+        return false;
+    }
+    if status != StatusCode::TOO_MANY_REQUESTS {
+        return true;
+    }
+    !parse_api_error(bytes)
+        .and_then(|error| error.code)
+        .is_some_and(|code| NON_RATE_LIMIT_429_CODES.contains(&code.as_str()))
+}
+
+fn parse_api_error(bytes: &[u8]) -> Option<ErrorResponse> {
+    #[derive(serde::Deserialize)]
     struct WrappedErrorBody {
         error: ErrorResponse,
     }
 
-    let raw_body = String::from_utf8_lossy(bytes).to_string();
     let normalize = |error: ErrorResponse| {
         if error.code.is_some() || error.message.is_some() || error.details.is_some() {
             Some(error)
@@ -81,14 +98,23 @@ pub(crate) fn build_http_error(
             None
         }
     };
-    let api_error = serde_json::from_slice::<WrappedErrorBody>(bytes)
+    serde_json::from_slice::<WrappedErrorBody>(bytes)
         .ok()
         .and_then(|wrapped| normalize(wrapped.error))
         .or_else(|| {
             serde_json::from_slice::<ErrorResponse>(bytes)
                 .ok()
                 .and_then(normalize)
-        });
+        })
+}
+
+pub(crate) fn build_http_error(
+    status: reqwest::StatusCode,
+    bytes: &[u8],
+    request_id: Option<String>,
+) -> KalshiError {
+    let raw_body = String::from_utf8_lossy(bytes).to_string();
+    let api_error = parse_api_error(bytes);
     KalshiError::Http {
         status,
         api_error,

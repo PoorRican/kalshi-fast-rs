@@ -1,7 +1,7 @@
 use crate::rest::events::GetEventForecastPercentileHistoryParams;
 use crate::rest::rate_limit::{RateLimitConfig, RateLimitTier, RateLimiter, rate_limit_kind};
 use crate::rest::retry::{
-    RetryConfig, build_http_error, retry_after_delay, retryable_reqwest_error, retryable_status,
+    RetryConfig, build_http_error, retry_after_delay, retryable_reqwest_error, retryable_response,
 };
 use crate::rest::structured_targets::GetStructuredTargetsParams;
 use crate::{KalshiAuth, KalshiEnvironment, KalshiError, REST_PREFIX};
@@ -346,7 +346,7 @@ impl KalshiRestClient {
 
                     let should_retry = retry_number < self.retry_config.max_retries
                         && self.retry_config.allows_method(&method)
-                        && retryable_status(status);
+                        && retryable_response(status, &bytes);
 
                     if should_retry {
                         retry_number = retry_number.saturating_add(1);
@@ -458,6 +458,7 @@ mod tests {
     use super::*;
     use crate::rest::pagination::{CursorPager, stream_items};
     use crate::rest::rate_limit::RateLimitKind;
+    use crate::rest::retry::NON_RATE_LIMIT_429_CODES;
     use futures::stream::TryStreamExt;
     use reqwest::Method;
     use reqwest::StatusCode;
@@ -809,6 +810,55 @@ mod tests {
         assert_eq!(value["ok"], json!(true));
         assert_eq!(hits.load(Ordering::Relaxed), 2);
         server.await.expect("server").expect("server ok");
+    }
+
+    #[tokio::test]
+    async fn quota_429_codes_are_not_retried() {
+        for code in NON_RATE_LIMIT_429_CODES {
+            let body = format!(r#"{{"code":"{code}","message":"limit"}}"#);
+            let (rest_origin, hits, server) = spawn_http_sequence_server(vec![
+                TestHttpResponse::new(StatusCode::TOO_MANY_REQUESTS, body.as_str()),
+                TestHttpResponse::new(
+                    StatusCode::OK,
+                    r#"{"exchange_active":true,"trading_active":true}"#,
+                ),
+            ])
+            .await;
+            let client = KalshiRestClient::builder(test_env(rest_origin))
+                .with_retry_config(RetryConfig {
+                    max_retries: 2,
+                    base_delay: Duration::from_millis(1),
+                    max_delay: Duration::from_millis(1),
+                    jitter: 0.0,
+                    retry_non_idempotent: true,
+                })
+                .build()
+                .expect("build client");
+
+            let err = client
+                .get_exchange_status()
+                .await
+                .expect_err("quota refusal is returned");
+            match err {
+                KalshiError::Http {
+                    status, api_error, ..
+                } => {
+                    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+                    assert_eq!(api_error.and_then(|e| e.code).as_deref(), Some(*code));
+                }
+                other => panic!("unexpected error: {other:?}"),
+            }
+            assert_eq!(hits.load(Ordering::Relaxed), 1);
+            server.abort();
+        }
+        assert!(retryable_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            br#"{"error":{"code":"too_many_requests"}}"#
+        ));
+        assert!(!retryable_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            br#"{"error":{"code":"open_rfq_limit_exceeded"}}"#
+        ));
     }
 
     #[tokio::test]

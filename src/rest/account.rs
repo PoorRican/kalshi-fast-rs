@@ -186,6 +186,10 @@ pub struct ApiKey {
     pub subaccount: Option<u32>,
     #[serde(default)]
     pub fcm_subtrader_id: Option<String>,
+    /// Signing algorithm derived from the stored public key; `None` when
+    /// Kalshi cannot determine it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<ApiKeyType>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -514,6 +518,23 @@ impl KalshiRestClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn listed_api_keys_carry_optional_key_type() {
+        let response: GetApiKeysResponse = serde_json::from_value(serde_json::json!({
+            "api_keys": [
+                {"api_key_id": "a", "name": "rsa", "scopes": ["read"], "key_type": "rsa"},
+                {"api_key_id": "b", "name": "ed", "scopes": [], "key_type": "ed25519"},
+                {"api_key_id": "c", "name": "unknown", "scopes": []}
+            ]
+        }))
+        .unwrap();
+        let types: Vec<_> = response.api_keys.iter().map(|k| k.key_type).collect();
+        assert_eq!(
+            types,
+            vec![Some(ApiKeyType::Rsa), Some(ApiKeyType::Ed25519), None]
+        );
+    }
 
     #[test]
     fn generated_key_algorithm_and_subtrader_warning_round_trip() {

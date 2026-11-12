@@ -3,8 +3,12 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
-The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
-Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
+The unreleased `0.12.0` refresh is source-breaking: Perps balance `settled_funds` is
+now `Option` (omitted for subaccount-restricted keys), and response structs gain
+required fields (`MarketPosition::netting_enabled`, `MarginMarket::minimum_quantity`,
+`MarginTrade::is_block_trade`) that break exhaustive struct literals. It builds on
+`0.11.0`, where deprecated `no_sub_title` and Perps `exchange_index` became optional
+and `#[deprecated]`. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
 version or unchanged AsyncAPI version as a freshness signal.

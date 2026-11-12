@@ -75,6 +75,7 @@ mod retry;
 mod series;
 mod structured_targets;
 mod trades;
+mod weather_point;
 
 pub use account::*;
 pub use client::{KalshiRestClient, KalshiRestClientBuilder};
@@ -94,3 +95,4 @@ pub use retry::RetryConfig;
 pub use series::*;
 pub use structured_targets::*;
 pub use trades::*;
+pub use weather_point::*;

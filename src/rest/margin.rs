@@ -333,6 +333,8 @@ pub struct MarginMarket {
     pub contract_size: String,
     pub underlying_multiplier: String,
     pub tick_size: String,
+    /// Minimum order quantity in contracts (fixed-point string).
+    pub minimum_quantity: String,
     pub fractional_trading_enabled: bool,
     /// Null for markets that trade around the clock.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -626,6 +628,9 @@ pub struct MarginTrade {
     pub price: String,
     pub created_time: String,
     pub taker_side: BookSide,
+    /// True when the trade matched off-book as a block trade (RFQ or
+    /// negotiated block proposal); false for order-book fills.
+    pub is_block_trade: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -647,7 +652,10 @@ pub struct GetMarginBalanceResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub subaccount_balances: Vec<MarginSubaccountBalance>,
-    pub settled_funds: String,
+    /// Account-wide settled funds in fixed-point dollars. `None` when the API
+    /// key is restricted to a single subaccount, which omits this total.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settled_funds: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1270,9 +1278,9 @@ impl KalshiRestClient {
 #[cfg(test)]
 mod tests {
     use super::{
-        AmendMarginOrderRequest, GetMarginOrderGroupResponse, GetMarginTradesParams,
-        MarginFundingHistoryEntry, MarginMarket, MarginPosition, MarginPriceDistribution,
-        MarginSubaccountType,
+        AmendMarginOrderRequest, GetMarginBalanceResponse, GetMarginOrderGroupResponse,
+        GetMarginTradesParams, MarginFundingHistoryEntry, MarginMarket, MarginPosition,
+        MarginPriceDistribution, MarginSubaccountType, MarginTrade,
     };
     use crate::types::BookSide;
 
@@ -1326,7 +1334,7 @@ mod tests {
         let mut fixture = serde_json::json!({
             "ticker": "KXBTC", "status": "active", "title": "Bitcoin",
             "contract_size": "1", "underlying_multiplier": "1", "tick_size": "0.01",
-            "fractional_trading_enabled": false, "schedule": null,
+            "minimum_quantity": "1.00", "fractional_trading_enabled": false, "schedule": null,
             "market_version": 2, "funding_deadband": 0.0, "funding_cap": 0.1,
             "funding_limit_unit": "percentage",
             "funding_invalid_premium_handling": "exclude", "halt_sources": []
@@ -1347,6 +1355,7 @@ mod tests {
             "contract_size": "1",
             "underlying_multiplier": "1",
             "tick_size": "0.010000",
+            "minimum_quantity": "1.00",
             "fractional_trading_enabled": false,
             "schedule": {"is_open": true, "next_close_ts": 1760000000, "next_open_ts": null},
             "exchange_index": 0,
@@ -1372,7 +1381,43 @@ mod tests {
         assert_eq!(always_open.ticker, "KXBTC");
 
         fixture.as_object_mut().unwrap().remove("schedule");
+        assert!(serde_json::from_value::<MarginMarket>(fixture.clone()).is_err());
+
+        fixture["schedule"] = serde_json::Value::Null;
+        assert_eq!(always_open.minimum_quantity, "1.00");
+        fixture.as_object_mut().unwrap().remove("minimum_quantity");
         assert!(serde_json::from_value::<MarginMarket>(fixture).is_err());
+    }
+
+    #[test]
+    fn margin_trade_requires_is_block_trade() {
+        let mut fixture = serde_json::json!({
+            "count": "13.00", "created_time": "2026-11-12T16:14:41.757141Z",
+            "is_block_trade": false, "price": "2.0141", "taker_side": "ask",
+            "ticker": "KXETHPERP", "trade_id": "072692a2-e0c9-b28c-437f-fb108819b9d2"
+        });
+        let trade: MarginTrade = serde_json::from_value(fixture.clone()).unwrap();
+        assert!(!trade.is_block_trade);
+        fixture["is_block_trade"] = true.into();
+        assert!(
+            serde_json::from_value::<MarginTrade>(fixture.clone())
+                .unwrap()
+                .is_block_trade
+        );
+        fixture.as_object_mut().unwrap().remove("is_block_trade");
+        assert!(serde_json::from_value::<MarginTrade>(fixture).is_err());
+    }
+
+    #[test]
+    fn margin_balance_settled_funds_is_omitted_for_subaccount_keys() {
+        let restricted: GetMarginBalanceResponse =
+            serde_json::from_value(serde_json::json!({"subaccount_balances": []})).unwrap();
+        assert_eq!(restricted.settled_funds, None);
+        let full: GetMarginBalanceResponse = serde_json::from_value(serde_json::json!({
+            "subaccount_balances": [], "settled_funds": "12.345600"
+        }))
+        .unwrap();
+        assert_eq!(full.settled_funds.as_deref(), Some("12.345600"));
     }
 
     #[test]
