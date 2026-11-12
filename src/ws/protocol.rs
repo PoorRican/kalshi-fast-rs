@@ -259,12 +259,15 @@ impl WsProtocol for EventContractProtocol {
     }
 
     fn records_update(update: &Self::UpdateParams) -> bool {
+        // eBattle match filters cannot be carried on `subscribe`, and a replayed
+        // subscription starts empty under a new SID, so match actions are not
+        // replay intent; callers re-send `subscribe_matches` after reconnecting.
         !matches!(
             update.action,
             crate::ws::types::WsUpdateAction::GetSnapshot
                 | crate::ws::types::WsUpdateAction::Indexlist
                 | crate::ws::types::WsUpdateAction::UnderlyingList
-        )
+        ) && !update.action.is_match_action()
     }
 
     fn merge_subscribe(active: &mut Self::SubscribeParams, incoming: Self::SubscribeParams) {

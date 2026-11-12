@@ -27,6 +27,13 @@
 //! | [`WsChannelV2::CfbenchmarksValue`] | Yes | CF Benchmarks reference rates |
 //! | [`WsChannelV2::CfbenchmarksValue5hz`] | Yes | CF Benchmarks high-frequency reference rates |
 //! | [`WsChannelV2::PythValue`] | Yes | Pyth underlying values |
+//! | [`WsChannelV2::EbattleScores`] | Yes | eSoccer/eFootball and eBasketball live scores |
+//!
+//! `ebattle_scores` subscriptions start empty: after the `subscribed` ACK, send
+//! `update_subscription` with [`WsUpdateAction::SubscribeMatches`] and
+//! `match_ids` (milestone IDs or `["all"]`). Match filters cannot be carried on
+//! `subscribe`, so reconnect replay restores the channel under a new SID with no
+//! matches; re-send `subscribe_matches` after [`WsEvent::Reconnected`].
 //!
 //! # Quick Start — Public Ticker
 //!

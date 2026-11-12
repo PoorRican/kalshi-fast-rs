@@ -39,6 +39,9 @@ pub use cfbenchmarks::*;
 mod feeds;
 pub use feeds::*;
 
+mod ebattle;
+pub use ebattle::*;
+
 mod batches;
 pub use batches::*;
 

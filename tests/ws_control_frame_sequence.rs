@@ -300,6 +300,14 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
             r#"{"underlying_tickers":["Metal.XAU/USD"]}"#,
         ),
         (
+            "ebattle_scores",
+            r#"{"event_id":"KXEBATTLE-1","match_id":"ms-1","received_at":1700000000000,"data":"{\"game\":\"ebasketball\",\"status\":\"live\",\"home_score\":21}"}"#,
+        ),
+        (
+            "ebattle_scores_matchlist",
+            r#"{"match_ids":["ms-1","ms-2"]}"#,
+        ),
+        (
             "rfq_batch_created",
             r#"{"id":"batch","creator_id":"creator","created_ts":"2024-12-01T10:00:00Z","legs":[],"rfqs":[]}"#,
         ),
@@ -340,6 +348,10 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
             WsMessageV2::Data(WsDataMessageV2::PythValue { .. }) => "pyth_value",
             WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { .. }) => {
                 "pyth_value_underlying_list"
+            }
+            WsMessageV2::Data(WsDataMessageV2::EbattleScores { .. }) => "ebattle_scores",
+            WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist { .. }) => {
+                "ebattle_scores_matchlist"
             }
             WsMessageV2::Data(WsDataMessageV2::Communications { msg, .. }) => match msg {
                 WsCommunications::RfqBatchCreated(_) => "rfq_batch_created",
@@ -445,5 +457,50 @@ fn escaped_control_filter_strings_remain_decodable() {
             assert_eq!(value, "Metal.XAU/USD");
         }
         other => panic!("expected filters, got {other:?}"),
+    }
+}
+
+#[test]
+fn ebattle_scores_payloads_and_match_ack_decode() {
+    use kalshi_fast::{WsDataMessageRef, WsDataMessageV2};
+
+    let frame = r#"{"type":"ebattle_scores","sid":3,"seq":4,"sending_ts_ms":9,"msg":{"event_id":"E","match_id":"ms-1","received_at":1700000000000,"data":"{\"game\":\"esoccer\",\"status\":\"live\",\"home_periods\":{\"period_1\":1},\"live_data_delayed\":false}"}}"#;
+    match WsMessageV2::from_bytes(frame.as_bytes()).unwrap() {
+        WsMessageV2::Data(WsDataMessageV2::EbattleScores { msg, .. }) => {
+            assert_eq!(msg.match_id, "ms-1");
+            assert_eq!(msg.received_at, 1_700_000_000_000);
+            let data: Value = msg.parse_data().unwrap();
+            assert_eq!(data["game"], "esoccer");
+            assert_eq!(data["home_periods"]["period_1"], 1);
+        }
+        other => panic!("expected ebattle_scores, got {other:?}"),
+    }
+    match WsMessageRef::from_bytes(frame.as_bytes()).unwrap() {
+        WsMessageRef::Data(WsDataMessageRef::EbattleScores { msg, .. }) => {
+            assert_borrowed_from(frame.as_bytes(), &msg.match_id);
+            let data: Value = msg.parse_data().unwrap();
+            assert_eq!(data["live_data_delayed"], false);
+        }
+        other => panic!("expected borrowed ebattle_scores, got {other:?}"),
+    }
+
+    // Required msg fields are enforced.
+    let missing = r#"{"type":"ebattle_scores","sid":3,"seq":4,"msg":{"event_id":"E","match_id":"ms-1","data":"{}"}}"#;
+    assert!(WsMessageV2::from_bytes(missing.as_bytes()).is_err());
+
+    let ack = r#"{"type":"ok","id":2,"sid":1,"seq":2,"msg":{"match_ids":["all"]}}"#;
+    for message in [
+        WsMessageV2::from_bytes(ack.as_bytes()).unwrap(),
+        WsMessageRef::from_bytes(ack.as_bytes())
+            .unwrap()
+            .into_owned()
+            .unwrap(),
+    ] {
+        match message {
+            WsMessageV2::Ok { msg: Some(msg), .. } => {
+                assert_eq!(msg.match_ids, Some(vec!["all".to_string()]));
+            }
+            other => panic!("expected match ack, got {other:?}"),
+        }
     }
 }

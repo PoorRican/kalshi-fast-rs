@@ -23,6 +23,8 @@ pub struct WsOkPayload {
     pub market_ids: Option<Vec<String>>,
     pub index_ids: Option<Vec<String>>,
     pub underlying_tickers: Option<Vec<String>>,
+    /// Current eBattle match filter after a match update; all-mode is `["all"]`.
+    pub match_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -35,6 +37,8 @@ pub struct WsOkPayloadRef<'a> {
     pub index_ids: Option<Vec<Cow<'a, str>>>,
     #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
     pub underlying_tickers: Option<Vec<Cow<'a, str>>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
+    pub match_ids: Option<Vec<Cow<'a, str>>>,
 }
 
 fn optional_borrowed_strings<'de, D>(
@@ -73,6 +77,7 @@ impl<'a> WsOkPayloadRef<'a> {
             market_ids: own(self.market_ids),
             index_ids: own(self.index_ids),
             underlying_tickers: own(self.underlying_tickers),
+            match_ids: own(self.match_ids),
         }
     }
 }
@@ -456,6 +461,20 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::EbattleScores => Ok(WsMessageV2::Data(WsDataMessageV2::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::EbattleScoresMatchlist => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_msg(&msg)?,
+                }))
+            }
             other => Ok(WsMessageV2::Unknown {
                 msg_type: other,
                 sid,
@@ -797,6 +816,20 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::EbattleScores => Ok(WsMessageRef::Data(WsDataMessageRef::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::EbattleScoresMatchlist => Ok(WsMessageRef::Data(
+                WsDataMessageRef::EbattleScoresMatchlist {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             other => Ok(WsMessageRef::Unknown {
                 msg_type: other,
                 sid,
@@ -970,6 +1003,18 @@ pub enum WsDataMessageV2 {
         sending_ts_ms: Option<i64>,
         msg: WsPythUnderlyingList,
     },
+    EbattleScores {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScores,
+    },
+    EbattleScoresMatchlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleMatchlist,
+    },
 }
 
 macro_rules! data_message_position {
@@ -993,6 +1038,8 @@ macro_rules! data_message_position {
             | Self::CfbenchmarksValue5hzIndexlist { $field, .. }
             | Self::PythValue { $field, .. }
             | Self::PythValueUnderlyingList { $field, .. }
+            | Self::EbattleScores { $field, .. }
+            | Self::EbattleScoresMatchlist { $field, .. }
             | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
         }
     };
@@ -1127,6 +1174,18 @@ pub enum WsDataMessageRef<'a> {
         seq: Option<u64>,
         sending_ts_ms: Option<i64>,
         msg: WsPythUnderlyingListRef<'a>,
+    },
+    EbattleScores {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScoresRef<'a>,
+    },
+    EbattleScoresMatchlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleMatchlistRef<'a>,
     },
 }
 
@@ -1340,6 +1399,28 @@ impl<'a> WsDataMessageRef<'a> {
                 sending_ts_ms,
                 msg,
             } => WsDataMessageV2::PythValueUnderlyingList {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::EbattleScoresMatchlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::EbattleScoresMatchlist {
                 sid,
                 seq,
                 sending_ts_ms,

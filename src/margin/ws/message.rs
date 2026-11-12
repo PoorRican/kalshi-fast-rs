@@ -374,6 +374,9 @@ pub enum MarginLastUpdateReason {
     Trade,
     PostOnlyCrossCancel,
     ReduceOnlyCancel,
+    /// Resting order canceled because a settlement price band (for example the
+    /// equities perps overnight band) moved it out of bounds.
+    SettlementBoundsCancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -490,6 +493,12 @@ pub struct TradeMsg {
     pub price: String,
     pub count: String,
     pub taker_side: MarginSide,
+    /// True if the trade was matched off book as a block trade.
+    ///
+    /// The perps AsyncAPI lists this as required, but no changelog entry has
+    /// announced it for perps trades, so frames without it still decode (`None`).
+    #[serde(default)]
+    pub is_block_trade: Option<bool>,
     pub ts_ms: i64,
 }
 
@@ -769,9 +778,34 @@ mod tests {
             MarginDataMessage::Trade(e) => {
                 assert_eq!(e.msg.trade_id, "t-123");
                 assert_eq!(e.msg.taker_side, MarginSide::Bid);
+                assert_eq!(e.msg.is_block_trade, None);
             }
             _ => panic!("expected Trade"),
         }
+    }
+
+    #[test]
+    fn parse_trade_block_flag() {
+        let bytes = br#"{"type":"trade","sid":3,"seq":43,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"ask","is_block_trade":true,"ts_ms":1}}"#;
+        let MarginDataMessage::Trade(e) = parse(bytes) else {
+            panic!("expected Trade")
+        };
+        assert_eq!(e.msg.is_block_trade, Some(true));
+    }
+
+    #[test]
+    fn settlement_bounds_cancel_decodes_on_margin_user_orders() {
+        let order = br#"{"type":"user_order","sid":5,"msg":{"order_id":"o","user_id":"u","client_order_id":"c","ticker":"KXSPYPERP","side":"bid","price":"1","fill_count":"0","remaining_count":"0","created_ts_ms":null,"order_source":"system","last_update_reason":"SettlementBoundsCancel"}}"#;
+        let MarginDataMessage::UserOrder(e) = parse(order) else {
+            panic!("expected UserOrder")
+        };
+        assert_eq!(
+            e.msg.last_update_reason,
+            Some(MarginLastUpdateReason::SettlementBoundsCancel)
+        );
+        let reason: MarginLastUpdateReason =
+            serde_json::from_str(r#""SettlementBoundsCancel""#).unwrap();
+        assert_eq!(reason, MarginLastUpdateReason::SettlementBoundsCancel);
     }
 
     #[test]

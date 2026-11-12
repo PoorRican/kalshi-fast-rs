@@ -232,6 +232,7 @@ mod tests {
             send_initial_snapshot: Some(true),
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -277,6 +278,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -305,6 +307,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -333,6 +336,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["ETHUSD_RR".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&add);
         let updated = tracker.active.get(&7).unwrap();
@@ -351,6 +355,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&remove);
         let updated = tracker.active.get(&7).unwrap();
@@ -380,6 +385,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
 
@@ -418,6 +424,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         tracker.drop_pending_update(99);
@@ -483,6 +490,7 @@ mod tests {
                 send_initial_snapshot: None,
                 index_ids: None,
                 underlying_tickers: None,
+                match_ids: None,
             },
         );
         tracker.record_unsubscribe_cmd(88, vec![20]);
@@ -520,6 +528,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         assert_eq!(tracker.pending_updates.len(), 1);
@@ -554,6 +563,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         let mut indexlist = update.clone();
         indexlist.action = WsUpdateAction::Indexlist;
@@ -561,6 +571,26 @@ mod tests {
         tracker.record_update_cmd(42, update);
         tracker.record_update_cmd(43, indexlist);
         assert!(tracker.pending_updates.is_empty());
+    }
+
+    #[test]
+    fn ebattle_match_updates_are_not_replay_intent() {
+        let mut tracker = SubscriptionTracker::default();
+        let channel = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::EbattleScores],
+            ..Default::default()
+        };
+        tracker.active.insert(5, channel.clone());
+        let mut update = update(WsUpdateAction::SubscribeMatches, 5);
+        update.match_ids = Some(vec!["all".to_string()]);
+        tracker.record_update_cmd(44, update.clone());
+        assert!(tracker.pending_updates.is_empty());
+        tracker.handle_control_action(ControlAction::Ok { cmd_id: 44 });
+        // Even if an update were applied, the subscribe params carry no match filter.
+        tracker.apply_update(&update);
+        let replay = tracker.prepare_resubscribe();
+        assert_eq!(replay, vec![channel]);
+        EventContractProtocol::validate_subscribe(&replay[0]).expect("replay valid");
     }
 
     #[test]
@@ -619,6 +649,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         }
     }
 
