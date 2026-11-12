@@ -9,6 +9,101 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-12
+
+### Compatibility
+
+- Docs snapshot: 2026-11-12
+- OpenAPI: 3.36.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-12 (RSS). The published changelog also dates two entries
+  November 19 and keeps one TBD entry. Their schemas are modeled here, but that does not mean they
+  are deployed: on 2026-11-12, production `GET /incentive_schedules` returned 404.
+
+### Breaking
+
+- [Rust API] This is a minor bump per `VERSIONING.md`. Before 1.0, any change likely to require
+  downstream code changes is a minor release. `v0.11.0` is already tagged.
+- [Rust API] `GetMarginBalanceResponse::settled_funds` is now `Option<String>` (was `String`).
+  Subaccount-restricted keys do not receive it.
+- [Rust API] New required response fields break exhaustive struct literals:
+  `MarketPosition::netting_enabled` / `MarketPositionRef::netting_enabled`,
+  `MarginMarket::minimum_quantity`, `MarginTrade::is_block_trade`.
+- [Rust API] Several WebSocket enums gain variants, which breaks exhaustive matches:
+  - `WsChannelV2::EbattleScores`
+  - `WsMsgType::EbattleScores` / `EbattleScoresMatchlist`
+  - `WsDataMessageV2` / `WsDataMessageRef` `EbattleScores` / `EbattleScoresMatchlist`
+  - `WsUpdateAction::{SubscribeMatches, UnsubscribeMatches, Matchlist}`
+  - `MarginLastUpdateReason::SettlementBoundsCancel`
+- [Rust API] `WsUpdateSubscriptionParamsV2` gains `match_ids`, and the margin WS `TradeMsg` gains
+  `is_block_trade: Option<bool>`. Both additions break struct literals.
+
+### Added
+
+- [REST] `get_incentive_schedules()` and the `IncentiveSchedule` types. `GetIncentiveProgramsParams`
+  gains `series_ticker`/`event_ticker` filters, and `IncentiveProgram` gains optional fields with
+  the same names.
+- [REST] `create_weather_point_market()` and `get_weather_point_availability()`, with the
+  `WeatherPoint*` types, for on-request `KXRFQ*` weather markets.
+- [REST] `ApiKey::key_type` (`Option<ApiKeyType>`).
+- [WebSocket] The `ebattle_scores` channel: score and matchlist messages in the owned, borrowed and
+  envelope decode paths, plus `subscribe_matches`/`unsubscribe_matches`/`matchlist` updates. The
+  ok-reply `match_ids` field is also decoded. Match filters are not replayed after reconnect.
+
+### Fixed
+
+- [REST] A `429` carrying `open_rfq_limit_exceeded` or `weather_point_market_limit_exceeded` is a
+  quota refusal, not rate limiting. The client now returns it immediately instead of retrying.
+- [WebSocket] Margin `user_order`/`orderbook_delta` frames with
+  `last_update_reason: "SettlementBoundsCancel"` failed to decode before this fix.
+
+### Changelog mapping (since 2026-11-02)
+
+- Nov 19 "Overnight settlement price band for equities perps": added
+  `MarginLastUpdateReason::SettlementBoundsCancel`. Band enforcement is server-side, and FIX is
+  not implemented.
+- Nov 19 "Incentive schedules, and incentive programs by series or event": added the endpoint,
+  filters and fields.
+- Nov 12 "Subaccount-restricted keys can read perps balance and funding history":
+  `settled_funds` is now `Option`. The funding-history shape is unchanged.
+- Nov 12 "Update IDs on FIX market data": no change needed because FIX is not implemented.
+- Nov 12 "Lower Security Status subscription cost": no change needed because this is FIX token
+  cost only.
+- Nov 12 "Short public caching on Get Market and Get Event": no change needed. Response bodies
+  are unchanged, and the crate sends no cache-control request headers. Use WS `ticker` for
+  real-time data.
+- Nov 12 "Create on-request weather markets": added the two endpoints and treated the 429 quota
+  code as non-retryable.
+- Nov 12 "Clarified balance endpoint coverage": no change needed because it is documentation
+  only.
+- Nov 12 "Specific error codes for two RFQ create refusals": `open_rfq_limit_exceeded` is no
+  longer retried. Errors expose `code` through `KalshiError::Http` already, and the crate has no
+  typed error-code enum to extend.
+- Nov 12 "Clearer insufficient_shard_balance error details": no change needed because the code
+  and status are unchanged and `details` is already surfaced.
+- Nov 12 "API key signing algorithm metadata": added `ApiKey::key_type`.
+- Nov 12 "eBattle live scores": added the `ebattle_scores` channel.
+- Nov 12 "MCP portfolio access for perps" / "MCP access to settlements": no change needed. These
+  are OAuth MCP grants, while the crate authenticates with API keys, and the payloads are
+  unchanged.
+- Nov 12 "market_lifecycle_v2 covers trading-hours closes": no change needed because margin
+  `activated`/`deactivated` are already modeled.
+- Nov 11 "Margin market minimum_quantity": added `MarginMarket::minimum_quantity` (required,
+  verified on production).
+- Nov 5 "KXRFQ markets left out of unscoped WS subscriptions / REST listings": no change needed
+  because filtering is server-side. Documented in `docs/spec-parity.md`.
+- Nov 5 "Market positions include netting_enabled": added as a required `bool`.
+- Nov 5 "Perps price band changes sides": no change needed because validation is server-side.
+- TBD "stock_perps_application_required": no change needed. It is a new error code, and errors
+  are surfaced untyped.
+- Nov 5 "orderbook_delta update_interval_ms": already supported since 0.10.0.
+- Nov 5 "FIX OrderMassCancelRequest for subaccount keys": no change needed because FIX is not
+  implemented.
+- Schema drift with no changelog entry: perps REST `MarginTrade.is_block_trade` (required,
+  verified on production) and perps WS `trade.is_block_trade` (`Option`, unverified).
+
 ## [0.11.0] - 2026-11-03
 
 ### Compatibility

@@ -77,6 +77,15 @@ AsyncAPI `info.version`; the snapshot date matters.
   Name them by ticker. Their 409/429 creation refusals are not request-rate
   limiting; neither is RFQ `open_rfq_limit_exceeded`. The client does not retry
   them specially; branch on `KalshiError` codes.
+- `ebattle_scores` `data` is a JSON-encoded string with no published schema;
+  it is kept verbatim (`parse_data::<T>()` decodes it). Match filters set with
+  `subscribe_matches` are not replayed after reconnect, because `subscribe`
+  cannot carry `match_ids` and a replayed subscription gets a new `sid`.
+  Re-send `subscribe_matches` after reconnecting. Public access to the feed is
+  time-limited upstream.
+- Perps WebSocket `trade.is_block_trade` is required in the perps AsyncAPI but
+  unannounced in the changelog, so the WS field is `Option<bool>`. The REST
+  `MarginTrade::is_block_trade` is `bool`, verified on production reads.
 - Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
   `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
 
