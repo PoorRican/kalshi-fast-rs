@@ -39,6 +39,8 @@ pub enum WsMsgType {
     CfbenchmarksValue5hzIndexlist,
     PythValue,
     PythValueUnderlyingList,
+    EbattleScores,
+    EbattleScoresMatchlist,
     Unknown(String),
 }
 
@@ -80,6 +82,8 @@ impl WsMsgType {
             WsMsgType::CfbenchmarksValue5hzIndexlist => "cfbenchmarks_value_5hz_indexlist",
             WsMsgType::PythValue => "pyth_value",
             WsMsgType::PythValueUnderlyingList => "pyth_value_underlying_list",
+            WsMsgType::EbattleScores => "ebattle_scores",
+            WsMsgType::EbattleScoresMatchlist => "ebattle_scores_matchlist",
             WsMsgType::Unknown(value) => value.as_str(),
         }
     }
@@ -121,6 +125,8 @@ impl WsMsgType {
             "cfbenchmarks_value_5hz_indexlist" => WsMsgType::CfbenchmarksValue5hzIndexlist,
             "pyth_value" => WsMsgType::PythValue,
             "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
+            "ebattle_scores" => WsMsgType::EbattleScores,
+            "ebattle_scores_matchlist" => WsMsgType::EbattleScoresMatchlist,
             _ => return None,
         })
     }
@@ -162,6 +168,8 @@ impl WsMsgType {
             "cfbenchmarks_value_5hz_indexlist" => WsMsgType::CfbenchmarksValue5hzIndexlist,
             "pyth_value" => WsMsgType::PythValue,
             "pyth_value_underlying_list" => WsMsgType::PythValueUnderlyingList,
+            "ebattle_scores" => WsMsgType::EbattleScores,
+            "ebattle_scores_matchlist" => WsMsgType::EbattleScoresMatchlist,
             _ => WsMsgType::Unknown(value),
         }
     }

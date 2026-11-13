@@ -23,6 +23,8 @@ pub struct WsOkPayload {
     pub market_ids: Option<Vec<String>>,
     pub index_ids: Option<Vec<String>>,
     pub underlying_tickers: Option<Vec<String>>,
+    /// Current eBattle match filter after an update; all-mode is `["all"]`.
+    pub match_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -35,6 +37,8 @@ pub struct WsOkPayloadRef<'a> {
     pub index_ids: Option<Vec<Cow<'a, str>>>,
     #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
     pub underlying_tickers: Option<Vec<Cow<'a, str>>>,
+    #[serde(default, borrow, deserialize_with = "optional_borrowed_strings")]
+    pub match_ids: Option<Vec<Cow<'a, str>>>,
 }
 
 fn optional_borrowed_strings<'de, D>(
@@ -73,6 +77,7 @@ impl<'a> WsOkPayloadRef<'a> {
             market_ids: own(self.market_ids),
             index_ids: own(self.index_ids),
             underlying_tickers: own(self.underlying_tickers),
+            match_ids: own(self.match_ids),
         }
     }
 }
@@ -456,6 +461,20 @@ impl WsEnvelope {
                     msg: parse_msg(&msg)?,
                 },
             )),
+            WsMsgType::EbattleScores => Ok(WsMessageV2::Data(WsDataMessageV2::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: parse_msg(&msg)?,
+            })),
+            WsMsgType::EbattleScoresMatchlist => {
+                Ok(WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_msg(&msg)?,
+                }))
+            }
             other => Ok(WsMessageV2::Unknown {
                 msg_type: other,
                 sid,
@@ -797,6 +816,20 @@ impl<'a> WsEnvelopeRef<'a> {
                     msg: parse_borrowed_msg(msg)?,
                 },
             )),
+            WsMsgType::EbattleScores => Ok(WsMessageRef::Data(WsDataMessageRef::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: parse_borrowed_msg(msg)?,
+            })),
+            WsMsgType::EbattleScoresMatchlist => Ok(WsMessageRef::Data(
+                WsDataMessageRef::EbattleScoresMatchlist {
+                    sid,
+                    seq,
+                    sending_ts_ms,
+                    msg: parse_borrowed_msg(msg)?,
+                },
+            )),
             other => Ok(WsMessageRef::Unknown {
                 msg_type: other,
                 sid,
@@ -970,6 +1003,18 @@ pub enum WsDataMessageV2 {
         sending_ts_ms: Option<i64>,
         msg: WsPythUnderlyingList,
     },
+    EbattleScores {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScores,
+    },
+    EbattleScoresMatchlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScoresMatchlist,
+    },
 }
 
 macro_rules! data_message_position {
@@ -993,6 +1038,8 @@ macro_rules! data_message_position {
             | Self::CfbenchmarksValue5hzIndexlist { $field, .. }
             | Self::PythValue { $field, .. }
             | Self::PythValueUnderlyingList { $field, .. }
+            | Self::EbattleScores { $field, .. }
+            | Self::EbattleScoresMatchlist { $field, .. }
             | Self::CfbenchmarksValueIndexlist { $field, .. } => *$field,
         }
     };
@@ -1127,6 +1174,18 @@ pub enum WsDataMessageRef<'a> {
         seq: Option<u64>,
         sending_ts_ms: Option<i64>,
         msg: WsPythUnderlyingListRef<'a>,
+    },
+    EbattleScores {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScoresRef<'a>,
+    },
+    EbattleScoresMatchlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScoresMatchlistRef<'a>,
     },
 }
 
@@ -1340,6 +1399,28 @@ impl<'a> WsDataMessageRef<'a> {
                 sending_ts_ms,
                 msg,
             } => WsDataMessageV2::PythValueUnderlyingList {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg: msg.into_owned(),
+            },
+            WsDataMessageRef::EbattleScoresMatchlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsDataMessageV2::EbattleScoresMatchlist {
                 sid,
                 seq,
                 sending_ts_ms,
@@ -1679,6 +1760,53 @@ impl<'a> WsMessageRef<'a> {
 mod tests {
     use super::*;
     use bytes::Bytes;
+
+    #[test]
+    fn ebattle_scores_frames_decode_owned_and_borrowed() {
+        let scores = br#"{"type":"ebattle_scores","sid":3,"seq":4,"sending_ts_ms":9,"msg":{"event_id":"E","match_id":"m-1","received_at":1700000000000,"data":"{\"game\":\"esoccer\",\"home_score\":1}"}}"#;
+        match WsMessageV2::from_bytes(scores).unwrap() {
+            WsMessageV2::Data(WsDataMessageV2::EbattleScores { sid, seq, msg, .. }) => {
+                assert_eq!((sid, seq), (Some(3), Some(4)));
+                assert_eq!(msg.match_id, "m-1");
+                assert_eq!(msg.received_at, 1_700_000_000_000);
+                let state: serde_json::Value = serde_json::from_str(&msg.data).unwrap();
+                assert_eq!(state["home_score"], 1);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        match WsMessageRef::from_bytes(scores).unwrap() {
+            WsMessageRef::Data(WsDataMessageRef::EbattleScores { msg, .. }) => {
+                assert_eq!(msg.event_id, "E");
+                assert_eq!(msg.into_owned().match_id, "m-1");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+
+        let list =
+            br#"{"type":"ebattle_scores_matchlist","sid":3,"seq":5,"msg":{"match_ids":["a","b"]}}"#;
+        assert!(matches!(
+            WsMessageV2::from_bytes(list).unwrap(),
+            WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist { msg, .. }) if msg.match_ids == ["a", "b"]
+        ));
+        assert!(matches!(
+            WsMessageRef::from_bytes(list).unwrap(),
+            WsMessageRef::Data(WsDataMessageRef::EbattleScoresMatchlist { msg, .. }) if msg.match_ids.len() == 2
+        ));
+
+        let ok = br#"{"type":"ok","id":2,"sid":3,"seq":6,"msg":{"match_ids":["all"]}}"#;
+        match WsMessageV2::from_bytes(ok).unwrap() {
+            WsMessageV2::Ok { msg: Some(msg), .. } => {
+                assert_eq!(msg.match_ids, Some(vec!["all".to_string()]));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        match WsMessageRef::from_bytes(ok).unwrap() {
+            WsMessageRef::Ok { msg: Some(msg), .. } => {
+                assert_eq!(msg.into_owned().match_ids, Some(vec!["all".to_string()]));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
 
     #[test]
     fn ws_envelope_into_message_known_type() {

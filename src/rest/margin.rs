@@ -334,6 +334,10 @@ pub struct MarginMarket {
     pub underlying_multiplier: String,
     pub tick_size: String,
     pub fractional_trading_enabled: bool,
+    /// Minimum order quantity in contracts (fixed-point count). Required in the
+    /// published schema since November 11, 2026; `None` when absent.
+    #[serde(default)]
+    pub minimum_quantity: Option<String>,
     /// Null for markets that trade around the clock.
     #[serde(deserialize_with = "Option::deserialize")]
     pub schedule: Option<MarginMarketSchedule>,
@@ -647,7 +651,10 @@ pub struct GetMarginBalanceResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub subaccount_balances: Vec<MarginSubaccountBalance>,
-    pub settled_funds: String,
+    /// Account-wide settled funds. Omitted for API keys restricted to one
+    /// subaccount.
+    #[serde(default)]
+    pub settled_funds: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

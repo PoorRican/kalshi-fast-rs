@@ -374,6 +374,9 @@ pub enum MarginLastUpdateReason {
     Trade,
     PostOnlyCrossCancel,
     ReduceOnlyCancel,
+    /// The overnight equities settlement band canceled a resting order priced
+    /// outside it.
+    SettlementBoundsCancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -821,7 +824,8 @@ mod tests {
                 "fill_count": "0",
                 "remaining_count": "1.0",
                 "created_ts_ms": null,
-                "order_source": "user"
+                "order_source": "user",
+                "last_update_reason": "SettlementBoundsCancel"
             }
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
@@ -830,6 +834,10 @@ mod tests {
                 assert_eq!(e.msg.side, MarginSide::Bid);
                 assert_eq!(e.msg.fill_count, "0");
                 assert_eq!(e.msg.created_ts_ms.0, None);
+                assert_eq!(
+                    e.msg.last_update_reason,
+                    Some(MarginLastUpdateReason::SettlementBoundsCancel)
+                );
             }
             _ => panic!("expected UserOrder"),
         }

@@ -300,6 +300,41 @@ pub struct CreateMarginFCMSubtraderResponse {
     pub subtrader_id: String,
 }
 
+/// Side of the perps position moved by a margin FCM position transfer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginPositionTransferSide {
+    Long,
+    Short,
+}
+
+/// Body of `POST /margin/fcm/positions/transfers`.
+///
+/// Supply `ticker` or `market_id` (ticker wins when both are set).
+/// `client_transfer_id` (a UUID) makes the request idempotent per source
+/// subtrader, but Kalshi does not keep transfer IDs across an exchange
+/// restart; check the source position before retrying after one.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateMarginFCMPositionTransferRequest {
+    pub source_subtrader_id: String,
+    pub target_subtrader_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
+    pub side: MarginPositionTransferSide,
+    /// Whole number of contracts as a fixed-point count string.
+    pub count: String,
+    /// Transfer price in dollars per contract (2-4 decimals, > 0).
+    pub price: String,
+    pub client_transfer_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMarginFCMPositionTransferResponse {
+    pub position_transfer_id: String,
+}
+
 /// The filters restrict risk controls, but not the returned notional limits.
 /// `subtrader_id` may be omitted only for a subtrader-bound API key. Market
 /// and asset class filters are mutually exclusive.
@@ -647,6 +682,18 @@ impl KalshiRestClient {
             .await
     }
 
+    /// `POST /margin/fcm/positions/transfers`: move a perps position from an
+    /// FCM subtrader into a subtrader under the FCM's error account. Must be
+    /// enabled for the FCM by Kalshi.
+    pub async fn create_margin_fcm_position_transfer(
+        &self,
+        body: &CreateMarginFCMPositionTransferRequest,
+    ) -> Result<CreateMarginFCMPositionTransferResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/positions/transfers");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
     pub async fn get_fcm_subtrader_risk_controls(
         &self,
         params: GetFCMSubtraderRiskControlsParams,
@@ -707,6 +754,35 @@ impl KalshiRestClient {
 mod tests {
     use super::*;
     use serde_json::{Value, json};
+
+    #[test]
+    fn margin_fcm_position_transfer_matches_published_example() {
+        let body = CreateMarginFCMPositionTransferRequest {
+            source_subtrader_id: "src_CUST123".into(),
+            target_subtrader_id: "err_ERR1".into(),
+            ticker: None,
+            market_id: Some("0a1b2c3d".into()),
+            side: MarginPositionTransferSide::Short,
+            count: "5".into(),
+            price: "4500.00".into(),
+            client_transfer_id: "7e2a1d6b-3c4f-4a8b-9d0e-1f2a3b4c5d6e".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&body).unwrap(),
+            json!({
+                "source_subtrader_id": "src_CUST123",
+                "target_subtrader_id": "err_ERR1",
+                "market_id": "0a1b2c3d",
+                "side": "short",
+                "count": "5",
+                "price": "4500.00",
+                "client_transfer_id": "7e2a1d6b-3c4f-4a8b-9d0e-1f2a3b4c5d6e"
+            })
+        );
+        let resp: CreateMarginFCMPositionTransferResponse =
+            serde_json::from_value(json!({"position_transfer_id": "pt_1"})).unwrap();
+        assert_eq!(resp.position_transfer_id, "pt_1");
+    }
 
     #[test]
     fn exit_trigger_writes_preserve_family_and_append_fields() {

@@ -9,6 +9,127 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-13
+
+### Compatibility
+
+- Docs snapshot: 2026-11-13
+- OpenAPI: 3.36.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-13 (RSS `pubDate` of the newest item, "Create on-request
+  concert markets"). The fetched changelog also publishes November 19 and TBD entries; their schemas
+  are covered without asserting that the future-dated behavior is deployed.
+
+### Breaking
+
+- [Rust API] Version bump is minor per `VERSIONING.md` ("Minor releases are for any intentional
+  breaking change to the public Rust API, or any change likely to require downstream code changes
+  even if it originates from upstream Kalshi churn"; refresh rule: "Bump `minor` if deprecated or
+  removed upstream fields/endpoints force a breaking Rust API change").
+- [Rust API] Removed `Market::expiration_time`; Kalshi removed it from market objects (including
+  markets nested in events). Read `latest_expiration_time`, which always carried the same value.
+  Order `expiration_time` is unrelated and unchanged.
+- [Rust API] `GetMarginBalanceResponse::settled_funds` is now `Option<String>` (was `String`):
+  subaccount-restricted API keys get a balance without it.
+- [Rust API] New public fields on exhaustively constructible structs:
+  `WsUpdateSubscriptionParamsV2::match_ids`, `GetIncentiveProgramsParams::{series_ticker,
+  event_ticker}`, `IncentiveProgram::{series_ticker, event_ticker}`, `MarketPosition` /
+  `MarketPositionRef::netting_enabled`, `MarginMarket::minimum_quantity`, `ApiKey::key_type`, and
+  `WsOkPayload`/`WsOkPayloadRef::match_ids`. Struct literals must add them (use
+  `..Default::default()` where available, or the new `WsUpdateSubscriptionParamsV2::new`).
+- [Rust API] New enum variants: `WsChannelV2::EbattleScores`, `WsMsgType::{EbattleScores,
+  EbattleScoresMatchlist}`, `WsDataMessageV2`/`WsDataMessageRef::{EbattleScores,
+  EbattleScoresMatchlist}`, `WsUpdateAction::{SubscribeMatches, UnsubscribeMatches, Matchlist}`, and
+  `MarginLastUpdateReason::SettlementBoundsCancel`. Exhaustive matches must handle them.
+
+### Deprecated
+
+- [Rust API] `KalshiEnvironment::warp_ws_url()` / `margin_warp_ws_url()` are `#[deprecated]`;
+  Kalshi deprecated the `warp-ws` hosts (they still work). Use `user_ws_url()` /
+  `margin_user_ws_url()`.
+
+### Added
+
+- [Rust API] On-request markets: `create_weather_point_market`, `get_weather_point_availability`,
+  `create_concert_cancellation_market`, `get_concert_cancellation_availability`, `get_concerts`, and
+  `search_concerts`, with typed `WeatherPointVariable`, `WeatherPointStrikeType`, and `ConcertCover`.
+- [Rust API] `get_incentive_schedules` (`GET /incentive_schedules`, public) and `IncentiveSchedule`;
+  `get_incentive_programs` takes `series_ticker` / `event_ticker` filters.
+- [Rust API] `ebattle_scores` WebSocket channel: `WsEbattleScores`/`Ref` (raw JSON `data` string),
+  `WsEbattleScoresMatchlist`/`Ref`, and `subscribe_matches` / `unsubscribe_matches` / `matchlist`
+  update actions with `match_ids` validation.
+- [Rust API] `KalshiEnvironment::user_ws_url()` / `margin_user_ws_url()` for the per-user
+  `user-ws` / `margin-user-ws` hosts.
+- [Rust API] `create_margin_fcm_position_transfer` (`POST /margin/fcm/positions/transfers`) with
+  `MarginPositionTransferSide`. [Upstream] Present in the perps OpenAPI but not announced in the
+  changelog.
+- [Rust API] `MarketPosition::netting_enabled`, `MarginMarket::minimum_quantity`, and
+  `ApiKey::key_type`.
+
+### Fixed
+
+- [Rust API] Margin `user_orders` frames carrying `last_update_reason: "SettlementBoundsCancel"`
+  (overnight equities settlement band) failed to decode; the variant is now modeled.
+- [Rust API] The REST client no longer retries quota 429s (`open_rfq_limit_exceeded`,
+  `weather_point_market_limit_exceeded`, `concert_cancellation_market_limit_exceeded`,
+  `concert_search_limit_exceeded`), even with `retry_non_idempotent`; Kalshi documents that
+  retrying does not help. Request-rate 429s keep exponential backoff.
+
+### Changelog mapping (since 2026-11-02)
+
+Effective dates are those printed in the changelog; RSS publication dates were Nov 9-13 where the
+feed still lists the entry. Entries below the RSS window were not mapped by 0.11.0 and are mapped here.
+
+- Nov 19 "Create on-request concert markets": four endpoints added (see Added).
+- Nov 19 "Rate limit headers on REST responses": quota-429 retry fix above. The `X-RateLimit-*`
+  headers are not surfaced; the client's local limiter plus exponential backoff already follow the
+  documented guidance, and 429s carry no `Retry-After` (the existing fallback applies).
+- Nov 19 "expected_expiration_time is never later than latest_expiration_time": no change needed;
+  value semantics only, field shape unchanged.
+- Nov 19 "Market expiration_time removed": field removed (see Breaking).
+- Nov 19 "Overnight settlement price band for equities perps": `SettlementBoundsCancel` added to the
+  margin enum (Predictions `WsLastUpdateReason` already had it); price validation is server-side.
+- Nov 19 "Incentive schedules, and incentive programs by series or event": endpoint, filters, and
+  fields added.
+- Nov 12 "User hosts for fill and order updates": helpers added, `warp` helpers deprecated.
+- Nov 12 "Subaccount-restricted keys can read perps balance and funding history":
+  `settled_funds` optional; funding history shape unchanged.
+- Nov 12 "Update IDs on FIX market data" and "Lower Security Status subscription cost": no change
+  needed; FIX is not implemented.
+- Nov 12 "Short public caching on Get Market and Get Event": no change needed; bodies unchanged.
+  Documented in `docs/spec-parity.md`.
+- Nov 12 "Create on-request weather markets": two endpoints added.
+- Nov 12 "Clarified balance endpoint coverage": no change needed; documentation only, and
+  `GetBalanceResponse` / `SubaccountBalance` still match the YAML field by field.
+- Nov 12 "Specific error codes for two RFQ create refusals": `open_rfq_limit_exceeded` is not
+  retried; error codes remain strings in `ErrorResponse::code`, so no type change.
+- Nov 12 "Clearer insufficient_shard_balance error details": no change needed; code and status unchanged.
+- Nov 12 "`GET /api_keys` includes `key_type`": `ApiKey::key_type` added.
+- Nov 12 "`ebattle_scores` channel": channel, messages, and actions added.
+- Nov 12 MCP `read::mcp_portfolio` access to margin reads and settlements: no change needed; OAuth
+  MCP grants are not implemented and response payloads are unchanged.
+- Nov 12 margin `market_lifecycle_v2` `activated`/`deactivated` on trading hours: no change needed;
+  `MarginMarketLifecycleEventType` and `is_deactivated` already exist.
+- Nov 11 "Margin market `minimum_quantity`": field added.
+- Nov 5 `KXRFQ` markets excluded from unscoped WebSocket subscriptions and unscoped REST listings:
+  no change needed; server-side filtering. Documented in `docs/spec-parity.md`.
+- TBD `stock_perps_application_required`: no change needed; new error-code string only.
+- Nov 5 Perps price band changes sides: no change needed; server-side validation, `invalid price`
+  unchanged.
+- Nov 5 `netting_enabled` on market positions: field added (`Option`; see `docs/spec-parity.md`).
+- Nov 5 FIX `OrderMassCancelRequest` for subaccount-restricted keys: no change needed; FIX is not implemented.
+- [Upstream] OpenAPI `info.version` moved 3.35.0 → 3.36.0. A path sweep against the crate found
+  only the unannounced `POST /margin/fcm/positions/transfers`, now implemented. AsyncAPI channels
+  and message types are all covered.
+
+### Docs
+
+- [Docs] `docs/spec-parity.md`: newly required fields kept optional, on-request market listing
+  rules, quota 429s, `user-ws` hosts, 5-second public caching, `ebattle_scores` match-filter replay
+  limit, and this refresh's verification boundary (demo API unreachable from the run).
+
 ## [0.11.0] - 2026-11-03
 
 ### Compatibility

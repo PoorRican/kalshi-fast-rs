@@ -110,6 +110,44 @@ pub(crate) fn retryable_status(status: StatusCode) -> bool {
     )
 }
 
+/// 429 error codes that report a quota rather than request-rate limiting.
+/// Kalshi documents that retrying at once does not help for these.
+const NON_RATE_LIMIT_429_CODES: &[&str] = &[
+    "open_rfq_limit_exceeded",
+    "weather_point_market_limit_exceeded",
+    "concert_cancellation_market_limit_exceeded",
+    "concert_search_limit_exceeded",
+];
+
+/// Whether a failed response may be retried, given its status and body.
+pub(crate) fn retryable_response(status: StatusCode, body: &[u8]) -> bool {
+    if !retryable_status(status) {
+        return false;
+    }
+    if status != StatusCode::TOO_MANY_REQUESTS {
+        return true;
+    }
+    #[derive(serde::Deserialize)]
+    struct Code<'a> {
+        #[serde(borrow, default)]
+        code: Option<std::borrow::Cow<'a, str>>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Wrapped<'a> {
+        #[serde(borrow)]
+        error: Code<'a>,
+    }
+    let code = serde_json::from_slice::<Wrapped<'_>>(body)
+        .ok()
+        .and_then(|w| w.error.code)
+        .or_else(|| {
+            serde_json::from_slice::<Code<'_>>(body)
+                .ok()
+                .and_then(|c| c.code)
+        });
+    !code.is_some_and(|code| NON_RATE_LIMIT_429_CODES.contains(&code.as_ref()))
+}
+
 pub(crate) fn retryable_reqwest_error(err: &reqwest::Error) -> bool {
     err.is_timeout() || err.is_connect() || err.is_request()
 }

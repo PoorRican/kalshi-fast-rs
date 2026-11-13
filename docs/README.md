@@ -3,8 +3,12 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
-The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
-Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
+The unreleased `0.12.0` refresh is source-breaking: `Market::expiration_time` is
+removed (read `latest_expiration_time`), `GetMarginBalanceResponse::settled_funds`
+is optional, the `warp-ws` URL helpers are `#[deprecated]` in favor of
+`user_ws_url()`/`margin_user_ws_url()`, and several public structs gained fields
+(`WsUpdateSubscriptionParamsV2::match_ids` among them; prefer
+`WsUpdateSubscriptionParamsV2::new`). It builds on the `0.11.0` deprecations. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
 version or unchanged AsyncAPI version as a freshness signal.

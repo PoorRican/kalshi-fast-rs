@@ -16,9 +16,16 @@ AsyncAPI `info.version`; the snapshot date matters.
   Deprecated unnested quote-detail aliases are deliberately replaced by the
   canonical RFQ-scoped operations; retired order mutations, announcements and
   multivariate lookups are removed rather than shimmed.
-- The November 2 snapshot includes November 5 and TBD changelog entries.
-  Published parsing/subscription support is not evidence of their live rollout.
-  [Settlement floors](https://docs.kalshi.com/getting_started/settlement_bounds.md)
+- The November 13 snapshot publishes November 19 and TBD changelog entries
+  (on-request concert markets, rate-limit headers, the `expiration_time`
+  removal, incentive schedules). Published parsing/subscription support is not
+  evidence of their live rollout; Kalshi states concert markets are not live yet.
+- On-request `KXRFQ*` markets (weather point, concert cancellation) are omitted
+  from unscoped market/trade listings and unscoped `trade`/`ticker`
+  subscriptions, and entirely from `market_lifecycle_v2`. Name them by ticker.
+  Their 429 codes (and `open_rfq_limit_exceeded`) are quotas, not rate
+  limiting; the REST client never retries them, whatever `RetryConfig` says.
+- [Settlement floors](https://docs.kalshi.com/getting_started/settlement_bounds.md)
   are explicitly not live yet; their metadata does not authorize floor trading.
 
 ## Intentional parsing distinctions
@@ -60,12 +67,28 @@ AsyncAPI `info.version`; the snapshot date matters.
   legacy WebSocket direction and timestamp fields) are `Option` plus
   `#[deprecated]`, even where the spec lists them as required, so their eventual
   removal is not a second break. Perps ignores `exchange_index`; order groups can
-  hold orders on any Perps market.
-- Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
-  `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
+  hold orders on any Perps market. Removed fields (Market `expiration_time`;
+  use `latest_expiration_time`) are deleted, not shimmed.
+- Newly required response fields added by a dated changelog entry
+  (`MarketPosition::netting_enabled`, `MarginMarket::minimum_quantity`) stay
+  `Option` so payloads from servers or archives predating the rollout still
+  decode; absence is `None`, never a fabricated `false`/`"0"`. Margin balance
+  `settled_funds` is genuinely optional: subaccount-restricted keys omit it.
+- Per-user `user-ws`/`margin-user-ws` hosts (`fill`, `user_orders`, more
+  per-user channels later) are documented in prose, not the AsyncAPI;
+  `user_ws_url()` is a convenience. The older `warp-ws` helpers are
+  `#[deprecated]` because Kalshi deprecated those hosts.
+- `GET /markets/{ticker}` and `GET /events/{event_ticker}` may be served from a
+  shared cache up to 5 seconds old; use the WebSocket `ticker` channel for
+  real-time prices. Cacheable responses carry no `X-RateLimit-*` headers.
 
 ## Subscription semantics
 
+- `ebattle_scores` subscriptions start empty; select matches with
+  `subscribe_matches` (`match_ids`, or `["all"]`). Match filters live only in
+  `update_subscription`, not `subscribe`, so reconnect replay restores the
+  channel but not its match filter: resend `subscribe_matches` after the new
+  `subscribed` ack. `msg.data` is kept as the raw JSON-encoded score string.
 - Market ticker and ID filters follow each channel's documented vocabulary;
   orderbooks require tickers. CF reference feeds use `index_ids`, while Pyth
   uses `underlying_tickers`; their list actions do not mutate tracked selection.
@@ -97,3 +120,8 @@ Authenticated demo REST and WebSocket probes could not run because this
 checkout lacked `.env.test` and `test_key.pem`, with no authentication
 variables set. No order, quote, funding or administrative mutation was
 exercised; authenticated and perps runtime qualification remains separate.
+
+The November 13 refresh could not reach the demo API at all (the run's network
+policy refused the connection), so its additions (on-request markets,
+incentive schedules, `ebattle_scores`, Perps FCM position transfers, new
+optional fields) are validated against the published YAML and examples only.

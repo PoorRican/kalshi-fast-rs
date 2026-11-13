@@ -279,6 +279,20 @@ pub(super) enum WsWireMessage {
         sending_ts_ms: Option<i64>,
         msg: WsPythUnderlyingList,
     },
+    #[serde(rename = "ebattle_scores")]
+    EbattleScores {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScores,
+    },
+    #[serde(rename = "ebattle_scores_matchlist")]
+    EbattleScoresMatchlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        msg: WsEbattleScoresMatchlist,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -694,6 +708,28 @@ impl WsWireMessage {
                 sending_ts_ms,
                 msg,
             }),
+            WsWireMessage::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsMessageV2::Data(WsDataMessageV2::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            }),
+            WsWireMessage::EbattleScoresMatchlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            }),
             WsWireMessage::CfbenchmarksValueIndexlist {
                 sid,
                 seq,
@@ -996,6 +1032,22 @@ pub(super) enum WsWireMessageRef<'a> {
         sending_ts_ms: Option<i64>,
         #[serde(borrow)]
         msg: WsPythUnderlyingListRef<'a>,
+    },
+    #[serde(rename = "ebattle_scores")]
+    EbattleScores {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        #[serde(borrow)]
+        msg: WsEbattleScoresRef<'a>,
+    },
+    #[serde(rename = "ebattle_scores_matchlist")]
+    EbattleScoresMatchlist {
+        sid: Option<u64>,
+        seq: Option<u64>,
+        sending_ts_ms: Option<i64>,
+        #[serde(borrow)]
+        msg: WsEbattleScoresMatchlistRef<'a>,
     },
 }
 
@@ -1410,6 +1462,28 @@ impl<'a> WsWireMessageRef<'a> {
                 sending_ts_ms,
                 msg,
             } => WsMessageRef::Data(WsDataMessageRef::PythValueUnderlyingList {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            }),
+            WsWireMessageRef::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsMessageRef::Data(WsDataMessageRef::EbattleScores {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            }),
+            WsWireMessageRef::EbattleScoresMatchlist {
+                sid,
+                seq,
+                sending_ts_ms,
+                msg,
+            } => WsMessageRef::Data(WsDataMessageRef::EbattleScoresMatchlist {
                 sid,
                 seq,
                 sending_ts_ms,

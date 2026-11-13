@@ -180,6 +180,9 @@ pub enum ApiKeyType {
 pub struct ApiKey {
     pub api_key_id: String,
     pub name: String,
+    /// Signing algorithm; omitted when Kalshi does not know it.
+    #[serde(default)]
+    pub key_type: Option<ApiKeyType>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     pub scopes: Vec<String>,
     #[serde(default)]

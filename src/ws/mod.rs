@@ -27,6 +27,7 @@
 //! | [`WsChannelV2::CfbenchmarksValue`] | Yes | CF Benchmarks reference rates |
 //! | [`WsChannelV2::CfbenchmarksValue5hz`] | Yes | CF Benchmarks high-frequency reference rates |
 //! | [`WsChannelV2::PythValue`] | Yes | Pyth underlying values |
+//! | [`WsChannelV2::EbattleScores`] | Yes | eSoccer/eBasketball scores (send `subscribe_matches` after subscribing) |
 //!
 //! # Quick Start — Public Ticker
 //!

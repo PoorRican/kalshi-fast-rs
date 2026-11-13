@@ -1,7 +1,7 @@
 use crate::rest::events::GetEventForecastPercentileHistoryParams;
 use crate::rest::rate_limit::{RateLimitConfig, RateLimitTier, RateLimiter, rate_limit_kind};
 use crate::rest::retry::{
-    RetryConfig, build_http_error, retry_after_delay, retryable_reqwest_error, retryable_status,
+    RetryConfig, build_http_error, retry_after_delay, retryable_reqwest_error, retryable_response,
 };
 use crate::rest::structured_targets::GetStructuredTargetsParams;
 use crate::{KalshiAuth, KalshiEnvironment, KalshiError, REST_PREFIX};
@@ -346,7 +346,7 @@ impl KalshiRestClient {
 
                     let should_retry = retry_number < self.retry_config.max_retries
                         && self.retry_config.allows_method(&method)
-                        && retryable_status(status);
+                        && retryable_response(status, &bytes);
 
                     if should_retry {
                         retry_number = retry_number.saturating_add(1);
@@ -844,6 +844,37 @@ mod tests {
             .expect("request succeeds");
         assert!(start.elapsed() >= Duration::from_millis(900));
         assert_eq!(hits.load(Ordering::Relaxed), 2);
+        server.await.expect("server").expect("server ok");
+    }
+
+    #[tokio::test]
+    async fn quota_429_codes_are_not_retried() {
+        let (rest_origin, hits, server) = spawn_http_sequence_server(vec![TestHttpResponse::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            r#"{"code":"concert_search_limit_exceeded","message":"limit"}"#,
+        )])
+        .await;
+
+        let client = KalshiRestClient::builder(test_env(rest_origin))
+            .with_retry_config(RetryConfig {
+                max_retries: 3,
+                base_delay: Duration::from_millis(1),
+                max_delay: Duration::from_millis(1),
+                jitter: 0.0,
+                retry_non_idempotent: true,
+            })
+            .build()
+            .expect("build client");
+
+        let err = client
+            .get_exchange_status()
+            .await
+            .expect_err("quota 429 is returned, not retried");
+        assert!(matches!(
+            err,
+            KalshiError::Http { status, .. } if status == StatusCode::TOO_MANY_REQUESTS
+        ));
+        assert_eq!(hits.load(Ordering::Relaxed), 1);
         server.await.expect("server").expect("server ok");
     }
 
