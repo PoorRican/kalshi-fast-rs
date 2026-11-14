@@ -170,8 +170,10 @@ pub struct Market {
     #[serde(default)]
     pub market_type: Option<String>,
     #[serde(default)]
+    #[deprecated(note = "marked deprecated in the Kalshi OpenAPI; may be removed upstream")]
     pub title: Option<String>,
     #[serde(default)]
+    #[deprecated(note = "marked deprecated in the Kalshi OpenAPI; may be removed upstream")]
     pub subtitle: Option<String>,
     #[serde(default)]
     pub yes_sub_title: Option<String>,
@@ -198,8 +200,6 @@ pub struct Market {
     pub close_time: Option<String>,
     #[serde(default)]
     pub expected_expiration_time: Option<String>,
-    #[serde(default)]
-    pub expiration_time: Option<String>,
     #[serde(default)]
     pub latest_expiration_time: Option<String>,
     #[serde(default)]
@@ -879,6 +879,32 @@ mod tests {
         for interval in [0, i32::MAX as u32 + 1, u32::MAX] {
             assert!(validate_batch_candlestick_interval(interval).is_err());
         }
+    }
+
+    #[test]
+    fn removed_market_expiration_time_is_tolerated_until_upstream_drops_it() {
+        // The 3.36.0 OpenAPI no longer lists `expiration_time`; production
+        // still returned it on 2026-11-14 ahead of the announced removal.
+        let market: Market = serde_json::from_value(json!({
+            "ticker": "M",
+            "expiration_time": "2026-12-01T00:00:00Z",
+            "latest_expiration_time": "2026-12-01T00:00:00Z",
+            "expected_expiration_time": "2026-11-30T00:00:00Z"
+        }))
+        .unwrap();
+        assert_eq!(
+            market.latest_expiration_time.as_deref(),
+            Some("2026-12-01T00:00:00Z")
+        );
+        assert_eq!(
+            market.extra.get("expiration_time").and_then(Value::as_str),
+            Some("2026-12-01T00:00:00Z")
+        );
+        let market: Market = serde_json::from_value(json!({
+            "ticker": "M", "latest_expiration_time": "2026-12-01T00:00:00Z"
+        }))
+        .unwrap();
+        assert!(!market.extra.contains_key("expiration_time"));
     }
 
     #[test]

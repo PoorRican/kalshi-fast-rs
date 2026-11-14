@@ -394,6 +394,7 @@ async fn audit_market_option_fields() {
         markets.markets.iter().map(|m| m.rules_primary.is_none()),
     ));
     let status_none = count_none(Box::new(markets.markets.iter().map(|m| m.status.is_none())));
+    #[allow(deprecated)]
     let title_none = count_none(Box::new(markets.markets.iter().map(|m| m.title.is_none())));
 
     eprintln!("--- Market Option<_> audit (n = {n}) ---");

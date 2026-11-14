@@ -374,6 +374,8 @@ pub enum MarginLastUpdateReason {
     Trade,
     PostOnlyCrossCancel,
     ReduceOnlyCancel,
+    /// A resting order fell outside the equities overnight settlement price band.
+    SettlementBoundsCancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -832,6 +834,26 @@ mod tests {
                 assert_eq!(e.msg.created_ts_ms.0, None);
             }
             _ => panic!("expected UserOrder"),
+        }
+    }
+
+    #[test]
+    fn settlement_bounds_cancel_reason_parses_on_user_orders_and_deltas() {
+        let order = br#"{"type":"user_order","sid":5,"msg":{"order_id":"o","user_id":"u","client_order_id":"c","ticker":"KXAAPLPERP","side":"bid","price":"1","fill_count":"0","remaining_count":"0","created_ts_ms":null,"order_source":"system","last_update_reason":"SettlementBoundsCancel"}}"#;
+        match parse(order) {
+            MarginDataMessage::UserOrder(e) => assert_eq!(
+                e.msg.last_update_reason,
+                Some(MarginLastUpdateReason::SettlementBoundsCancel)
+            ),
+            _ => panic!("expected UserOrder"),
+        }
+        let delta = br#"{"type":"orderbook_delta","sid":1,"seq":2,"msg":{"market_ticker":"KXAAPLPERP","price":"1","delta":"-1","side":"bid","last_update_reason":"SettlementBoundsCancel"}}"#;
+        match parse(delta) {
+            MarginDataMessage::OrderbookDelta(e) => assert_eq!(
+                e.msg.last_update_reason,
+                Some(MarginLastUpdateReason::SettlementBoundsCancel)
+            ),
+            _ => panic!("expected OrderbookDelta"),
         }
     }
 

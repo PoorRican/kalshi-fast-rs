@@ -764,7 +764,8 @@ fn get_positions_response_deserializes() {
             "realized_pnl_dollars": "1.1100",
             "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
-            "last_updated_ts": "2026-04-16T12:00:00Z"
+            "last_updated_ts": "2026-04-16T12:00:00Z",
+            "netting_enabled": false
         }],
         "event_positions": [{
             "event_ticker": "EVT-1",
@@ -795,7 +796,8 @@ fn positions_page_from_response() {
             "realized_pnl_dollars": "1.1100",
             "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
-            "last_updated_ts": "2026-04-16T12:00:00Z"
+            "last_updated_ts": "2026-04-16T12:00:00Z",
+            "netting_enabled": false
         }],
         "event_positions": [{
             "event_ticker": "EVT-1",

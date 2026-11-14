@@ -74,11 +74,11 @@ pub struct Order {
     pub user_id: String,
     pub client_order_id: String,
     pub ticker: String,
-    /// Deprecated by the API; use `outcome_side` or `book_side`.
     #[serde(default)]
+    #[deprecated(note = "use outcome_side or book_side instead")]
     pub side: Option<YesNo>,
-    /// Deprecated by the API; use `outcome_side` or `book_side`.
     #[serde(default)]
+    #[deprecated(note = "use outcome_side or book_side instead")]
     pub action: Option<BuySell>,
     /// Normalized outcome side (yes | no).
     pub outcome_side: YesNo,

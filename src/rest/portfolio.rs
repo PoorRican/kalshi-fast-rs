@@ -103,6 +103,10 @@ pub struct MarketPosition {
     pub realized_pnl_dollars: FixedPointDollars,
     pub fees_paid_dollars: FixedPointDollars,
     pub last_updated_ts: String,
+    /// Whether netting applies to this position's event. Fixed at the
+    /// subaccount's first order in the event, so it can differ from the
+    /// subaccount's current netting setting.
+    pub netting_enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -196,11 +200,11 @@ pub struct Fill {
     pub trade_id: String,
     pub ticker: String,
     pub market_ticker: String,
-    /// Deprecated; use `outcome_side`.
     #[serde(default)]
+    #[deprecated(note = "use outcome_side or book_side instead")]
     pub side: Option<YesNo>,
-    /// Deprecated; use `book_side`.
     #[serde(default)]
+    #[deprecated(note = "use outcome_side or book_side instead")]
     pub action: Option<BuySell>,
     pub outcome_side: YesNo,
     pub book_side: BookSide,
@@ -883,6 +887,21 @@ mod tests {
         let mut missing = value;
         missing.as_object_mut().unwrap().remove("book_side");
         assert!(serde_json::from_value::<Fill>(missing).is_err());
+    }
+
+    #[test]
+    fn market_position_requires_netting_enabled() {
+        let mut value = json!({
+            "ticker": "T", "exchange_index": 0, "total_traded_dollars": "1.000000",
+            "position_fp": "-2.50", "market_exposure_dollars": "0.500000",
+            "realized_pnl_dollars": "0.000000", "fees_paid_dollars": "0.010000",
+            "last_updated_ts": "2026-11-05T00:00:00Z", "netting_enabled": true
+        });
+        let position: MarketPosition = serde_json::from_value(value.clone()).unwrap();
+        assert!(position.netting_enabled);
+        assert_eq!(position.position_fp, "-2.50");
+        value.as_object_mut().unwrap().remove("netting_enabled");
+        assert!(serde_json::from_value::<MarketPosition>(value).is_err());
     }
 
     #[test]

@@ -64,6 +64,9 @@ pub struct GetMarginTradesParams {
     pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
+    /// Filter to block (`true`) or non-block (`false`) trades; both when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_block_trade: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -278,6 +281,9 @@ pub enum MarginSubaccountType {
     Cross,
     Isolated,
     AutoRebalance,
+    /// A managed isolated position; its subaccount number is its slot
+    /// number rather than the market's isolated subaccount number.
+    ManagedIsolated,
 }
 // ---------------------------------------------------------------------------
 // Responses
@@ -334,6 +340,8 @@ pub struct MarginMarket {
     pub underlying_multiplier: String,
     pub tick_size: String,
     pub fractional_trading_enabled: bool,
+    /// Minimum order quantity in contracts.
+    pub minimum_quantity: String,
     /// Null for markets that trade around the clock.
     #[serde(deserialize_with = "Option::deserialize")]
     pub schedule: Option<MarginMarketSchedule>,
@@ -626,6 +634,8 @@ pub struct MarginTrade {
     pub price: String,
     pub created_time: String,
     pub taker_side: BookSide,
+    /// True for trades matched off-book as a block trade (e.g. via RFQ).
+    pub is_block_trade: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -647,7 +657,10 @@ pub struct GetMarginBalanceResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub subaccount_balances: Vec<MarginSubaccountBalance>,
-    pub settled_funds: String,
+    /// Account-wide settled funds. Omitted for API keys restricted to a
+    /// single subaccount.
+    #[serde(default)]
+    pub settled_funds: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1270,9 +1283,9 @@ impl KalshiRestClient {
 #[cfg(test)]
 mod tests {
     use super::{
-        AmendMarginOrderRequest, GetMarginOrderGroupResponse, GetMarginTradesParams,
-        MarginFundingHistoryEntry, MarginMarket, MarginPosition, MarginPriceDistribution,
-        MarginSubaccountType,
+        AmendMarginOrderRequest, GetMarginBalanceResponse, GetMarginOrderGroupResponse,
+        GetMarginTradesParams, MarginFundingHistoryEntry, MarginMarket, MarginPosition,
+        MarginPriceDistribution, MarginSubaccountType, MarginTrade,
     };
     use crate::types::BookSide;
 
@@ -1326,7 +1339,7 @@ mod tests {
         let mut fixture = serde_json::json!({
             "ticker": "KXBTC", "status": "active", "title": "Bitcoin",
             "contract_size": "1", "underlying_multiplier": "1", "tick_size": "0.01",
-            "fractional_trading_enabled": false, "schedule": null,
+            "fractional_trading_enabled": false, "minimum_quantity": "1.00", "schedule": null,
             "market_version": 2, "funding_deadband": 0.0, "funding_cap": 0.1,
             "funding_limit_unit": "percentage",
             "funding_invalid_premium_handling": "exclude", "halt_sources": []
@@ -1348,6 +1361,7 @@ mod tests {
             "underlying_multiplier": "1",
             "tick_size": "0.010000",
             "fractional_trading_enabled": false,
+            "minimum_quantity": "1.00",
             "schedule": {"is_open": true, "next_close_ts": 1760000000, "next_open_ts": null},
             "exchange_index": 0,
             "market_version": 2,
@@ -1365,6 +1379,7 @@ mod tests {
         assert_eq!(schedule.next_open_ts, None);
         assert_eq!(market.bid_size_fp.as_deref(), Some("2.50"));
         assert!(!market.fractional_trading_enabled);
+        assert_eq!(market.minimum_quantity, "1.00");
 
         fixture["schedule"] = serde_json::Value::Null;
         let always_open: MarginMarket = serde_json::from_value(fixture.clone()).unwrap();
@@ -1425,5 +1440,50 @@ mod tests {
         assert!(value.get("ticker").is_none());
         let query = serde_json::to_value(GetMarginTradesParams::default()).unwrap();
         assert!(query.get("ticker").is_none());
+        assert!(query.get("is_block_trade").is_none());
+        let query = serde_json::to_value(GetMarginTradesParams {
+            is_block_trade: Some(false),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(query["is_block_trade"], false);
+    }
+
+    #[test]
+    fn margin_trade_requires_block_trade_flag() {
+        // Captured from production GET /margin/trades on 2026-11-14.
+        let mut value = serde_json::json!({
+            "count": "1.00", "created_time": "2026-11-13T21:59:28.538365Z",
+            "is_block_trade": false, "price": "7.1082", "taker_side": "bid",
+            "ticker": "KXAAPLPERP", "trade_id": "07268d5b-6e51-9bb6-0300-8412e0d9ffbb"
+        });
+        let trade: MarginTrade = serde_json::from_value(value.clone()).unwrap();
+        assert!(!trade.is_block_trade);
+        assert!(matches!(trade.taker_side, BookSide::Bid));
+        value.as_object_mut().unwrap().remove("is_block_trade");
+        assert!(serde_json::from_value::<MarginTrade>(value).is_err());
+    }
+
+    #[test]
+    fn margin_balance_settled_funds_is_omitted_for_subaccount_restricted_keys() {
+        let mut value = serde_json::json!({
+            "subaccount_balances": [{
+                "subaccount": 3, "subaccount_type": "managed_isolated",
+                "position_value": "1.000000", "account_equity": "2.000000",
+                "maintenance_margin": "0.100000", "initial_margin": "0.200000",
+                "resting_orders_margin": "0.000000", "available_balance": "1.800000"
+            }],
+            "settled_funds": "5.000000"
+        });
+        let balance: GetMarginBalanceResponse = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(balance.settled_funds.as_deref(), Some("5.000000"));
+        assert!(matches!(
+            balance.subaccount_balances[0].subaccount_type,
+            MarginSubaccountType::ManagedIsolated
+        ));
+        value.as_object_mut().unwrap().remove("settled_funds");
+        let restricted: GetMarginBalanceResponse = serde_json::from_value(value).unwrap();
+        assert_eq!(restricted.settled_funds, None);
+        assert_eq!(restricted.subaccount_balances.len(), 1);
     }
 }

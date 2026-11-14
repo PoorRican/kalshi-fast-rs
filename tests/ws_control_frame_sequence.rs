@@ -300,6 +300,14 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
             r#"{"underlying_tickers":["Metal.XAU/USD"]}"#,
         ),
         (
+            "ebattle_scores",
+            r#"{"event_id":"event","match_id":"milestone","received_at":101,"data":"{\"game\":\"esoccer\",\"status\":\"live\",\"home_score\":1}"}"#,
+        ),
+        (
+            "ebattle_scores_matchlist",
+            r#"{"match_ids":["milestone","other"]}"#,
+        ),
+        (
             "rfq_batch_created",
             r#"{"id":"batch","creator_id":"creator","created_ts":"2024-12-01T10:00:00Z","legs":[],"rfqs":[]}"#,
         ),
@@ -340,6 +348,10 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
             WsMessageV2::Data(WsDataMessageV2::PythValue { .. }) => "pyth_value",
             WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { .. }) => {
                 "pyth_value_underlying_list"
+            }
+            WsMessageV2::Data(WsDataMessageV2::EbattleScores { .. }) => "ebattle_scores",
+            WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist { .. }) => {
+                "ebattle_scores_matchlist"
             }
             WsMessageV2::Data(WsDataMessageV2::Communications { msg, .. }) => match msg {
                 WsCommunications::RfqBatchCreated(_) => "rfq_batch_created",
@@ -411,6 +423,36 @@ fn feed_and_batch_strings_borrow_the_original_wire_buffer() {
     }
     assert_eq!(message.sending_ts_ms(), Some(3));
 
+    let scores = br#"{"type":"ebattle_scores","sid":1,"seq":2,"sending_ts_ms":3,"msg":{"event_id":"event","match_id":"milestone","received_at":101,"data":"{\"status\":\"live\"}"}}"#;
+    let message = WsMessageRef::from_bytes(scores).unwrap();
+    match &message {
+        WsMessageRef::Data(WsDataMessageRef::EbattleScores { msg, .. }) => {
+            assert_borrowed_from(scores, &msg.event_id);
+            assert_borrowed_from(scores, &msg.match_id);
+            assert_eq!(msg.received_at, 101);
+            // The escaped JSON document cannot borrow; it must still decode.
+            let state: serde_json::Value = serde_json::from_str(&msg.data).unwrap();
+            assert_eq!(state["status"], "live");
+        }
+        other => panic!("expected eBattle scores, got {other:?}"),
+    }
+    assert_eq!(message.sequence(), Some(2));
+    let matchlist =
+        br#"{"type":"ebattle_scores_matchlist","sid":1,"seq":3,"msg":{"match_ids":["milestone"]}}"#;
+    match WsMessageRef::from_bytes(matchlist).unwrap() {
+        WsMessageRef::Data(WsDataMessageRef::EbattleScoresMatchlist { msg, .. }) => {
+            assert_borrowed_from(matchlist, &msg.match_ids[0]);
+        }
+        other => panic!("expected eBattle matchlist, got {other:?}"),
+    }
+    let ok = br#"{"type":"ok","id":2,"sid":1,"seq":4,"msg":{"match_ids":["all"]}}"#;
+    match WsMessageV2::from_bytes(ok).unwrap() {
+        WsMessageV2::Ok { msg, .. } => {
+            assert_eq!(msg.unwrap().match_ids.unwrap(), ["all"]);
+        }
+        other => panic!("expected OK, got {other:?}"),
+    }
+
     let batch = br#"{"type":"rfq_batch_deleted","sid":1,"seq":3,"sending_ts_ms":4,"msg":{"id":"batch","creator_id":"creator","rfq_ids":["rfq"],"deleted_ts":"2024-12-01T10:05:00Z"}}"#;
     match WsMessageRef::from_bytes(batch).unwrap() {
         WsMessageRef::Data(WsDataMessageRef::Communications {
@@ -428,6 +470,8 @@ fn feed_and_batch_strings_borrow_the_original_wire_buffer() {
 fn malformed_published_events_are_errors_not_unknown_messages() {
     for frame in [
         br#"{"type":"pyth_value","sid":1,"msg":{}}"#.as_slice(),
+        br#"{"type":"ebattle_scores","sid":1,"msg":{"match_id":"milestone"}}"#.as_slice(),
+        br#"{"type":"ebattle_scores_matchlist","sid":1,"msg":{}}"#.as_slice(),
         br#"{"type":"rfq_batch_deleted","sid":1,"msg":{}}"#.as_slice(),
     ] {
         assert!(WsMessageV2::from_bytes(frame).is_err());

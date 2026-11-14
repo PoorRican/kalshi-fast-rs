@@ -110,6 +110,31 @@ pub(crate) fn retryable_status(status: StatusCode) -> bool {
     )
 }
 
+/// A `429` whose error code is not `too_many_requests` reports a capacity
+/// limit (open RFQs, on-request market creation, concert search), not
+/// request-rate limiting; retrying at once does not help.
+pub(crate) fn is_capacity_limit(status: StatusCode, bytes: &[u8]) -> bool {
+    #[derive(serde::Deserialize)]
+    struct Body<'a> {
+        #[serde(borrow, default)]
+        error: Option<Code<'a>>,
+        #[serde(borrow, default)]
+        code: Option<std::borrow::Cow<'a, str>>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Code<'a> {
+        #[serde(borrow, default)]
+        code: Option<std::borrow::Cow<'a, str>>,
+    }
+    if status != StatusCode::TOO_MANY_REQUESTS {
+        return false;
+    }
+    serde_json::from_slice::<Body<'_>>(bytes)
+        .ok()
+        .and_then(|body| body.error.and_then(|e| e.code).or(body.code))
+        .is_some_and(|code| !code.is_empty() && code != "too_many_requests")
+}
+
 pub(crate) fn retryable_reqwest_error(err: &reqwest::Error) -> bool {
     err.is_timeout() || err.is_connect() || err.is_request()
 }
@@ -126,4 +151,38 @@ pub(crate) fn retry_after_delay(headers: &HeaderMap) -> Option<Duration> {
     let now = SystemTime::now();
     let delta = ts.duration_since(now).ok()?;
     Some(delta)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capacity_limit_429_codes_are_not_request_rate_limiting() {
+        let limited = StatusCode::TOO_MANY_REQUESTS;
+        for code in [
+            "open_rfq_limit_exceeded",
+            "weather_point_market_limit_exceeded",
+            "concert_cancellation_market_limit_exceeded",
+            "concert_search_limit_exceeded",
+        ] {
+            let wrapped = format!(r#"{{"error":{{"code":"{code}","message":"m"}}}}"#);
+            assert!(is_capacity_limit(limited, wrapped.as_bytes()), "{code}");
+            let bare = format!(r#"{{"code":"{code}"}}"#);
+            assert!(is_capacity_limit(limited, bare.as_bytes()), "{code}");
+        }
+        for body in [
+            r#"{"error":{"code":"too_many_requests"}}"#,
+            r#"{"code":"too_many_requests"}"#,
+            r#"{"error":{"message":"slow down"}}"#,
+            "",
+            "rate limited",
+        ] {
+            assert!(!is_capacity_limit(limited, body.as_bytes()), "{body}");
+        }
+        assert!(!is_capacity_limit(
+            StatusCode::BAD_REQUEST,
+            br#"{"error":{"code":"rfq_market_not_open"}}"#
+        ));
+    }
 }

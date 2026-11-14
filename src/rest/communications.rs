@@ -214,6 +214,9 @@ pub struct CreateRFQRequest {
     pub contracts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_fp: Option<FixedPointCount>,
+    /// Deprecated by Kalshi; use `target_cost_dollars`. Left without
+    /// `#[deprecated]` because this request has no `Default`, so every
+    /// construction would have to name the field and trip the lint.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]

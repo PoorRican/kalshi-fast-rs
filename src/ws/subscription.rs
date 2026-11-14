@@ -232,6 +232,7 @@ mod tests {
             send_initial_snapshot: Some(true),
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -277,6 +278,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -305,6 +307,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -333,6 +336,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["ETHUSD_RR".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&add);
         let updated = tracker.active.get(&7).unwrap();
@@ -351,6 +355,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&remove);
         let updated = tracker.active.get(&7).unwrap();
@@ -380,6 +385,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
 
@@ -418,6 +424,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         tracker.drop_pending_update(99);
@@ -483,6 +490,7 @@ mod tests {
                 send_initial_snapshot: None,
                 index_ids: None,
                 underlying_tickers: None,
+                match_ids: None,
             },
         );
         tracker.record_unsubscribe_cmd(88, vec![20]);
@@ -520,6 +528,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         assert_eq!(tracker.pending_updates.len(), 1);
@@ -554,6 +563,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         let mut indexlist = update.clone();
         indexlist.action = WsUpdateAction::Indexlist;
@@ -619,6 +629,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         }
     }
 
@@ -682,6 +693,25 @@ mod tests {
         assert!(replay.iter().any(|p| p.channels == [WsChannelV2::PythValue]
             && p.underlying_tickers == Some(vec!["Metal.XAU/USD".into()])));
         assert!(replay.iter().any(|p| p.channels == [WsChannelV2::Ticker]));
+    }
+
+    #[test]
+    fn ebattle_match_updates_are_not_folded_into_replayed_subscriptions() {
+        let mut tracker = SubscriptionTracker::default();
+        let params = WsSubscriptionParamsV2 {
+            channels: vec![WsChannelV2::EbattleScores],
+            ..Default::default()
+        };
+        tracker.record_subscribe_cmd(1, params.clone());
+        tracker.handle_subscribed(Some(1), Some(7));
+        let mut matches = update(WsUpdateAction::SubscribeMatches, 7);
+        matches.match_ids = Some(vec!["all".into()]);
+        tracker.record_update_cmd(2, matches);
+        assert!(tracker.pending_updates.is_empty());
+        tracker.handle_ok(2);
+        // The subscribe command has no match seed; replay restores the
+        // (empty) subscription and the caller resends subscribe_matches.
+        assert_eq!(tracker.prepare_resubscribe(), vec![params]);
     }
 
     #[test]

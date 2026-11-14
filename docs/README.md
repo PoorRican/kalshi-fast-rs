@@ -3,8 +3,11 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
-The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
-Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
+The unreleased `0.12.0` refresh is source-breaking on top of `0.11.0`:
+`Market::expiration_time` is removed (read `latest_expiration_time`), perps
+`GetMarginBalanceResponse::settled_funds` is optional, `MarketPosition`,
+`MarginMarket`, `MarginTrade` and `WsUpdateSubscriptionParamsV2` gained fields,
+and REST fields Kalshi marks deprecated now carry `#[deprecated]`. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
 version or unchanged AsyncAPI version as a freshness signal.

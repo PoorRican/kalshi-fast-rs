@@ -2,7 +2,8 @@
 //!
 //! `live_data` endpoints expose real-time feeds tied to sporting-event
 //! milestones (scores, play-by-play). `milestones` endpoints enumerate the
-//! milestones themselves. `incentive_programs` lists maker-rebate programs.
+//! milestones themselves. `incentive_programs` lists maker-rebate programs and
+//! `incentive_schedules` the recurring schedules that create them.
 
 use crate::KalshiError;
 use crate::rest::client::KalshiRestClient;
@@ -22,6 +23,12 @@ pub struct GetIncentiveProgramsParams {
     pub incentive_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub incentive_description: Option<String>,
+    /// Filter to one series' incentives.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series_ticker: Option<String>,
+    /// Filter to one event's incentives. A perpetual's incentives belong to no event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,6 +48,12 @@ pub struct IncentiveProgram {
     pub id: String,
     pub market_id: Option<String>,
     pub market_ticker: Option<String>,
+    /// Series of the program's market.
+    #[serde(default)]
+    pub series_ticker: Option<String>,
+    /// Event of the program's market; empty for a perpetual.
+    #[serde(default)]
+    pub event_ticker: Option<String>,
     pub incentive_type: String,
     pub incentive_description: String,
     pub start_date: String,
@@ -55,6 +68,50 @@ pub struct IncentiveProgram {
     pub max_reward_per_account: Option<i64>,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// Response of `GET /incentive_schedules`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIncentiveSchedulesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub schedules: Vec<IncentiveSchedule>,
+}
+
+/// A recurring incentive schedule: what each market of a series (or of one
+/// event) can expect to earn window after window.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IncentiveSchedule {
+    pub series_ticker: String,
+    pub series_title: String,
+    pub series_category: String,
+    /// Empty when the schedule covers the whole series.
+    pub event_ticker: String,
+    /// Empty when the schedule covers the whole series.
+    pub event_title: String,
+    /// `liquidity` or `volume`.
+    pub incentive_type: String,
+    /// The job publishing the schedule; with series, event and type it
+    /// identifies the schedule.
+    pub source: String,
+    /// What each market earns per window, in centi-cents.
+    pub reward: i64,
+    /// Days per window; `0` rewards each market once, up to its close.
+    pub window_days: i32,
+    /// Liquidity schedules only.
+    #[serde(default)]
+    pub discount_factor_bps: Option<i32>,
+    /// Liquidity schedules only.
+    #[serde(default)]
+    pub target_size_fp: Option<FixedPointCount>,
+    /// When the schedule stops (exclusive); `None` when it has no end.
+    #[serde(default)]
+    pub ends: Option<String>,
+    pub description: String,
+    /// `true` promises these terms to every covered market, including
+    /// markets listed later; `false` means anticipated, not promised.
+    pub all_markets: bool,
+    pub posted_ts: String,
+    pub updated_ts: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -263,6 +320,21 @@ impl KalshiRestClient {
         .await
     }
 
+    /// List recurring incentive schedules that have not ended. Public.
+    pub async fn get_incentive_schedules(
+        &self,
+    ) -> Result<GetIncentiveSchedulesResponse, KalshiError> {
+        let path = Self::full_path("/incentive_schedules");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
     pub async fn get_live_data_batch(
         &self,
         params: GetLiveDatasParams,
@@ -462,6 +534,70 @@ impl KalshiRestClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn incentive_programs_carry_series_and_event_and_filter_by_them() {
+        // Captured from production GET /incentive_programs on 2026-11-14.
+        let program: IncentiveProgram = serde_json::from_str(
+            r#"{"discount_factor_bps":5000,"end_date":"2026-12-07T15:00:00Z",
+                "event_ticker":"KXAAAGASM-26DEC31","id":"a7f63b65-ebd8-4a27-af8b-724d3b511678",
+                "incentive_description":"series_lip","incentive_type":"liquidity",
+                "market_id":"c745aaa7-fcfa-425a-ad26-6d3991740bc4",
+                "market_ticker":"KXAAAGASM-26DEC31-2.90","paid_out":false,
+                "period_reward":3000000,"series_ticker":"KXAAAGASM",
+                "start_date":"2026-11-30T15:00:00Z","target_size_fp":"1000.00"}"#,
+        )
+        .unwrap();
+        assert_eq!(program.series_ticker.as_deref(), Some("KXAAAGASM"));
+        assert_eq!(program.event_ticker.as_deref(), Some("KXAAAGASM-26DEC31"));
+        assert!(program.extra.is_empty());
+
+        let query = serde_json::to_value(GetIncentiveProgramsParams {
+            series_ticker: Some("KXAAAGASM".into()),
+            event_ticker: Some("KXAAAGASM-26DEC31".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            query,
+            serde_json::json!({
+                "series_ticker": "KXAAAGASM", "event_ticker": "KXAAAGASM-26DEC31"
+            })
+        );
+    }
+
+    #[test]
+    fn incentive_schedules_parse_required_fields_and_nullable_end() {
+        // First entry captured from production GET /incentive_schedules on
+        // 2026-11-14; the second is a whole-series schedule with no end.
+        let response: GetIncentiveSchedulesResponse = serde_json::from_str(
+            r#"{"schedules":[
+                {"all_markets":false,"description":"Expected to continue; not promised",
+                 "discount_factor_bps":5000,"ends":"2027-01-01T05:00:00Z",
+                 "event_ticker":"CONTROLH-2028","event_title":"2028 U.S. House winner?",
+                 "incentive_type":"liquidity","posted_ts":"2026-11-12T14:11:04.989212Z",
+                 "reward":1000000,"series_category":"Elections","series_ticker":"CONTROLH",
+                 "series_title":"House winner","source":"series_lip_recurring_events",
+                 "target_size_fp":"1000.00","updated_ts":"2026-11-14T00:41:18.532141Z",
+                 "window_days":7},
+                {"all_markets":true,"description":"Promised","ends":null,
+                 "event_ticker":"","event_title":"","incentive_type":"volume",
+                 "posted_ts":"2026-11-12T00:00:00Z","reward":5,"series_category":"Sports",
+                 "series_ticker":"S","series_title":"Series","source":"job",
+                 "updated_ts":"2026-11-13T00:00:00Z","window_days":0}
+            ]}"#,
+        )
+        .unwrap();
+        let first = &response.schedules[0];
+        assert_eq!(first.reward, 1_000_000);
+        assert_eq!(first.window_days, 7);
+        assert_eq!(first.ends.as_deref(), Some("2027-01-01T05:00:00Z"));
+        assert_eq!(first.target_size_fp.as_deref(), Some("1000.00"));
+        let second = &response.schedules[1];
+        assert!(second.all_markets);
+        assert!(second.ends.is_none() && second.discount_factor_bps.is_none());
+        assert!(second.event_ticker.is_empty());
+    }
 
     #[test]
     fn weather_index_retains_incomplete_and_historical_points() {
