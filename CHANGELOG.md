@@ -9,6 +9,111 @@ For crate versioning policy and bump rules, see [`VERSIONING.md`](VERSIONING.md)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-15
+
+### Compatibility
+
+- Docs snapshot: 2026-11-15
+- OpenAPI: 3.36.0
+- AsyncAPI: 2.0.0
+- Perps OpenAPI: 0.0.1
+- Perps AsyncAPI: 2.0.0
+- Validated through changelog: 2026-11-13
+- The watermark is the latest changelog publication date. The fetched changelog dates several of
+  those entries November 19 and two as TBD; their published schemas are covered without asserting
+  that the behavior is deployed.
+
+### Breaking
+
+- [Rust API] Version bump is minor per `VERSIONING.md` ("Bump `minor` if deprecated or removed
+  upstream fields/endpoints force a breaking Rust API change"; pre-1.0, any breaking change to the
+  public Rust API is a minor release).
+- [Rust API] Removed `Market::expiration_time`; Kalshi removed the field. Use
+  `latest_expiration_time`, which always carried the same value.
+- [Rust API] `GetMarginBalanceResponse::settled_funds` is now `Option<String>` (was `String`);
+  keys restricted to one subaccount do not receive it.
+- [Rust API] New required response fields, which also break struct literals: `MarketPosition` and
+  `MarketPositionRef` `netting_enabled`, `MarginMarket::minimum_quantity`,
+  `MarginTrade::is_block_trade`, and perps WebSocket `TradeMsg::is_block_trade`.
+- [Rust API] New fields on structs without `..Default::default()` coverage: `ApiKey::key_type`,
+  `IncentiveProgram` `series_ticker`/`event_ticker`, `GetIncentiveProgramsParams`
+  `series_ticker`/`event_ticker`, `WsUpdateSubscriptionParamsV2::match_ids`, and
+  `WsOkPayload`/`WsOkPayloadRef` `match_ids`.
+- [Rust API] New enum variants break exhaustive matches: `WsChannelV2::EbattleScores`,
+  `WsMsgType` and `WsDataMessageV2`/`WsDataMessageRef` `EbattleScores` and
+  `EbattleScoresMatchlist`, `WsUpdateAction` `SubscribeMatches`/`UnsubscribeMatches`/`Matchlist`,
+  and `MarginLastUpdateReason::SettlementBoundsCancel`.
+
+### Deprecated
+
+- [Rust API] `#[deprecated]` now marks the remaining REST fields the OpenAPI flags as deprecated.
+  All were already `Option`: `Order::side`/`action` and `Fill::side`/`action` (use `outcome_side`
+  or `book_side`), `Trade::taker_side` (use `taker_outcome_side` or `taker_book_side`),
+  `Market::title`/`subtitle`, `EventData::category`, and `CreateRFQRequest::target_cost_centi_cents`
+  (use `target_cost_dollars`). `CreateRFQRequest` now implements `Default` so callers can omit the
+  deprecated field.
+- [Rust API] `KalshiEnvironment::warp_ws_url()` and `margin_warp_ws_url()`; Kalshi deprecated the
+  `warp-ws` hosts in favor of the `user-ws` hosts.
+
+### Added
+
+- [Rust API] On-request markets: `create_weather_point_market`, `get_weather_point_availability`,
+  `create_concert_cancellation_market`, `get_concert_cancellation_availability`, `get_concerts`,
+  and `search_concerts`, with their request and response types.
+- [Rust API] `get_incentive_schedules` with `IncentiveSchedule`, plus the incentive-program
+  series and event filters and fields.
+- [Rust API] `ebattle_scores` WebSocket channel: `WsEbattleScores`, `WsEbattleScoresMatchlist`
+  (owned and borrowed), the match update actions, and the `match_ids` filter in `ok` responses.
+- [Rust API] `KalshiEnvironment::user_ws_url()` / `margin_user_ws_url()` for the per-user
+  `user-ws` hosts.
+- [Rust API] `create_margin_fcm_position_transfer` for `POST /margin/fcm/positions/transfers`,
+  which the perps OpenAPI publishes without a changelog entry.
+
+### Fixed
+
+- [Rust API] Perps `user_order` and orderbook-delta frames carrying
+  `last_update_reason: "SettlementBoundsCancel"` no longer fail to decode.
+
+### Changelog mapping (since 2026-11-02)
+
+Dates are the changelog's own. Entries mapped by the `0.11.0` refresh are not repeated.
+
+- Nov 19 "On-request concert markets": four endpoints added.
+- Nov 19 "Rate limit headers on REST responses": no change needed. The client does not surface
+  response headers, and a 429 without `Retry-After` already falls back to exponential backoff.
+- Nov 19 "`expected_expiration_time` never later than `latest_expiration_time`": no change needed;
+  value semantics only.
+- Nov 19 "Market `expiration_time` removed": field removed.
+- Nov 19 "Overnight settlement price band for equities perps": added the
+  `SettlementBoundsCancel` margin reason. The band itself is server-side.
+- Nov 19 "Incentive schedules, and incentive programs by series or event": endpoint, filters and
+  fields added.
+- Nov 12 "User hosts for fill and order updates": URL helpers added, `warp-ws` helpers deprecated.
+- Nov 12 "Subaccount-restricted API keys can read perps balance and funding history":
+  `settled_funds` optional. Funding history is unchanged in shape.
+- Nov 12 "Create on-request weather markets": two endpoints added.
+- Nov 12 "`key_type` on `GET /api_keys`": `ApiKey::key_type` added.
+- Nov 12 "`ebattle_scores` channel": channel, messages and update actions added.
+- Nov 12 "Margin `market_lifecycle_v2` sends `deactivated`/`activated` at trading-hours
+  boundaries": no change needed; both event types and `is_deactivated` were already modeled.
+- Nov 11 "Margin markets include `minimum_quantity`": field added.
+- Nov 5 "`netting_enabled` on market positions": field added.
+- Nov 12 "Specific error codes for two RFQ create refusals" and "Clearer
+  `insufficient_shard_balance` details": no change needed; error `code` and `details` are
+  passed through as strings.
+- TBD "`stock_perps_application_required`": no change needed, for the same reason.
+- Nov 12 "Short public caching on Get Market and Get Event" and "Clarified balance endpoint
+  coverage": no change needed; response bodies are unchanged.
+- Nov 12 MCP read access to margin data and to settlements: no change needed; OAuth MCP grants
+  are outside this client and the payloads are unchanged.
+- Nov 5 `KXRFQ` markets left out of unscoped REST listings and WebSocket subscriptions: no change
+  needed; server-side filtering, noted in the on-request module docs.
+- Nov 5 "Perps price band changes sides": no change needed; server-side validation.
+- Nov 5 "`orderbook_delta` `update_interval_ms`": no change needed; the 0/100/1000 option and its
+  validation were already present.
+- Nov 12 and Nov 5 FIX entries (`MDExecID`, Security Status cost, subaccount mass cancel): no
+  change needed; FIX is not implemented.
+
 ## [0.11.0] - 2026-11-03
 
 ### Compatibility

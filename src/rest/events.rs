@@ -97,6 +97,7 @@ pub struct EventData {
     #[serde(default)]
     pub sub_title: Option<String>,
     #[serde(default)]
+    #[deprecated(note = "use the series-level category")]
     pub category: Option<String>,
     #[serde(default)]
     pub strike_date: Option<String>,

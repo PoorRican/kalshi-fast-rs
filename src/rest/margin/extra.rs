@@ -392,7 +392,51 @@ fn exit_trigger_path(margin_type: &str, ticker: &str) -> String {
     ))
 }
 
+/// Side of a perps position moved by an FCM position transfer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginPositionTransferSide {
+    Long,
+    Short,
+}
+
+/// Moves a perps position in one market from an FCM subtrader into a
+/// subtrader under the FCM's error account. Supply `ticker` or `market_id`.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateMarginFCMPositionTransferRequest {
+    pub source_subtrader_id: String,
+    pub target_subtrader_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
+    pub side: MarginPositionTransferSide,
+    /// Whole number of contracts, as a fixed-point count string.
+    pub count: String,
+    /// Dollars per contract with 2-4 decimal places, greater than zero.
+    pub price: String,
+    /// UUID making the request idempotent per source subtrader. The exchange
+    /// does not keep these IDs across a restart; check the source position
+    /// before retrying after one.
+    pub client_transfer_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateMarginFCMPositionTransferResponse {
+    pub position_transfer_id: String,
+}
+
 impl KalshiRestClient {
+    /// FCM members only; must be enabled for the FCM by Kalshi.
+    pub async fn create_margin_fcm_position_transfer(
+        &self,
+        body: &CreateMarginFCMPositionTransferRequest,
+    ) -> Result<CreateMarginFCMPositionTransferResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/positions/transfers");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
     pub async fn get_margin_corporate_actions(
         &self,
         params: GetMarginCorporateActionsParams,

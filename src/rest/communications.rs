@@ -207,7 +207,7 @@ pub struct GetRFQResponse {
     pub rfq: RFQ,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateRFQRequest {
     pub market_ticker: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -215,6 +215,7 @@ pub struct CreateRFQRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contracts_fp: Option<FixedPointCount>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[deprecated(note = "use target_cost_dollars")]
     pub target_cost_centi_cents: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_cost_dollars: Option<FixedPointDollars>,
@@ -627,7 +628,6 @@ mod tests {
             market_ticker: "MARKET".into(),
             contracts: None,
             contracts_fp: None,
-            target_cost_centi_cents: None,
             target_cost_dollars: Some("10.0000".into()),
             target_cost_excludes_fees: Some(true),
             obscure_creator_id: Some(true),
@@ -635,6 +635,7 @@ mod tests {
             replace_existing: None,
             subtrader_id: None,
             subaccount: Some(0),
+            ..Default::default()
         };
         let value = serde_json::to_value(rfq).unwrap();
         assert_eq!(value["target_cost_excludes_fees"], true);

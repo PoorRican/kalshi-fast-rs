@@ -232,6 +232,7 @@ mod tests {
             send_initial_snapshot: Some(true),
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -277,6 +278,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -305,6 +307,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&update);
 
@@ -333,6 +336,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["ETHUSD_RR".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&add);
         let updated = tracker.active.get(&7).unwrap();
@@ -351,6 +355,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: Some(vec!["BRTI".to_string()]),
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.apply_update(&remove);
         let updated = tracker.active.get(&7).unwrap();
@@ -380,6 +385,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
 
@@ -418,6 +424,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         tracker.drop_pending_update(99);
@@ -483,6 +490,7 @@ mod tests {
                 send_initial_snapshot: None,
                 index_ids: None,
                 underlying_tickers: None,
+                match_ids: None,
             },
         );
         tracker.record_unsubscribe_cmd(88, vec![20]);
@@ -520,6 +528,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         tracker.record_update_cmd(99, update);
         assert_eq!(tracker.pending_updates.len(), 1);
@@ -554,6 +563,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         };
         let mut indexlist = update.clone();
         indexlist.action = WsUpdateAction::Indexlist;
@@ -607,6 +617,41 @@ mod tests {
         };
         assert!(crate::ws::types::validate_subscription(&params).is_err());
     }
+    #[test]
+    fn ebattle_match_filters_are_validated_but_never_folded_into_replay() {
+        use crate::ws::types::validate_update;
+
+        let mut tracker = SubscriptionTracker::default();
+        tracker.record_subscribe_cmd(
+            1,
+            WsSubscriptionParamsV2 {
+                channels: vec![WsChannelV2::EbattleScores],
+                ..Default::default()
+            },
+        );
+        tracker.handle_subscribed(Some(1), Some(7));
+
+        let mut add = update(WsUpdateAction::SubscribeMatches, 7);
+        assert!(validate_update(&add).is_err());
+        add.match_ids = Some(vec!["all".into()]);
+        assert!(validate_update(&add).is_ok());
+        assert_eq!(
+            serde_json::to_value(&add).unwrap(),
+            serde_json::json!({"action": "subscribe_matches", "sid": 7, "match_ids": ["all"]})
+        );
+        assert!(validate_update(&update(WsUpdateAction::Matchlist, 7)).is_ok());
+        let mut mixed = update(WsUpdateAction::AddMarkets, 7);
+        mixed.market_tickers = Some(vec!["M".into()]);
+        mixed.match_ids = Some(vec!["m".into()]);
+        assert!(validate_update(&mixed).is_err());
+
+        tracker.record_update_cmd(2, add);
+        tracker.handle_ok(2);
+        let replay = tracker.prepare_resubscribe();
+        assert_eq!(replay.len(), 1);
+        assert_eq!(replay[0].channels, [WsChannelV2::EbattleScores]);
+    }
+
     fn update(action: WsUpdateAction, sid: u64) -> WsUpdateSubscriptionParamsV2 {
         WsUpdateSubscriptionParamsV2 {
             action,
@@ -619,6 +664,7 @@ mod tests {
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         }
     }
 

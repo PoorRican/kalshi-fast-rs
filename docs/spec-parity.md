@@ -60,9 +60,37 @@ AsyncAPI `info.version`; the snapshot date matters.
   legacy WebSocket direction and timestamp fields) are `Option` plus
   `#[deprecated]`, even where the spec lists them as required, so their eventual
   removal is not a second break. Perps ignores `exchange_index`; order groups can
-  hold orders on any Perps market.
-- Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
-  `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
+  hold orders on any Perps market. The same treatment applies to the REST
+  fields the OpenAPI marks `deprecated`: `Order`/`Fill` `side` and `action`,
+  `Trade::taker_side`, `Market` `title` and `subtitle`, `EventData::category`,
+  and the request field `CreateRFQRequest::target_cost_centi_cents`.
+- Market `expiration_time` is gone from the OpenAPI and from `Market`, ahead of
+  the November 19, 2026 removal date in the changelog. Production still
+  returned it on November 15; until the server drops it, it lands untyped in
+  `Market::extra`. Read `latest_expiration_time`. Order `expiration_time` is
+  unrelated.
+- Perps `GetMarginBalanceResponse::settled_funds` is `Option` because keys
+  restricted to one subaccount do not receive the account-wide total.
+- The per-user `user-ws` hosts (`fill` and `user_orders` today) are documented
+  in prose, not the AsyncAPI; `KalshiEnvironment::user_ws_url()` and
+  `margin_user_ws_url()` are conveniences, not spec-derived values. The
+  `warp-ws` helpers remain, `#[deprecated]`, while Kalshi keeps those hosts up.
+- `ebattle_scores` subscriptions start empty: `subscribe` accepts no match
+  filter, so matches are selected afterwards with `subscribe_matches`. For that
+  reason match filters are not folded into replayable subscription state;
+  after a reconnect the channel is resubscribed empty and the caller must send
+  `subscribe_matches` again. The score state in `data` is a JSON-encoded string
+  and is left undecoded. Public access to the feed is temporary.
+- On-request markets (`KXRFQ` series) come from the weather-point and
+  concert-cancellation endpoints. Their 409 `*_market_unavailable` and 429
+  `*_market_limit_exceeded` refusals are distinguished only by the error
+  `code`. Those 429s are not request-rate limiting, yet the client retries on
+  status alone: the creation limits when `retry_non_idempotent` is set, and
+  the `GET` search limit (`concert_search_limit_exceeded`) by default. The
+  changelog says concert markets are not live yet.
+- REST `X-RateLimit-*` response headers are not surfaced. A 429 carries no
+  `Retry-After`, so retries fall back to the configured exponential backoff,
+  which is what Kalshi recommends.
 
 ## Subscription semantics
 
@@ -93,7 +121,16 @@ It also replayed 45 published event-contract and 3 published margin server
 examples, plus 12 captured control/orderbook frames. Published-example replay
 is not live-feed qualification.
 
-Authenticated demo REST and WebSocket probes could not run because this
-checkout lacked `.env.test` and `test_key.pem`, with no authentication
-variables set. No order, quote, funding or administrative mutation was
-exercised; authenticated and perps runtime qualification remains separate.
+The November 15 refresh compared top-level response keys from unauthenticated
+production reads of markets, perps markets and trades, incentive programs and
+schedules, and the weather and concert availability endpoints against the new
+models; it did not run the crate's live test suites. The demo hosts were
+unreachable from that environment. The new `ebattle_scores` frames, perps
+WebSocket `is_block_trade`, `netting_enabled`, `key_type` and the
+subaccount-restricted balance shape are aligned to the YAML only.
+
+Authenticated demo REST and WebSocket probes could not run in either refresh
+because the checkout lacked `.env.test` and `test_key.pem`, with no
+authentication variables set. No order, quote, funding or administrative
+mutation was exercised; authenticated and perps runtime qualification remains
+separate.

@@ -3,8 +3,9 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
-The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
-Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
+The unreleased `0.12.0` refresh is source-breaking (`Market::expiration_time` is
+removed, Perps `settled_funds` is optional, and several structs and enums gained
+fields or variants) on top of the `0.11.0` deprecations and the `0.10.0` cutover. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
 version or unchanged AsyncAPI version as a freshness signal.

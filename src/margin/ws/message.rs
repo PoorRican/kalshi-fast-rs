@@ -374,6 +374,8 @@ pub enum MarginLastUpdateReason {
     Trade,
     PostOnlyCrossCancel,
     ReduceOnlyCancel,
+    /// The overnight settlement band canceled a resting order priced outside it.
+    SettlementBoundsCancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -490,6 +492,8 @@ pub struct TradeMsg {
     pub price: String,
     pub count: String,
     pub taker_side: MarginSide,
+    /// True if the trade was matched off book as a block trade.
+    pub is_block_trade: bool,
     pub ts_ms: i64,
 }
 
@@ -761,12 +765,14 @@ mod tests {
                 "price": "50000.00",
                 "count": "1.0",
                 "taker_side": "bid",
+                "is_block_trade": true,
                 "ts_ms": 1_700_000_000_000_i64
             }
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
         match msg {
             MarginDataMessage::Trade(e) => {
+                assert!(e.msg.is_block_trade);
                 assert_eq!(e.msg.trade_id, "t-123");
                 assert_eq!(e.msg.taker_side, MarginSide::Bid);
             }
@@ -858,7 +864,7 @@ mod tests {
 
     #[test]
     fn known_message_rejects_unknown_enum_value() {
-        let bytes = br#"{"type":"trade","sid":1,"seq":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"sideways","ts_ms":1}}"#;
+        let bytes = br#"{"type":"trade","sid":1,"seq":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"sideways","is_block_trade":false,"ts_ms":1}}"#;
         let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
         assert_eq!(error.parse_context(), Some("margin websocket message"));
     }
@@ -1041,7 +1047,7 @@ mod tests {
 
     #[test]
     fn sequenced_message_requires_sequence_number() {
-        let bytes = br#"{"type":"trade","sid":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"bid","ts_ms":1}}"#;
+        let bytes = br#"{"type":"trade","sid":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"bid","is_block_trade":false,"ts_ms":1}}"#;
         let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
         assert_eq!(error.parse_context(), Some("margin websocket message"));
     }
@@ -1147,5 +1153,17 @@ mod tests {
         assert_eq!(e.id, Some(7));
         assert_eq!(e.msg.bid, None);
         assert_eq!(e.msg.ask, None);
+    }
+}
+
+#[cfg(test)]
+mod settlement_band_tests {
+    use super::MarginLastUpdateReason;
+
+    #[test]
+    fn settlement_bounds_cancel_reason_decodes() {
+        let reason: MarginLastUpdateReason =
+            serde_json::from_str(r#""SettlementBoundsCancel""#).unwrap();
+        assert_eq!(reason, MarginLastUpdateReason::SettlementBoundsCancel);
     }
 }

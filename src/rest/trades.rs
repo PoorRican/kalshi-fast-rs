@@ -27,6 +27,7 @@ pub struct Trade {
     /// Deprecated 2026-05-07. Use `taker_outcome_side` / `taker_book_side`.
     /// Optional to tolerate eventual removal by the exchange.
     #[serde(default)]
+    #[deprecated(note = "use taker_outcome_side or taker_book_side")]
     pub taker_side: Option<TradeTakerSide>,
     /// Normalized taker outcome side (yes | no).
     pub taker_outcome_side: TradeTakerSide,
@@ -309,6 +310,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(deprecated)]
     fn trade_requires_current_direction_and_block_flag() {
         let mut value = serde_json::json!({
             "trade_id": "trade",

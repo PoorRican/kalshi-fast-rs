@@ -764,7 +764,8 @@ fn get_positions_response_deserializes() {
             "realized_pnl_dollars": "1.1100",
             "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
-            "last_updated_ts": "2026-04-16T12:00:00Z"
+            "last_updated_ts": "2026-04-16T12:00:00Z",
+            "netting_enabled": true
         }],
         "event_positions": [{
             "event_ticker": "EVT-1",
@@ -778,6 +779,7 @@ fn get_positions_response_deserializes() {
     }"#;
 
     let resp: kalshi_fast::GetPositionsResponse = serde_json::from_str(json).unwrap();
+    assert!(resp.market_positions[0].netting_enabled);
     assert_eq!(resp.market_positions.len(), 1);
     assert_eq!(resp.market_positions[0].position_fp, "5.00");
     assert_eq!(resp.event_positions.len(), 1);
@@ -795,7 +797,8 @@ fn positions_page_from_response() {
             "realized_pnl_dollars": "1.1100",
             "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
-            "last_updated_ts": "2026-04-16T12:00:00Z"
+            "last_updated_ts": "2026-04-16T12:00:00Z",
+            "netting_enabled": true
         }],
         "event_positions": [{
             "event_ticker": "EVT-1",

@@ -22,6 +22,12 @@ pub struct GetIncentiveProgramsParams {
     pub incentive_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub incentive_description: Option<String>,
+    /// Filter to one series' incentives.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series_ticker: Option<String>,
+    /// Filter to one event's incentives. A perpetual's incentives belong to no event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -37,10 +43,58 @@ pub struct GetIncentiveProgramsResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIncentiveSchedulesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub schedules: Vec<IncentiveSchedule>,
+}
+
+/// A recurring incentive schedule: what each market of a series (or of one
+/// event) can expect to earn window after window. Anticipated, not promised,
+/// unless `all_markets` is true.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IncentiveSchedule {
+    pub series_ticker: String,
+    pub series_title: String,
+    pub series_category: String,
+    /// Empty when the schedule covers the whole series.
+    pub event_ticker: String,
+    /// Empty when the schedule covers the whole series.
+    pub event_title: String,
+    /// `liquidity` or `volume`.
+    pub incentive_type: String,
+    /// The job that publishes the schedule. With the series, event and type,
+    /// it identifies the schedule.
+    pub source: String,
+    /// What each market earns per window, in centi-cents.
+    pub reward: i64,
+    /// Days per window; 0 rewards each market once, up to its close.
+    pub window_days: i32,
+    #[serde(default)]
+    pub discount_factor_bps: Option<i32>,
+    #[serde(default)]
+    pub target_size_fp: Option<FixedPointCount>,
+    /// When the schedule stops (exclusive); `None` when it has no end.
+    #[serde(default)]
+    pub ends: Option<String>,
+    pub description: String,
+    /// Whether the terms are promised to every covered market, including
+    /// markets listed later, from `posted_ts` until `ends`.
+    pub all_markets: bool,
+    pub posted_ts: String,
+    pub updated_ts: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IncentiveProgram {
     pub id: String,
     pub market_id: Option<String>,
     pub market_ticker: Option<String>,
+    /// Series of the market associated with this program.
+    #[serde(default)]
+    pub series_ticker: Option<String>,
+    /// Event of the market associated with this program; empty for a perpetual.
+    #[serde(default)]
+    pub event_ticker: Option<String>,
     pub incentive_type: String,
     pub incentive_description: String,
     pub start_date: String,
@@ -257,6 +311,21 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// List recurring incentive schedules that have not ended. Public.
+    pub async fn get_incentive_schedules(
+        &self,
+    ) -> Result<GetIncentiveSchedulesResponse, KalshiError> {
+        let path = Self::full_path("/incentive_schedules");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
             Option::<&()>::None,
             false,
         )
@@ -517,6 +586,44 @@ mod tests {
         assert_eq!(calibration.city_reference_c, -0.123456789);
         assert_eq!(calibration.stations[0].weight, 0.333333333);
         assert_eq!(calibration.stations[0].offset_c, -0.7654321);
+    }
+
+    #[test]
+    fn incentive_schedule_and_program_tickers_decode() {
+        let response: GetIncentiveSchedulesResponse = serde_json::from_value(serde_json::json!({
+            "schedules": [{
+                "series_ticker": "KXS", "series_title": "Series", "series_category": "Economics",
+                "event_ticker": "", "event_title": "", "incentive_type": "liquidity",
+                "source": "job", "reward": 500000, "window_days": 7,
+                "discount_factor_bps": null, "target_size_fp": "100.00", "ends": null,
+                "description": "Weekly", "all_markets": true,
+                "posted_ts": "2026-11-11T00:00:00Z", "updated_ts": "2026-11-12T00:00:00Z"
+            }]
+        }))
+        .unwrap();
+        let schedule = &response.schedules[0];
+        assert!(schedule.all_markets && schedule.ends.is_none());
+        assert_eq!(schedule.target_size_fp.as_deref(), Some("100.00"));
+
+        let program: IncentiveProgram = serde_json::from_value(serde_json::json!({
+            "id": "p", "market_id": "m", "market_ticker": "KXS-E-M",
+            "series_ticker": "KXS", "event_ticker": "KXS-E",
+            "incentive_type": "volume", "incentive_description": "d",
+            "start_date": "2026-11-11T00:00:00Z", "end_date": "2026-11-18T00:00:00Z",
+            "period_reward": 1, "paid_out": false
+        }))
+        .unwrap();
+        assert_eq!(program.series_ticker.as_deref(), Some("KXS"));
+        assert!(program.extra.is_empty());
+
+        let params = GetIncentiveProgramsParams {
+            series_ticker: Some("KXS".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(params).unwrap(),
+            serde_json::json!({"series_ticker": "KXS"})
+        );
     }
 
     #[test]

@@ -61,6 +61,7 @@ async fn ws_demo_orderbook_get_snapshot_returns_snapshot_without_mutating_subscr
             send_initial_snapshot: None,
             index_ids: None,
             underlying_tickers: None,
+            match_ids: None,
         })
         .await
         .expect("get_snapshot update failed");

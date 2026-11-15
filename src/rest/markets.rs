@@ -170,8 +170,10 @@ pub struct Market {
     #[serde(default)]
     pub market_type: Option<String>,
     #[serde(default)]
+    #[deprecated(note = "deprecated by Kalshi; use yes_sub_title and the event title")]
     pub title: Option<String>,
     #[serde(default)]
+    #[deprecated(note = "deprecated by Kalshi; use yes_sub_title")]
     pub subtitle: Option<String>,
     #[serde(default)]
     pub yes_sub_title: Option<String>,
@@ -198,8 +200,6 @@ pub struct Market {
     pub close_time: Option<String>,
     #[serde(default)]
     pub expected_expiration_time: Option<String>,
-    #[serde(default)]
-    pub expiration_time: Option<String>,
     #[serde(default)]
     pub latest_expiration_time: Option<String>,
     #[serde(default)]
