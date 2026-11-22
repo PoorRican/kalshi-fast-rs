@@ -38,6 +38,8 @@ where
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsOrderbookSnapshot {
     pub market_ticker: String,
+    /// Empty (with `clock` 0) for a market with no recorded change yet;
+    /// identify such markets by `market_ticker`. The first delta carries the ID.
     pub market_id: String,
     /// Exchange clock. Captured older frames can omit this field.
     pub clock: Option<i64>,

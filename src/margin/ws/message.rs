@@ -1,4 +1,5 @@
 use crate::error::KalshiError;
+use crate::rest::MarginSubaccountType;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
@@ -374,6 +375,8 @@ pub enum MarginLastUpdateReason {
     Trade,
     PostOnlyCrossCancel,
     ReduceOnlyCancel,
+    /// The overnight settlement price band canceled a resting order priced outside it.
+    SettlementBoundsCancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -433,6 +436,8 @@ pub struct OrderbookDeltaMsg {
     #[serde(default)]
     pub subaccount: Option<i64>,
     #[serde(default)]
+    pub subaccount_type: Option<MarginSubaccountType>,
+    #[serde(default)]
     pub ts_ms: Option<i64>,
 }
 
@@ -490,6 +495,8 @@ pub struct TradeMsg {
     pub price: String,
     pub count: String,
     pub taker_side: MarginSide,
+    /// True when matched off-book as a block trade rather than on the order book.
+    pub is_block_trade: bool,
     pub ts_ms: i64,
 }
 
@@ -513,6 +520,8 @@ pub struct FillMsg {
     pub post_position: String,
     #[serde(default)]
     pub subaccount: Option<i64>,
+    #[serde(default)]
+    pub subaccount_type: Option<MarginSubaccountType>,
     pub order_source: MarginOrderSource,
 }
 
@@ -544,6 +553,8 @@ pub struct UserOrderMsg {
     pub last_update_reason: Option<MarginLastUpdateReason>,
     #[serde(default)]
     pub subaccount_number: Option<i64>,
+    #[serde(default)]
+    pub subaccount_type: Option<MarginSubaccountType>,
     pub order_source: MarginOrderSource,
 }
 
@@ -761,6 +772,7 @@ mod tests {
                 "price": "50000.00",
                 "count": "1.0",
                 "taker_side": "bid",
+                "is_block_trade": true,
                 "ts_ms": 1_700_000_000_000_i64
             }
         });
@@ -769,9 +781,56 @@ mod tests {
             MarginDataMessage::Trade(e) => {
                 assert_eq!(e.msg.trade_id, "t-123");
                 assert_eq!(e.msg.taker_side, MarginSide::Bid);
+                assert!(e.msg.is_block_trade);
             }
             _ => panic!("expected Trade"),
         }
+    }
+
+    #[test]
+    fn november_margin_fields_parse_and_stay_optional_where_published_optional() {
+        let delta = parse(
+            br#"{"type":"orderbook_delta","sid":1,"seq":1,"msg":{"market_ticker":"T","price":"1","delta":"-1","side":"bid","last_update_reason":"SettlementBoundsCancel","subaccount":3,"subaccount_type":"managed_isolated"}}"#,
+        );
+        let MarginDataMessage::OrderbookDelta(delta) = delta else {
+            panic!("expected delta")
+        };
+        assert_eq!(
+            delta.msg.last_update_reason,
+            Some(MarginLastUpdateReason::SettlementBoundsCancel)
+        );
+        assert_eq!(
+            delta.msg.subaccount_type,
+            Some(MarginSubaccountType::ManagedIsolated)
+        );
+
+        let fill = parse(
+            br#"{"type":"fill","sid":1,"seq":1,"msg":{"trade_id":"t","order_id":"o","market_ticker":"T","is_taker":true,"side":"ask","ts_ms":1,"price":"1","count":"1","fee_cost":"0","post_position":"1","order_source":"user"}}"#,
+        );
+        let MarginDataMessage::Fill(fill) = fill else {
+            panic!("expected fill")
+        };
+        assert_eq!(fill.msg.subaccount_type, None);
+
+        let order = parse(
+            br#"{"type":"user_order","sid":1,"seq":1,"msg":{"order_id":"o","user_id":"u","client_order_id":"c","ticker":"T","side":"bid","price":"1","fill_count":"0","remaining_count":"0","created_ts_ms":1,"last_update_reason":"SettlementBoundsCancel","subaccount_number":0,"subaccount_type":"cross","order_source":"user"}}"#,
+        );
+        let MarginDataMessage::UserOrder(order) = order else {
+            panic!("expected user order")
+        };
+        assert_eq!(order.msg.subaccount_type, Some(MarginSubaccountType::Cross));
+        assert_eq!(
+            order.msg.last_update_reason,
+            Some(MarginLastUpdateReason::SettlementBoundsCancel)
+        );
+
+        // is_block_trade is in the published required set.
+        assert!(
+            MarginDataMessage::from_bytes(
+                br#"{"type":"trade","sid":1,"seq":1,"msg":{"trade_id":"t","market_ticker":"T","price":"1","count":"1","taker_side":"bid","ts_ms":1}}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]

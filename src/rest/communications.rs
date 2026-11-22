@@ -374,6 +374,42 @@ impl KalshiRestClient {
         .await
     }
 
+    /// Cancel a pending block trade proposal. Only the proposer can cancel it.
+    pub async fn cancel_block_trade_proposal(
+        &self,
+        block_trade_proposal_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/block-trade-proposals/{block_trade_proposal_id}"
+        ));
+        self.send(
+            Method::DELETE,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
+    /// Reject a pending block trade proposal as a counterparty; the proposer cancels instead.
+    pub async fn reject_block_trade_proposal(
+        &self,
+        block_trade_proposal_id: &str,
+    ) -> Result<EmptyResponse, KalshiError> {
+        let path = Self::full_path(&format!(
+            "/communications/block-trade-proposals/{block_trade_proposal_id}/reject"
+        ));
+        self.send(
+            Method::POST,
+            &path,
+            Option::<&()>::None,
+            Option::<&()>::None,
+            true,
+        )
+        .await
+    }
+
     pub async fn get_rfqs(&self, params: GetRFQsParams) -> Result<GetRFQsResponse, KalshiError> {
         let path = Self::full_path("/communications/rfqs");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)

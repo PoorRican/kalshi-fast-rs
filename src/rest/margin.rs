@@ -64,6 +64,9 @@ pub struct GetMarginTradesParams {
     pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ts: Option<i64>,
+    /// `true` returns only block trades, `false` only order-book trades; omit for all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_block_trade: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -272,12 +275,21 @@ pub enum MarginOrderReason {
 }
 
 /// How a margin subaccount is margined.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MarginSubaccountType {
+    /// The primary account and numbered subaccounts.
     Cross,
+    /// A market's isolated subaccount.
     Isolated,
+    /// An auto-rebalanced isolated position; shares its market's isolated subaccount number.
     AutoRebalance,
+    /// A managed isolated position; shares its market's isolated subaccount number.
+    ManagedIsolated,
+    /// A cross-margined swaps wallet for event contracts on the margin
+    /// exchange. Its `subaccount` is the wallet's swaps code (1-63), a
+    /// numbering separate from the primary account and numbered subaccounts.
+    Swaps,
 }
 // ---------------------------------------------------------------------------
 // Responses
@@ -334,6 +346,8 @@ pub struct MarginMarket {
     pub underlying_multiplier: String,
     pub tick_size: String,
     pub fractional_trading_enabled: bool,
+    /// Minimum order quantity in contracts.
+    pub minimum_quantity: String,
     /// Null for markets that trade around the clock.
     #[serde(deserialize_with = "Option::deserialize")]
     pub schedule: Option<MarginMarketSchedule>,
@@ -626,6 +640,8 @@ pub struct MarginTrade {
     pub price: String,
     pub created_time: String,
     pub taker_side: BookSide,
+    /// True when matched off-book as a block trade rather than on the order book.
+    pub is_block_trade: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -647,7 +663,10 @@ pub struct GetMarginBalanceResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub subaccount_balances: Vec<MarginSubaccountBalance>,
-    pub settled_funds: String,
+    /// Account-wide settled funds. Omitted for API keys restricted to a
+    /// single subaccount, which receive only their locked subaccount's row.
+    #[serde(default)]
+    pub settled_funds: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1277,6 +1296,54 @@ mod tests {
     use crate::types::BookSide;
 
     #[test]
+    fn november_perps_shapes_follow_the_published_required_sets() {
+        use super::{GetMarginBalanceResponse, MarginSubaccountBalance, MarginTrade};
+
+        // Subaccount-restricted keys omit the account-wide settled_funds.
+        let scoped: GetMarginBalanceResponse =
+            serde_json::from_value(serde_json::json!({"subaccount_balances": []})).unwrap();
+        assert_eq!(scoped.settled_funds, None);
+        let full: GetMarginBalanceResponse = serde_json::from_value(
+            serde_json::json!({"subaccount_balances": [], "settled_funds": "12.340000"}),
+        )
+        .unwrap();
+        assert_eq!(full.settled_funds.as_deref(), Some("12.340000"));
+
+        for (wire, expected) in [
+            ("managed_isolated", MarginSubaccountType::ManagedIsolated),
+            ("swaps", MarginSubaccountType::Swaps),
+        ] {
+            let parsed: MarginSubaccountType =
+                serde_json::from_value(serde_json::json!(wire)).unwrap();
+            assert_eq!(parsed, expected);
+            assert_eq!(serde_json::to_value(parsed).unwrap(), wire);
+        }
+        // A swaps row keeps its swaps code in `subaccount`.
+        let _ = std::mem::size_of::<MarginSubaccountBalance>();
+
+        let trade: MarginTrade = serde_json::from_value(serde_json::json!({
+            "trade_id": "t", "ticker": "KXBTC", "count": "1.00", "price": "100.00",
+            "created_time": "2026-11-19T00:00:00Z", "taker_side": "bid",
+            "is_block_trade": true
+        }))
+        .unwrap();
+        assert!(trade.is_block_trade);
+        assert!(
+            serde_json::from_value::<MarginTrade>(serde_json::json!({
+                "trade_id": "t", "ticker": "KXBTC", "count": "1.00", "price": "100.00",
+                "created_time": "2026-11-19T00:00:00Z", "taker_side": "bid"
+            }))
+            .is_err()
+        );
+        let query = serde_json::to_value(GetMarginTradesParams {
+            is_block_trade: Some(false),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(query, serde_json::json!({"is_block_trade": false}));
+    }
+
+    #[test]
     fn margin_position_deserializes_nullable_margin_used_and_portfolio_flag() {
         let position: MarginPosition = serde_json::from_value(serde_json::json!({
             "subaccount": 2,
@@ -1326,7 +1393,7 @@ mod tests {
         let mut fixture = serde_json::json!({
             "ticker": "KXBTC", "status": "active", "title": "Bitcoin",
             "contract_size": "1", "underlying_multiplier": "1", "tick_size": "0.01",
-            "fractional_trading_enabled": false, "schedule": null,
+            "fractional_trading_enabled": false, "minimum_quantity": "1.00", "schedule": null,
             "market_version": 2, "funding_deadband": 0.0, "funding_cap": 0.1,
             "funding_limit_unit": "percentage",
             "funding_invalid_premium_handling": "exclude", "halt_sources": []
@@ -1348,6 +1415,7 @@ mod tests {
             "underlying_multiplier": "1",
             "tick_size": "0.010000",
             "fractional_trading_enabled": false,
+            "minimum_quantity": "0.01",
             "schedule": {"is_open": true, "next_close_ts": 1760000000, "next_open_ts": null},
             "exchange_index": 0,
             "market_version": 2,

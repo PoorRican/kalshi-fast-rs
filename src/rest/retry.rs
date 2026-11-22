@@ -97,6 +97,25 @@ pub(crate) fn build_http_error(
     }
 }
 
+/// Whether a 429 body names a quota rather than request-rate limiting.
+///
+/// Kalshi's `*_limit_exceeded` codes (`open_rfq_limit_exceeded`,
+/// `weather_point_market_limit_exceeded`, ...) are standing limits: the
+/// documentation states retrying does not help until the limit clears, so
+/// they are surfaced to the caller instead of being retried with backoff.
+pub(crate) fn is_quota_refusal(bytes: &[u8]) -> bool {
+    match build_http_error(StatusCode::TOO_MANY_REQUESTS, bytes, None) {
+        KalshiError::Http {
+            api_error: Some(error),
+            ..
+        } => error
+            .code
+            .as_deref()
+            .is_some_and(|code| code.ends_with("_limit_exceeded")),
+        _ => false,
+    }
+}
+
 pub(crate) fn retryable_status(status: StatusCode) -> bool {
     matches!(
         status,
@@ -126,4 +145,27 @@ pub(crate) fn retry_after_delay(headers: &HeaderMap) -> Option<Duration> {
     let now = SystemTime::now();
     let delta = ts.duration_since(now).ok()?;
     Some(delta)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_quota_refusal;
+
+    #[test]
+    fn quota_429_codes_are_distinguished_from_request_rate_limiting() {
+        for body in [
+            r#"{"code":"open_rfq_limit_exceeded","message":"100 open RFQs"}"#,
+            r#"{"error":{"code":"weather_point_market_limit_exceeded","details":"account limit"}}"#,
+            r#"{"code":"concert_cancellation_market_limit_exceeded"}"#,
+        ] {
+            assert!(is_quota_refusal(body.as_bytes()), "{body}");
+        }
+        for body in [
+            r#"{"code":"too_many_requests","message":"slow down"}"#,
+            "",
+            "not json",
+        ] {
+            assert!(!is_quota_refusal(body.as_bytes()), "{body}");
+        }
+    }
 }

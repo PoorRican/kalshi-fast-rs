@@ -199,8 +199,6 @@ pub struct Market {
     #[serde(default)]
     pub expected_expiration_time: Option<String>,
     #[serde(default)]
-    pub expiration_time: Option<String>,
-    #[serde(default)]
     pub latest_expiration_time: Option<String>,
     #[serde(default)]
     pub created_time: Option<String>,

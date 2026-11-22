@@ -264,6 +264,11 @@ impl WsProtocol for EventContractProtocol {
             crate::ws::types::WsUpdateAction::GetSnapshot
                 | crate::ws::types::WsUpdateAction::Indexlist
                 | crate::ws::types::WsUpdateAction::UnderlyingList
+                // `subscribe` cannot seed an eBattle match filter, so match
+                // actions have no replayable subscribe-parameter form.
+                | crate::ws::types::WsUpdateAction::SubscribeMatches
+                | crate::ws::types::WsUpdateAction::UnsubscribeMatches
+                | crate::ws::types::WsUpdateAction::Matchlist
         )
     }
 

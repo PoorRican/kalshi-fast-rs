@@ -103,6 +103,19 @@ pub struct MarginHolidayWindow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarginMarketScheduleDetails {
     pub kalshi_trading_holidays: Vec<MarginHolidayWindow>,
+    /// Recurring trading hours; present once the schedule has synchronized.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kalshi_trading_schedule: Option<MarginTradingCronSchedule>,
+}
+
+/// Recurring Kalshi trading hours as five-field cron expressions (day of week
+/// 0 is Sunday). Empty arrays mean continuous trading except for holidays.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarginTradingCronSchedule {
+    /// IANA zone the cron expressions are evaluated in.
+    pub timezone: String,
+    pub open_crons: Vec<String>,
+    pub close_crons: Vec<String>,
 }
 
 /// The response itself is a map keyed by market ticker, not an envelope.
@@ -298,6 +311,38 @@ pub struct CreateMarginFCMSubtraderRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMarginFCMSubtraderResponse {
     pub subtrader_id: String,
+}
+
+/// Side of the perps position an FCM position transfer moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MarginPositionTransferSide {
+    Long,
+    Short,
+}
+
+/// Supply `ticker` or `market_id`; `ticker` takes precedence when both are set.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateMarginFCMPositionTransferRequest {
+    pub source_subtrader_id: String,
+    /// `{error_account_id}_{suffix}`; created if it does not exist.
+    pub target_subtrader_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
+    pub side: MarginPositionTransferSide,
+    /// Whole exchange contracts as a fixed-point count string.
+    pub count: String,
+    /// Dollars per contract with 2-4 decimal places, greater than zero.
+    pub price: String,
+    /// Client-chosen UUID making the request idempotent for the source subtrader.
+    pub client_transfer_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMarginFCMPositionTransferResponse {
+    pub position_transfer_id: String,
 }
 
 /// The filters restrict risk controls, but not the returned notional limits.
@@ -647,6 +692,22 @@ impl KalshiRestClient {
             .await
     }
 
+    /// Move a perps position from a subtrader into an error-account subtrader.
+    /// **Requires auth.** This moves positions; it is an FCM-member write.
+    pub async fn create_margin_fcm_position_transfer(
+        &self,
+        body: &CreateMarginFCMPositionTransferRequest,
+    ) -> Result<CreateMarginFCMPositionTransferResponse, KalshiError> {
+        if body.ticker.is_none() && body.market_id.is_none() {
+            return Err(KalshiError::InvalidParams(
+                "POST /margin/fcm/positions/transfers: ticker or market_id is required".to_string(),
+            ));
+        }
+        let path = Self::full_path("/margin/fcm/positions/transfers");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
     pub async fn get_fcm_subtrader_risk_controls(
         &self,
         params: GetFCMSubtraderRiskControlsParams,
@@ -707,6 +768,43 @@ impl KalshiRestClient {
 mod tests {
     use super::*;
     use serde_json::{Value, json};
+
+    #[test]
+    fn schedule_details_and_fcm_position_transfer_shapes() {
+        let holidays_only: MarginMarketScheduleDetails =
+            serde_json::from_value(json!({"kalshi_trading_holidays": []})).unwrap();
+        assert!(holidays_only.kalshi_trading_schedule.is_none());
+        let scheduled: MarginMarketScheduleDetails = serde_json::from_value(json!({
+            "kalshi_trading_holidays": [],
+            "kalshi_trading_schedule": {
+                "timezone": "America/New_York",
+                "open_crons": ["0 20 * * 0"], "close_crons": ["0 20 * * 5"]
+            }
+        }))
+        .unwrap();
+        let schedule = scheduled.kalshi_trading_schedule.unwrap();
+        assert_eq!(schedule.timezone, "America/New_York");
+        assert_eq!(schedule.open_crons, ["0 20 * * 0"]);
+
+        let transfer = CreateMarginFCMPositionTransferRequest {
+            source_subtrader_id: "u_a".into(),
+            target_subtrader_id: "e_b".into(),
+            ticker: Some("KXBTC".into()),
+            market_id: None,
+            side: MarginPositionTransferSide::Short,
+            count: "10".into(),
+            price: "63000.00".into(),
+            client_transfer_id: "5d1f0d7e-6c0e-4a39-9d55-0f6f1f6f7a10".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&transfer).unwrap(),
+            json!({
+                "source_subtrader_id": "u_a", "target_subtrader_id": "e_b",
+                "ticker": "KXBTC", "side": "short", "count": "10", "price": "63000.00",
+                "client_transfer_id": "5d1f0d7e-6c0e-4a39-9d55-0f6f1f6f7a10"
+            })
+        );
+    }
 
     #[test]
     fn exit_trigger_writes_preserve_family_and_append_fields() {

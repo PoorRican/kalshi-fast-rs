@@ -3,8 +3,11 @@
 ## Spec Notes
 - Spec notes: `docs/spec-parity.md`
 
-The unreleased `0.11.0` refresh is source-breaking (deprecated `no_sub_title` and
-Perps `exchange_index` are now optional and `#[deprecated]`) on top of the `0.10.0` cutover. The
+The unreleased `0.12.0` refresh is source-breaking on top of `0.11.0`: market
+`expiration_time` is removed (read `latest_expiration_time`), Perps
+`settled_funds` is optional, positions/Perps markets/Perps trades gain required
+fields, `GetHistoricalFillsParams::ticker` is a list, and WebSocket update
+parameters gain `match_ids`. Move `warp_ws_url()` callers to `user_ws_url()`. The
 compatibility tuple in [`CHANGELOG.md`](../CHANGELOG.md) records the exact
 published Predictions and perps specifications, rather than treating the crate
 version or unchanged AsyncAPI version as a freshness signal.
@@ -73,6 +76,8 @@ Channel-independent acknowledgement options such as `skip_ticker_ack` remain
 set regardless of channel.
 `Reconnected` means subscriptions were resent, not that their acknowledgements
 or replacement orderbook snapshots have arrived.
+An `ebattle_scores` subscription is replayed empty: `subscribe` cannot seed its
+match filter, so send `subscribe_matches` again after each `Reconnected`.
 
 Orderbook `clock` and envelope `sending_ts_ms` are not replacements for
 per-subscription `seq` or the timed reader's process-local availability time.

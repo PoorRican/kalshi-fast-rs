@@ -16,8 +16,11 @@ AsyncAPI `info.version`; the snapshot date matters.
   Deprecated unnested quote-detail aliases are deliberately replaced by the
   canonical RFQ-scoped operations; retired order mutations, announcements and
   multivariate lookups are removed rather than shimmed.
-- The November 2 snapshot includes November 5 and TBD changelog entries.
+- The changelog page dates entries by release week, so the November 22
+  snapshot already lists November 26 and TBD entries; the RSS `pubDate` is the
+  actual publication time and is what the validated-through watermark records.
   Published parsing/subscription support is not evidence of their live rollout.
+  Kalshi marks on-request concert markets as not live yet.
   [Settlement floors](https://docs.kalshi.com/getting_started/settlement_bounds.md)
   are explicitly not live yet; their metadata does not authorize floor trading.
 
@@ -61,14 +64,40 @@ AsyncAPI `info.version`; the snapshot date matters.
   `#[deprecated]`, even where the spec lists them as required, so their eventual
   removal is not a second break. Perps ignores `exchange_index`; order groups can
   hold orders on any Perps market.
-- Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
-  `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
+- The per-user `user-ws` hosts (`fill` and `user_orders` today) are documented
+  in prose, not the AsyncAPI; `KalshiEnvironment::user_ws_url()` and
+  `margin_user_ws_url()` are conveniences, not spec-derived values. The
+  `warp-ws` helpers remain, `#[deprecated]`, while Kalshi keeps those hosts up.
+- Market `expiration_time` was removed upstream and is removed here, not kept
+  as an optional alias; `latest_expiration_time` always carried the same value.
+  Order `expiration_time` is unrelated and unchanged.
+- Perps `GetMarginBalanceResponse::settled_funds` is `Option`: keys restricted
+  to one subaccount get only their locked subaccount's row and no account-wide
+  total. `MarginSubaccountType::Swaps` rows number `subaccount` by swaps code
+  (1-63), a separate numbering from the primary account and subaccounts. The
+  Perps AsyncAPI lists a narrower `subaccountType` than the REST spec; one
+  enum covers both, and WebSocket `subaccount_type` stays optional as published.
+- An `orderbook_snapshot` for a market with no recorded change can carry an
+  empty `market_id` and `clock` 0. Key books by `market_ticker`; `market_id`
+  stays a plain string and is not validated as a UUID.
+- On-request (`KXRFQ*`) markets are left out of unscoped market, trade and
+  WebSocket listings; name them explicitly. Their `*_limit_exceeded` 429s and
+  `open_rfq_limit_exceeded` are standing quotas, so the REST client returns
+  them instead of retrying, whatever the retry policy. Other 429s carry no
+  `Retry-After` and fall back to exponential backoff; the `X-RateLimit-*`
+  response headers are not surfaced by this client.
+- `ebattle_scores` `msg.data` is a JSON-encoded string whose keys are published
+  only in prose, so it is exposed raw with a `score_state()` JSON decoder
+  rather than a typed struct.
 
 ## Subscription semantics
 
 - Market ticker and ID filters follow each channel's documented vocabulary;
   orderbooks require tickers. CF reference feeds use `index_ids`, while Pyth
   uses `underlying_tickers`; their list actions do not mutate tracked selection.
+  `ebattle_scores` takes `match_ids` only through `update_subscription`:
+  `subscribe` cannot seed the filter, so reconnect replay restores the channel
+  empty and callers must send `subscribe_matches` again.
 - Pricing mode and conflation are explicit options. The client does not
   convert NO-leg prices, enable conflation, or infer book completeness from a
   clock. Follow each subscription's sequence and replace books on snapshots.
@@ -87,7 +116,11 @@ and authenticated subscriptions exercise the exchange independently; offline
 tests and schema alignment do not prove production deployment or write-path
 qualification. Never use `--all-features` as an offline test command.
 
-The November 2 refresh directly exercised public demo REST market, event,
+The November 22 refresh ran offline only: schema comparison against the four
+downloaded specs plus deterministic parsing tests. No demo or production
+request was sent, so the new endpoints and fields are not live-qualified.
+
+The earlier November 2 refresh directly exercised public demo REST market, event,
 series, multi-orderbook, trade, event-fee-change and historical-cutoff reads.
 It also replayed 45 published event-contract and 3 published margin server
 examples, plus 12 captured control/orderbook frames. Published-example replay

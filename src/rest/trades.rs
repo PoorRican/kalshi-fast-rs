@@ -80,8 +80,12 @@ pub struct GetHistoricalMarketsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetHistoricalFillsParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ticker: Option<String>,
+    /// Up to 100 market tickers, serialized as a comma-separated list.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::types::serialize_csv_opt"
+    )]
+    pub ticker: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,6 +160,11 @@ impl KalshiRestClient {
         &self,
         params: GetHistoricalFillsParams,
     ) -> Result<GetFillsResponse, KalshiError> {
+        if params.ticker.as_ref().is_some_and(|t| t.len() > 100) {
+            return Err(KalshiError::InvalidParams(
+                "GET /historical/fills: ticker supports up to 100 tickers".to_string(),
+            ));
+        }
         let path = Self::full_path("/historical/fills");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await

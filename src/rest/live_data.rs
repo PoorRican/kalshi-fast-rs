@@ -22,6 +22,12 @@ pub struct GetIncentiveProgramsParams {
     pub incentive_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub incentive_description: Option<String>,
+    /// Filter to one series' incentives.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series_ticker: Option<String>,
+    /// Filter to one event's incentives. A perpetual's incentives belong to no event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,6 +47,12 @@ pub struct IncentiveProgram {
     pub id: String,
     pub market_id: Option<String>,
     pub market_ticker: Option<String>,
+    /// Series of the program's market.
+    #[serde(default)]
+    pub series_ticker: Option<String>,
+    /// Event of the program's market; empty for a perpetual.
+    #[serde(default)]
+    pub event_ticker: Option<String>,
     pub incentive_type: String,
     pub incentive_description: String,
     pub start_date: String,
@@ -53,6 +65,48 @@ pub struct IncentiveProgram {
     pub target_size_fp: Option<FixedPointCount>,
     #[serde(default)]
     pub max_reward_per_account: Option<i64>,
+    #[serde(default, flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIncentiveSchedulesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub schedules: Vec<IncentiveSchedule>,
+}
+
+/// A recurring incentive schedule that has not ended.
+///
+/// The terms are anticipated, not promised, unless `all_markets` is true.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IncentiveSchedule {
+    pub series_ticker: String,
+    pub series_title: String,
+    pub series_category: String,
+    /// The one event the schedule covers; empty when it covers the whole series.
+    pub event_ticker: String,
+    /// Empty when the schedule covers the whole series.
+    pub event_title: String,
+    /// `liquidity` or `volume`.
+    pub incentive_type: String,
+    /// Publishing job; with series, event and type it identifies the schedule.
+    pub source: String,
+    /// What each market earns per window, in centi-cents.
+    pub reward: i64,
+    /// Days per window; 0 rewards each market once, up to its close.
+    pub window_days: i32,
+    #[serde(default)]
+    pub discount_factor_bps: Option<i32>,
+    #[serde(default)]
+    pub target_size_fp: Option<FixedPointCount>,
+    /// Exclusive end; `None` when the schedule has no end.
+    #[serde(default)]
+    pub ends: Option<String>,
+    pub description: String,
+    /// True when every covered market, including later listings, is promised these terms.
+    pub all_markets: bool,
+    pub posted_ts: String,
+    pub updated_ts: String,
     #[serde(default, flatten)]
     pub extra: Map<String, Value>,
 }
@@ -257,6 +311,21 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// List recurring incentive schedules that have not ended. Public.
+    pub async fn get_incentive_schedules(
+        &self,
+    ) -> Result<GetIncentiveSchedulesResponse, KalshiError> {
+        let path = Self::full_path("/incentive_schedules");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
             Option::<&()>::None,
             false,
         )
@@ -520,6 +589,51 @@ mod tests {
     }
 
     #[test]
+    fn incentive_schedule_and_program_scope_fields() {
+        let response: GetIncentiveSchedulesResponse = serde_json::from_str(
+            r#"{"schedules":[{
+                "series_ticker": "KXS", "series_title": "S", "series_category": "Economics",
+                "event_ticker": "", "event_title": "",
+                "incentive_type": "liquidity", "source": "weekly", "reward": 250000,
+                "window_days": 7, "discount_factor_bps": null, "target_size_fp": "100.00",
+                "ends": null, "description": "d", "all_markets": true,
+                "posted_ts": "2026-11-10T00:00:00Z", "updated_ts": "2026-11-17T00:00:00Z"
+            }]}"#,
+        )
+        .unwrap();
+        let schedule = &response.schedules[0];
+        assert!(schedule.all_markets && schedule.event_ticker.is_empty());
+        assert_eq!(schedule.ends, None);
+        assert_eq!(schedule.target_size_fp.as_deref(), Some("100.00"));
+        assert!(schedule.extra.is_empty());
+
+        let program: IncentiveProgram = serde_json::from_str(
+            r#"{
+                "id": "p", "market_id": "m", "market_ticker": "KXS-1",
+                "series_ticker": "KXS", "event_ticker": "",
+                "incentive_type": "volume", "incentive_description": "d",
+                "start_date": "2026-11-10T00:00:00Z", "end_date": "2026-11-17T00:00:00Z",
+                "period_reward": 1, "paid_out": false
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(program.series_ticker.as_deref(), Some("KXS"));
+        assert_eq!(program.event_ticker.as_deref(), Some(""));
+        assert!(program.extra.is_empty());
+
+        let params = serde_json::to_value(GetIncentiveProgramsParams {
+            series_ticker: Some("KXS".into()),
+            event_ticker: Some("KXS-26".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            params,
+            serde_json::json!({"series_ticker": "KXS", "event_ticker": "KXS-26"})
+        );
+    }
+
+    #[test]
     fn margin_incentive_accepts_absent_or_null_market_fields() {
         let program: IncentiveProgram = serde_json::from_str(
             r#"{
@@ -535,6 +649,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(program.market_id, None);
+        assert_eq!(program.series_ticker, None);
         assert_eq!(program.market_ticker, None);
         assert_eq!(program.target_size_fp, None);
         assert_eq!(program.max_reward_per_account, Some(12345));
