@@ -11,7 +11,7 @@ use crate::rest::pagination::{CursorPager, stream_items};
 use crate::rest::portfolio::{GetFillsResponse, GetPositionsResponse, PositionsPage};
 use crate::types::{
     BookSide, FixedPointCount, FixedPointDollars, MveFilter, TradeTakerSide,
-    deserialize_null_as_empty_vec,
+    deserialize_null_as_empty_vec, serialize_csv_opt,
 };
 use futures::stream::Stream;
 use reqwest::Method;
@@ -80,8 +80,12 @@ pub struct GetHistoricalMarketsParams {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GetHistoricalFillsParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ticker: Option<String>,
+    /// Up to 100 market tickers, serialized as a comma-separated list.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_csv_opt"
+    )]
+    pub ticker: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_ts: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,6 +96,21 @@ pub struct GetHistoricalFillsParams {
     pub subaccount: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+}
+
+impl GetHistoricalFillsParams {
+    pub fn validate(&self) -> Result<(), KalshiError> {
+        if self
+            .ticker
+            .as_ref()
+            .is_some_and(|tickers| tickers.len() > 100)
+        {
+            return Err(KalshiError::InvalidParams(
+                "GET /historical/fills: ticker supports up to 100 tickers".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -156,6 +175,7 @@ impl KalshiRestClient {
         &self,
         params: GetHistoricalFillsParams,
     ) -> Result<GetFillsResponse, KalshiError> {
+        params.validate()?;
         let path = Self::full_path("/historical/fills");
         self.send(Method::GET, &path, Some(&params), Option::<&()>::None, true)
             .await

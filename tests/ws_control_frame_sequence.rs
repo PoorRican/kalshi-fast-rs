@@ -300,6 +300,11 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
             r#"{"underlying_tickers":["Metal.XAU/USD"]}"#,
         ),
         (
+            "ebattle_scores",
+            r#"{"event_id":"e1","match_id":"m1","received_at":101,"data":"{\"game\":\"esoccer\"}"}"#,
+        ),
+        ("ebattle_scores_matchlist", r#"{"match_ids":["m1","m2"]}"#),
+        (
             "rfq_batch_created",
             r#"{"id":"batch","creator_id":"creator","created_ts":"2024-12-01T10:00:00Z","legs":[],"rfqs":[]}"#,
         ),
@@ -340,6 +345,10 @@ fn published_feed_and_batch_events_dispatch_in_all_decode_paths() {
             WsMessageV2::Data(WsDataMessageV2::PythValue { .. }) => "pyth_value",
             WsMessageV2::Data(WsDataMessageV2::PythValueUnderlyingList { .. }) => {
                 "pyth_value_underlying_list"
+            }
+            WsMessageV2::Data(WsDataMessageV2::EbattleScores { .. }) => "ebattle_scores",
+            WsMessageV2::Data(WsDataMessageV2::EbattleScoresMatchlist { .. }) => {
+                "ebattle_scores_matchlist"
             }
             WsMessageV2::Data(WsDataMessageV2::Communications { msg, .. }) => match msg {
                 WsCommunications::RfqBatchCreated(_) => "rfq_batch_created",
@@ -445,5 +454,45 @@ fn escaped_control_filter_strings_remain_decodable() {
             assert_eq!(value, "Metal.XAU/USD");
         }
         other => panic!("expected filters, got {other:?}"),
+    }
+}
+
+#[test]
+fn ebattle_scores_decode_owned_and_borrowed_with_required_fields() {
+    use kalshi_fast::{WsDataMessageRef, WsDataMessageV2};
+
+    let frame = br#"{"type":"ebattle_scores","sid":4,"seq":9,"sending_ts_ms":7,"msg":{"event_id":"e1","match_id":"m1","received_at":101,"data":"{\"game\":\"esoccer\",\"home_score\":2}"}}"#;
+    match WsMessageV2::from_bytes(frame).unwrap() {
+        WsMessageV2::Data(WsDataMessageV2::EbattleScores { sid, seq, msg, .. }) => {
+            assert_eq!((sid, seq), (Some(4), Some(9)));
+            assert_eq!(msg.received_at, 101);
+            let state: Value = serde_json::from_str(&msg.data).unwrap();
+            assert_eq!(state["home_score"], 2);
+        }
+        other => panic!("expected eBattle scores, got {other:?}"),
+    }
+    match WsMessageRef::from_bytes(frame).unwrap() {
+        WsMessageRef::Data(WsDataMessageRef::EbattleScores { msg, .. }) => {
+            assert_borrowed_from(frame, &msg.match_id);
+            assert_eq!(msg.into_owned().event_id, "e1");
+        }
+        other => panic!("expected eBattle scores, got {other:?}"),
+    }
+
+    let list =
+        br#"{"type":"ebattle_scores_matchlist","sid":4,"seq":10,"msg":{"match_ids":["m1"]}}"#;
+    match WsMessageRef::from_bytes(list).unwrap() {
+        WsMessageRef::Data(WsDataMessageRef::EbattleScoresMatchlist { msg, .. }) => {
+            assert_borrowed_from(list, &msg.match_ids[0]);
+        }
+        other => panic!("expected eBattle matchlist, got {other:?}"),
+    }
+
+    for missing in [
+        br#"{"type":"ebattle_scores","sid":4,"seq":9,"msg":{"event_id":"e1","match_id":"m1","received_at":101}}"#.as_slice(),
+        br#"{"type":"ebattle_scores_matchlist","sid":4,"seq":9,"msg":{}}"#.as_slice(),
+    ] {
+        assert!(WsMessageV2::from_bytes(missing).is_err());
+        assert!(WsMessageRef::from_bytes(missing).is_err());
     }
 }

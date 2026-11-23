@@ -272,12 +272,16 @@ pub enum MarginOrderReason {
 }
 
 /// How a margin subaccount is margined.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MarginSubaccountType {
     Cross,
     Isolated,
     AutoRebalance,
+    ManagedIsolated,
+    /// Cross-margined wallet for event contracts on the margin exchange; its
+    /// `subaccount` is the swaps code (1 through 63), a separate number space.
+    Swaps,
 }
 // ---------------------------------------------------------------------------
 // Responses
@@ -334,6 +338,8 @@ pub struct MarginMarket {
     pub underlying_multiplier: String,
     pub tick_size: String,
     pub fractional_trading_enabled: bool,
+    /// Minimum order quantity in contracts.
+    pub minimum_quantity: String,
     /// Null for markets that trade around the clock.
     #[serde(deserialize_with = "Option::deserialize")]
     pub schedule: Option<MarginMarketSchedule>,
@@ -626,6 +632,8 @@ pub struct MarginTrade {
     pub price: String,
     pub created_time: String,
     pub taker_side: BookSide,
+    /// True when matched off-book as a block trade.
+    pub is_block_trade: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -647,7 +655,9 @@ pub struct GetMarginBalanceResponse {
         deserialize_with = "crate::types::deserialize_null_as_empty_vec"
     )]
     pub subaccount_balances: Vec<MarginSubaccountBalance>,
-    pub settled_funds: String,
+    /// Account-wide total; omitted for API keys restricted to one subaccount.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settled_funds: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1326,7 +1336,7 @@ mod tests {
         let mut fixture = serde_json::json!({
             "ticker": "KXBTC", "status": "active", "title": "Bitcoin",
             "contract_size": "1", "underlying_multiplier": "1", "tick_size": "0.01",
-            "fractional_trading_enabled": false, "schedule": null,
+            "fractional_trading_enabled": false, "minimum_quantity": "1.00", "schedule": null,
             "market_version": 2, "funding_deadband": 0.0, "funding_cap": 0.1,
             "funding_limit_unit": "percentage",
             "funding_invalid_premium_handling": "exclude", "halt_sources": []
@@ -1347,7 +1357,7 @@ mod tests {
             "contract_size": "1",
             "underlying_multiplier": "1",
             "tick_size": "0.010000",
-            "fractional_trading_enabled": false,
+            "fractional_trading_enabled": false, "minimum_quantity": "1.00",
             "schedule": {"is_open": true, "next_close_ts": 1760000000, "next_open_ts": null},
             "exchange_index": 0,
             "market_version": 2,
@@ -1425,5 +1435,73 @@ mod tests {
         assert!(value.get("ticker").is_none());
         let query = serde_json::to_value(GetMarginTradesParams::default()).unwrap();
         assert!(query.get("ticker").is_none());
+    }
+
+    #[test]
+    fn refreshed_margin_shapes_follow_required_and_optional_fields() {
+        use super::*;
+        let restricted: GetMarginBalanceResponse =
+            serde_json::from_value(serde_json::json!({"subaccount_balances": []})).unwrap();
+        assert!(restricted.settled_funds.is_none());
+        assert!(
+            serde_json::to_value(&restricted)
+                .unwrap()
+                .get("settled_funds")
+                .is_none()
+        );
+
+        for (raw, expected) in [
+            ("managed_isolated", MarginSubaccountType::ManagedIsolated),
+            ("swaps", MarginSubaccountType::Swaps),
+        ] {
+            let parsed: MarginSubaccountType =
+                serde_json::from_value(serde_json::json!(raw)).unwrap();
+            assert_eq!(parsed, expected);
+        }
+
+        let trade = serde_json::json!({
+            "trade_id": "t", "ticker": "KXBTCPERP1", "count": "1.00", "price": "1.00",
+            "created_time": "2026-11-20T00:00:00Z", "taker_side": "bid", "is_block_trade": true
+        });
+        assert!(
+            serde_json::from_value::<MarginTrade>(trade.clone())
+                .unwrap()
+                .is_block_trade
+        );
+        let mut missing = trade;
+        missing.as_object_mut().unwrap().remove("is_block_trade");
+        assert!(serde_json::from_value::<MarginTrade>(missing).is_err());
+
+        let schedules: GetMarginMarketSchedulesResponse =
+            serde_json::from_value(serde_json::json!({
+                "A": {"kalshi_trading_holidays": []},
+                "B": {"kalshi_trading_holidays": [], "kalshi_trading_schedule": {
+                    "timezone": "America/New_York", "open_crons": ["0 18 * * 0"], "close_crons": []
+                }}
+            }))
+            .unwrap();
+        assert!(schedules["A"].kalshi_trading_schedule.is_none());
+        assert_eq!(
+            schedules["B"]
+                .kalshi_trading_schedule
+                .as_ref()
+                .unwrap()
+                .open_crons,
+            ["0 18 * * 0"]
+        );
+
+        let transfer = CreateMarginFCMPositionTransferRequest {
+            source_subtrader_id: "u_a".into(),
+            target_subtrader_id: "e_b".into(),
+            ticker: Some("KXBTCPERP1".into()),
+            market_id: None,
+            side: MarginPositionSide::Short,
+            count: "10".into(),
+            price: "63000.00".into(),
+            client_transfer_id: "id".into(),
+        };
+        let value = serde_json::to_value(&transfer).unwrap();
+        assert_eq!(value["side"], "short");
+        assert!(value.get("market_id").is_none());
     }
 }

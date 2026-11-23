@@ -13,6 +13,10 @@ pub const MARGIN_WS_PATH: &str = "/trade-api/ws/v2/margin";
 const DEMO_REST_HOST: &str = "external-api.demo.kalshi.co";
 const DEMO_WS_HOST: &str = "external-api-ws.demo.kalshi.co";
 const DEMO_MARGIN_WS_HOST: &str = "external-api-margin-ws.demo.kalshi.co";
+const DEMO_USER_WS_HOST: &str = "user-ws.demo.kalshi.co";
+const DEMO_MARGIN_USER_WS_HOST: &str = "margin-user-ws.demo.kalshi.co";
+const LIVE_USER_WS_HOST: &str = "user-ws.kalshi.com";
+const LIVE_MARGIN_USER_WS_HOST: &str = "margin-user-ws.kalshi.com";
 const DEMO_WARP_WS_HOST: &str = "warp-ws.demo.kalshi.co";
 const DEMO_MARGIN_WARP_WS_HOST: &str = "margin-warp-ws.demo.kalshi.co";
 const LIVE_WARP_WS_HOST: &str = "warp-ws.kalshi.com";
@@ -60,9 +64,32 @@ impl KalshiEnvironment {
 }
 
 impl KalshiEnvironment {
-    /// Low-latency Predictions WebSocket URL serving only `fill` and
-    /// `user_orders`; any other channel returns error code 8. Assign it to
-    /// `ws_url` on a dedicated connection. Signing path and auth are unchanged.
+    /// Lower-latency Predictions WebSocket URL for per-user updates. It
+    /// serves `fill` and `user_orders` today; more per-user channels will be
+    /// added over time. Assign it to `ws_url` on a dedicated connection.
+    /// Signing path and auth are unchanged.
+    pub fn user_ws_url(&self) -> String {
+        let host = if self.ws_url.contains(DEMO_WS_HOST) {
+            DEMO_USER_WS_HOST
+        } else {
+            LIVE_USER_WS_HOST
+        };
+        format!("wss://{host}{WS_PATH}")
+    }
+
+    /// Margin counterpart of [`Self::user_ws_url`].
+    pub fn margin_user_ws_url(&self) -> String {
+        let host = if self.margin_ws_url.contains(DEMO_MARGIN_WS_HOST) {
+            DEMO_MARGIN_USER_WS_HOST
+        } else {
+            LIVE_MARGIN_USER_WS_HOST
+        };
+        format!("wss://{host}{MARGIN_WS_PATH}")
+    }
+
+    /// Deprecated `warp-ws` host serving only `fill` and `user_orders`. It
+    /// keeps working for now; move to [`Self::user_ws_url`].
+    #[deprecated(note = "Kalshi deprecated the warp-ws hosts; use user_ws_url")]
     pub fn warp_ws_url(&self) -> String {
         let host = if self.ws_url.contains(DEMO_WS_HOST) {
             DEMO_WARP_WS_HOST
@@ -72,7 +99,9 @@ impl KalshiEnvironment {
         format!("wss://{host}{WS_PATH}")
     }
 
-    /// Margin counterpart of [`Self::warp_ws_url`] (`fill`/`user_orders` only).
+    /// Deprecated margin counterpart of the `warp-ws` host; move to
+    /// [`Self::margin_user_ws_url`].
+    #[deprecated(note = "Kalshi deprecated the margin-warp-ws hosts; use margin_user_ws_url")]
     pub fn margin_warp_ws_url(&self) -> String {
         let host = if self.margin_ws_url.contains(DEMO_MARGIN_WS_HOST) {
             DEMO_MARGIN_WARP_WS_HOST
@@ -120,6 +149,26 @@ mod tests {
     }
 
     #[test]
+    fn user_urls_match_published_hosts() {
+        let d = KalshiEnvironment::demo();
+        assert_eq!(
+            d.user_ws_url(),
+            "wss://user-ws.demo.kalshi.co/trade-api/ws/v2"
+        );
+        assert_eq!(
+            d.margin_user_ws_url(),
+            "wss://margin-user-ws.demo.kalshi.co/trade-api/ws/v2/margin"
+        );
+        let p = KalshiEnvironment::production();
+        assert_eq!(p.user_ws_url(), "wss://user-ws.kalshi.com/trade-api/ws/v2");
+        assert_eq!(
+            p.margin_user_ws_url(),
+            "wss://margin-user-ws.kalshi.com/trade-api/ws/v2/margin"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
     fn warp_urls_match_published_hosts() {
         let d = KalshiEnvironment::demo();
         assert_eq!(

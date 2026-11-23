@@ -103,6 +103,21 @@ pub struct MarginHolidayWindow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarginMarketScheduleDetails {
     pub kalshi_trading_holidays: Vec<MarginHolidayWindow>,
+    /// Available after schedule synchronization.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kalshi_trading_schedule: Option<MarginTradingCronSchedule>,
+}
+
+/// Recurring Kalshi trading hours. Empty cron arrays mean continuous trading
+/// except for the holiday closures.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarginTradingCronSchedule {
+    /// IANA timezone used to evaluate the cron expressions.
+    pub timezone: String,
+    /// Five-field cron expressions for session opens; day of week 0 is Sunday.
+    pub open_crons: Vec<String>,
+    /// Five-field cron expressions for session closes; day of week 0 is Sunday.
+    pub close_crons: Vec<String>,
 }
 
 /// The response itself is a map keyed by market ticker, not an envelope.
@@ -298,6 +313,39 @@ pub struct CreateMarginFCMSubtraderRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMarginFCMSubtraderResponse {
     pub subtrader_id: String,
+}
+
+/// Side of the position moved by a margin FCM position transfer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarginPositionSide {
+    Long,
+    Short,
+}
+
+/// Moves a perps position from one subtrader into a subtrader under the
+/// FCM's error account. Supply `ticker` or `market_id`; `ticker` wins when
+/// both are set.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateMarginFCMPositionTransferRequest {
+    pub source_subtrader_id: String,
+    pub target_subtrader_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_id: Option<String>,
+    pub side: MarginPositionSide,
+    /// Whole number of exchange contracts, e.g. `"10"`.
+    pub count: String,
+    /// Dollars per contract with 2-4 decimal places, greater than zero.
+    pub price: String,
+    /// UUID that makes the request idempotent for the source subtrader.
+    pub client_transfer_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMarginFCMPositionTransferResponse {
+    pub position_transfer_id: String,
 }
 
 /// The filters restrict risk controls, but not the returned notional limits.
@@ -643,6 +691,17 @@ impl KalshiRestClient {
         body: &CreateMarginFCMSubtraderRequest,
     ) -> Result<CreateMarginFCMSubtraderResponse, KalshiError> {
         let path = Self::full_path("/margin/fcm/subtraders");
+        self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
+            .await
+    }
+
+    /// Move a perps position into an error-account subtrader. Kalshi must
+    /// enable this endpoint for the FCM; until then requests return 400.
+    pub async fn create_margin_fcm_position_transfer(
+        &self,
+        body: &CreateMarginFCMPositionTransferRequest,
+    ) -> Result<CreateMarginFCMPositionTransferResponse, KalshiError> {
+        let path = Self::full_path("/margin/fcm/positions/transfers");
         self.send(Method::POST, &path, Option::<&()>::None, Some(body), true)
             .await
     }

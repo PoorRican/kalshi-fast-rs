@@ -16,8 +16,9 @@ AsyncAPI `info.version`; the snapshot date matters.
   Deprecated unnested quote-detail aliases are deliberately replaced by the
   canonical RFQ-scoped operations; retired order mutations, announcements and
   multivariate lookups are removed rather than shimmed.
-- The November 2 snapshot includes November 5 and TBD changelog entries.
-  Published parsing/subscription support is not evidence of their live rollout.
+- The November 23 snapshot includes entries headed November 26 and TBD.
+  Published parsing/subscription support is not evidence of their live rollout;
+  Kalshi states on-request concert markets are not live yet.
   [Settlement floors](https://docs.kalshi.com/getting_started/settlement_bounds.md)
   are explicitly not live yet; their metadata does not authorize floor trading.
 
@@ -61,8 +62,27 @@ AsyncAPI `info.version`; the snapshot date matters.
   `#[deprecated]`, even where the spec lists them as required, so their eventual
   removal is not a second break. Perps ignores `exchange_index`; order groups can
   hold orders on any Perps market.
-- Fill/order-only `warp-ws` hosts are documented in prose, not the AsyncAPI;
-  `KalshiEnvironment::warp_ws_url()` is a convenience, not a spec-derived value.
+- The per-user `user-ws` hosts (`fill` and `user_orders` today) are documented
+  in prose, not the AsyncAPI; `KalshiEnvironment::user_ws_url()` and
+  `margin_user_ws_url()` are conveniences, not spec-derived values. The
+  superseded `warp-ws` helpers still resolve and are `#[deprecated]`.
+- Margin `settled_funds` is `Option`: keys restricted to one subaccount get no
+  account-wide total. Margin WebSocket `subaccount_type` is present only when
+  the subaccount number is. REST `MarginSubaccountType` is the superset enum
+  (`auto_rebalance`, `swaps` are REST-only values) and is reused for WebSocket
+  payloads; a `swaps` row's `subaccount` is a swaps code, a separate number space.
+- The specs list `is_block_trade` as required on margin REST and WebSocket
+  trades and `minimum_quantity`/`netting_enabled` as required on margin markets
+  and market positions, so they are non-optional; a server that omits them is a
+  parse error rather than a silently defaulted value.
+- `ebattle_scores` subscriptions start empty and `subscribe` has no match seed,
+  so match selections are not tracked or replayed after a reconnect: resend
+  `subscribe_matches` on the new `sid`. `msg.data` stays a JSON-encoded string.
+- On-request market creation limits return `429` with an endpoint-specific
+  code, and 429 responses carry `X-RateLimit-*` headers but no `Retry-After`;
+  neither is request-rate limiting the retry layer can wait out. The headers
+  are prose-only (not in the OpenAPI) and are not surfaced; retries without
+  `Retry-After` use the configured backoff.
 
 ## Subscription semantics
 
@@ -86,6 +106,10 @@ intent/replay and mock transports. Network-gated callers must also compile via
 and authenticated subscriptions exercise the exchange independently; offline
 tests and schema alignment do not prove production deployment or write-path
 qualification. Never use `--all-features` as an offline test command.
+
+The November 23 refresh was validated offline only, against the downloaded
+YAML; no live REST or WebSocket probe was run. The statements below describe
+the earlier November 2 refresh.
 
 The November 2 refresh directly exercised public demo REST market, event,
 series, multi-orderbook, trade, event-fee-change and historical-cutoff reads.

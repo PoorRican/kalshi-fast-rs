@@ -23,6 +23,11 @@ pub struct GetIncentiveProgramsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub incentive_description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub series_ticker: Option<String>,
+    /// A perpetual's incentives belong to no event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
@@ -41,6 +46,11 @@ pub struct IncentiveProgram {
     pub id: String,
     pub market_id: Option<String>,
     pub market_ticker: Option<String>,
+    #[serde(default)]
+    pub series_ticker: Option<String>,
+    /// Empty for a perpetual.
+    #[serde(default)]
+    pub event_ticker: Option<String>,
     pub incentive_type: String,
     pub incentive_description: String,
     pub start_date: String,
@@ -79,6 +89,45 @@ pub struct GetLiveDataResponse {
 pub struct GetLiveDataByMilestoneParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_player_stats: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetIncentiveSchedulesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
+    pub schedules: Vec<IncentiveSchedule>,
+}
+
+/// A recurring incentive schedule that has not ended.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IncentiveSchedule {
+    pub series_ticker: String,
+    pub series_title: String,
+    pub series_category: String,
+    /// Empty when the schedule covers the whole series.
+    pub event_ticker: String,
+    /// Empty when the schedule covers the whole series.
+    pub event_title: String,
+    /// `liquidity` or `volume`.
+    pub incentive_type: String,
+    /// The publishing job; with series, event and type it identifies the schedule.
+    pub source: String,
+    /// Per-market reward per window, in centi-cents.
+    pub reward: i64,
+    /// Days per window; 0 rewards each market once, up to its close.
+    pub window_days: i32,
+    #[serde(default)]
+    pub discount_factor_bps: Option<i32>,
+    #[serde(default)]
+    pub target_size_fp: Option<FixedPointCount>,
+    /// Exclusive end of the schedule; `None` when it has no end.
+    #[serde(default)]
+    pub ends: Option<String>,
+    pub description: String,
+    /// True when the terms are promised to every covered market, including
+    /// markets listed later; false when the schedule is only anticipated.
+    pub all_markets: bool,
+    pub posted_ts: String,
+    pub updated_ts: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -257,6 +306,21 @@ impl KalshiRestClient {
             Method::GET,
             &path,
             Some(&params),
+            Option::<&()>::None,
+            false,
+        )
+        .await
+    }
+
+    /// List recurring incentive schedules that have not ended. Public.
+    pub async fn get_incentive_schedules(
+        &self,
+    ) -> Result<GetIncentiveSchedulesResponse, KalshiError> {
+        let path = Self::full_path("/incentive_schedules");
+        self.send(
+            Method::GET,
+            &path,
+            Option::<&()>::None,
             Option::<&()>::None,
             false,
         )

@@ -1,4 +1,5 @@
 use crate::error::KalshiError;
+use crate::rest::MarginSubaccountType;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
@@ -374,6 +375,8 @@ pub enum MarginLastUpdateReason {
     Trade,
     PostOnlyCrossCancel,
     ReduceOnlyCancel,
+    /// Resting order canceled because the overnight price band took effect or moved.
+    SettlementBoundsCancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -432,6 +435,9 @@ pub struct OrderbookDeltaMsg {
     pub client_order_id: Option<String>,
     #[serde(default)]
     pub subaccount: Option<i64>,
+    /// Present only when `subaccount` is.
+    #[serde(default)]
+    pub subaccount_type: Option<MarginSubaccountType>,
     #[serde(default)]
     pub ts_ms: Option<i64>,
 }
@@ -490,6 +496,8 @@ pub struct TradeMsg {
     pub price: String,
     pub count: String,
     pub taker_side: MarginSide,
+    /// True if the trade was matched off book as a block trade.
+    pub is_block_trade: bool,
     pub ts_ms: i64,
 }
 
@@ -513,6 +521,9 @@ pub struct FillMsg {
     pub post_position: String,
     #[serde(default)]
     pub subaccount: Option<i64>,
+    /// Present only when `subaccount` is.
+    #[serde(default)]
+    pub subaccount_type: Option<MarginSubaccountType>,
     pub order_source: MarginOrderSource,
 }
 
@@ -544,6 +555,9 @@ pub struct UserOrderMsg {
     pub last_update_reason: Option<MarginLastUpdateReason>,
     #[serde(default)]
     pub subaccount_number: Option<i64>,
+    /// Present only when `subaccount_number` is.
+    #[serde(default)]
+    pub subaccount_type: Option<MarginSubaccountType>,
     pub order_source: MarginOrderSource,
 }
 
@@ -761,6 +775,7 @@ mod tests {
                 "price": "50000.00",
                 "count": "1.0",
                 "taker_side": "bid",
+                "is_block_trade": true,
                 "ts_ms": 1_700_000_000_000_i64
             }
         });
@@ -768,6 +783,7 @@ mod tests {
         match msg {
             MarginDataMessage::Trade(e) => {
                 assert_eq!(e.msg.trade_id, "t-123");
+                assert!(e.msg.is_block_trade);
                 assert_eq!(e.msg.taker_side, MarginSide::Bid);
             }
             _ => panic!("expected Trade"),
@@ -792,7 +808,8 @@ mod tests {
                 "fee_cost": "0.50",
                 "post_position": "5.0",
                 "order_source": "user",
-                "subaccount": 1
+                "subaccount": 1,
+                "subaccount_type": "managed_isolated"
             }
         });
         let msg = parse(&serde_json::to_vec(&json).unwrap());
@@ -801,6 +818,10 @@ mod tests {
                 assert!(e.msg.is_taker);
                 assert_eq!(e.msg.side, MarginSide::Ask);
                 assert_eq!(e.msg.subaccount, Some(1));
+                assert_eq!(
+                    e.msg.subaccount_type,
+                    Some(MarginSubaccountType::ManagedIsolated)
+                );
             }
             _ => panic!("expected Fill"),
         }
@@ -858,7 +879,7 @@ mod tests {
 
     #[test]
     fn known_message_rejects_unknown_enum_value() {
-        let bytes = br#"{"type":"trade","sid":1,"seq":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"sideways","ts_ms":1}}"#;
+        let bytes = br#"{"type":"trade","sid":1,"seq":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"sideways","is_block_trade":false,"ts_ms":1}}"#;
         let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
         assert_eq!(error.parse_context(), Some("margin websocket message"));
     }
@@ -1041,7 +1062,7 @@ mod tests {
 
     #[test]
     fn sequenced_message_requires_sequence_number() {
-        let bytes = br#"{"type":"trade","sid":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"bid","ts_ms":1}}"#;
+        let bytes = br#"{"type":"trade","sid":1,"msg":{"trade_id":"t","market_ticker":"KXBTCPERP1","price":"1","count":"1","taker_side":"bid","is_block_trade":false,"ts_ms":1}}"#;
         let error = MarginDataMessage::from_bytes(bytes).unwrap_err();
         assert_eq!(error.parse_context(), Some("margin websocket message"));
     }
@@ -1147,5 +1168,20 @@ mod tests {
         assert_eq!(e.id, Some(7));
         assert_eq!(e.msg.bid, None);
         assert_eq!(e.msg.ask, None);
+    }
+
+    #[test]
+    fn user_order_settlement_bounds_cancel_and_absent_subaccount_type() {
+        let bytes = br#"{"type":"user_order","sid":1,"seq":1,"msg":{"order_id":"o","user_id":"u","client_order_id":"c","ticker":"KXBTCPERP1","side":"bid","price":"1","fill_count":"0","remaining_count":"0","created_ts_ms":1,"last_update_reason":"SettlementBoundsCancel","order_source":"user"}}"#;
+        match parse(bytes) {
+            MarginDataMessage::UserOrder(e) => {
+                assert_eq!(
+                    e.msg.last_update_reason,
+                    Some(MarginLastUpdateReason::SettlementBoundsCancel)
+                );
+                assert!(e.msg.subaccount_type.is_none());
+            }
+            other => panic!("expected UserOrder, got {other:?}"),
+        }
     }
 }

@@ -264,6 +264,10 @@ impl WsProtocol for EventContractProtocol {
             crate::ws::types::WsUpdateAction::GetSnapshot
                 | crate::ws::types::WsUpdateAction::Indexlist
                 | crate::ws::types::WsUpdateAction::UnderlyingList
+                // `subscribe` has no match seed, so match selections cannot be replayed.
+                | crate::ws::types::WsUpdateAction::SubscribeMatches
+                | crate::ws::types::WsUpdateAction::UnsubscribeMatches
+                | crate::ws::types::WsUpdateAction::Matchlist
         )
     }
 

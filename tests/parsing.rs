@@ -402,14 +402,20 @@ fn historical_params_serialize_correctly() {
     assert_eq!(markets_json["mve_filter"], "exclude");
 
     let fills = kalshi_fast::GetHistoricalFillsParams {
-        ticker: Some("MKT-1".into()),
+        ticker: Some(vec!["MKT-1".into(), "MKT-2".into()]),
         max_ts: Some(1700000000),
         limit: Some(25),
         cursor: Some("c3".into()),
         ..Default::default()
     };
     let fills_json = serde_json::to_value(&fills).unwrap();
-    assert_eq!(fills_json["ticker"], "MKT-1");
+    assert_eq!(fills_json["ticker"], "MKT-1,MKT-2");
+    assert!(fills.validate().is_ok());
+    let too_many = kalshi_fast::GetHistoricalFillsParams {
+        ticker: Some((0..101).map(|i| format!("T{i}")).collect()),
+        ..Default::default()
+    };
+    assert!(too_many.validate().is_err());
     assert_eq!(fills_json["max_ts"], 1700000000);
     assert_eq!(fills_json["limit"], 25);
     assert_eq!(fills_json["cursor"], "c3");
@@ -764,7 +770,8 @@ fn get_positions_response_deserializes() {
             "realized_pnl_dollars": "1.1100",
             "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
-            "last_updated_ts": "2026-04-16T12:00:00Z"
+            "last_updated_ts": "2026-04-16T12:00:00Z",
+            "netting_enabled": true
         }],
         "event_positions": [{
             "event_ticker": "EVT-1",
@@ -780,6 +787,7 @@ fn get_positions_response_deserializes() {
     let resp: kalshi_fast::GetPositionsResponse = serde_json::from_str(json).unwrap();
     assert_eq!(resp.market_positions.len(), 1);
     assert_eq!(resp.market_positions[0].position_fp, "5.00");
+    assert!(resp.market_positions[0].netting_enabled);
     assert_eq!(resp.event_positions.len(), 1);
     assert_eq!(resp.cursor, Some("abc123".into()));
 }
@@ -795,7 +803,8 @@ fn positions_page_from_response() {
             "realized_pnl_dollars": "1.1100",
             "exchange_index": 0,
             "fees_paid_dollars": "0.2200",
-            "last_updated_ts": "2026-04-16T12:00:00Z"
+            "last_updated_ts": "2026-04-16T12:00:00Z",
+            "netting_enabled": true
         }],
         "event_positions": [{
             "event_ticker": "EVT-1",

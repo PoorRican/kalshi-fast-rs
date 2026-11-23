@@ -46,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
                         send_initial_snapshot: None,
                         index_ids: None,
                         underlying_tickers: None,
+                        match_ids: None,
                     })
                     .await;
             }
